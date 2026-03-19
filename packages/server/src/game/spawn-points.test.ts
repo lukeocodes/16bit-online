@@ -130,6 +130,10 @@ describe("spawn-points", () => {
       removeSpawnPoint("sp-test");
       expect(getAllSpawnPoints().length).toBe(0);
     });
+
+    it("is safe for non-existent spawn point ID", () => {
+      expect(() => removeSpawnPoint("no-such-sp")).not.toThrow();
+    });
   });
 
   describe("handleNPCDeath", () => {
@@ -171,6 +175,27 @@ describe("spawn-points", () => {
 
     it("is safe for non-tracked entity", () => {
       expect(() => handleNPCDeath("random-entity")).not.toThrow();
+    });
+
+    it("respawn counts surviving siblings before spawning", () => {
+      // maxCount: 2 — kill one, the other survives. Timer fires, countAlive
+      // iterates the surviving NPC (covers lines 229-230).
+      addSpawnPoint(makeSpawnPoint({ maxCount: 2, frequency: 5 }));
+      const npcs = entityStore.getByType("npc");
+      expect(npcs.length).toBe(2);
+
+      const victim = npcs[0];
+      const survivor = npcs[1];
+
+      handleNPCDeath(victim.entityId);
+      expect(entityStore.getByType("npc").length).toBe(1);
+      expect(entityStore.get(survivor.entityId)).toBeDefined();
+
+      // Advance past respawn — countAlive sees 1 alive < maxCount 2, spawns replacement
+      vi.advanceTimersByTime(5 * 1000);
+      expect(entityStore.getByType("npc").length).toBe(2);
+      // Survivor is still the same entity
+      expect(entityStore.get(survivor.entityId)).toBeDefined();
     });
   });
 
@@ -262,24 +287,62 @@ describe("spawn-points", () => {
     });
 
     it("moves along X when dx > dz", () => {
-      // Spawn at (10, 20), NPC spawns nearby
+      // Spawn at (10, 20), then fix NPC position for deterministic test
       addSpawnPoint(makeSpawnPoint({ x: 10, z: 20, maxCount: 1, distance: 5 }));
       const npc = entityStore.getByType("npc")[0];
+      // Place NPC at spawn center so we control the direction
+      entityStore.updatePosition(npc.entityId, 10, 20);
+
+      const mockRandom = vi.spyOn(Math, "random");
+      mockRandom
+        .mockReturnValueOnce(0.01)   // triggers wander
+        .mockReturnValueOnce(0.0)    // angle = 0 (east) → cos(0)=1, sin(0)=0
+        .mockReturnValueOnce(0.99);  // dist ≈ 4.95 → target=(15, 20)
+
+      // dx = 15-10 = 5, dz = 20-20 = 0 → |dx| > |dz| → X branch
+      tickWandering(0.05);
+
+      expect(npc.x).toBe(11); // X moved +1
+      expect(npc.z).toBe(20); // Z unchanged
+
+      mockRandom.mockRestore();
+    });
+
+    it("skips dead NPCs during wandering", () => {
+      addSpawnPoint(makeSpawnPoint({ maxCount: 1, frequency: 10 }));
+      const npc = entityStore.getByType("npc")[0];
+
+      // Kill the NPC — it's now in spawnedNPCs with alive=false
+      handleNPCDeath(npc.entityId);
+
+      const mockRandom = vi.spyOn(Math, "random");
+      mockRandom.mockReturnValue(0.01); // Would trigger wander
+
+      // Should not crash — dead NPC is skipped at alive check
+      expect(() => tickWandering(0.05)).not.toThrow();
+
+      mockRandom.mockRestore();
+    });
+
+    it("skips NPC whose wander target equals current position", () => {
+      addSpawnPoint(makeSpawnPoint({ x: 10, z: 20, maxCount: 1, distance: 5 }));
+      const npc = entityStore.getByType("npc")[0];
+      // Place NPC exactly at spawn point center
+      entityStore.updatePosition(npc.entityId, 10, 20);
       const origX = npc.x;
       const origZ = npc.z;
 
       const mockRandom = vi.spyOn(Math, "random");
       mockRandom
-        .mockReturnValueOnce(0.01)   // triggers wander
-        .mockReturnValueOnce(0.0)    // angle = 0 (east)
-        .mockReturnValueOnce(0.99);  // dist ≈ max distance (5 tiles east)
+        .mockReturnValueOnce(0.01)  // triggers wander
+        .mockReturnValueOnce(0)     // angle = 0
+        .mockReturnValueOnce(0);    // dist = 0 → target = spawn center = current pos
 
+      // target = round(10 + cos(0)*0, 20 + sin(0)*0) = (10, 20) = current
+      // dx=0, dz=0 → continue
       tickWandering(0.05);
-
-      // Should have moved in X direction (east), not Z
-      const dxMoved = Math.abs(npc.x - origX);
-      const dzMoved = Math.abs(npc.z - origZ);
-      expect(dxMoved + dzMoved).toBe(1);
+      expect(npc.x).toBe(origX);
+      expect(npc.z).toBe(origZ);
 
       mockRandom.mockRestore();
     });
@@ -289,8 +352,7 @@ describe("spawn-points", () => {
       addSpawnPoint(makeSpawnPoint({ x: 0, z: 0, maxCount: 1, distance: 10 }));
       const npc = entityStore.getByType("npc")[0];
       // Force NPC to be at (0, 0) for predictable targeting
-      npc.x = 0;
-      npc.z = 0;
+      entityStore.updatePosition(npc.entityId, 0, 0);
 
       const mockRandom = vi.spyOn(Math, "random");
       mockRandom

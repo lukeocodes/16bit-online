@@ -43,6 +43,7 @@ An Ultima Online-inspired isometric multiplayer online game built with modern we
 - **ECS architecture**: Client uses Entity-Component-System pattern — entities are IDs, components are data, systems process them. Easy to extend without touching existing code.
 - **Tile-based movement**: Characters move tile-to-tile with smooth interpolation. Input queuing makes held keys feel responsive.
 - **Batched position updates**: All nearby entity positions packed into one binary message per tick per player, not individual packets.
+- **Spatial hash grid**: Server-side EntityStore uses 32-tile cell spatial hashing for O(1) proximity queries. Broadcasts and sleep checks query a 3x3 cell grid instead of iterating all entities.
 - **NPC sleep optimization**: Entities with no players nearby skip all processing (combat, regen, wandering).
 
 ## Project Structure
@@ -76,7 +77,7 @@ game/
 │   │   │   └── game/             # Server game systems
 │   │   │       ├── world.ts      # 20Hz game loop, position/state broadcasting
 │   │   │       ├── combat.ts     # Auto-attack, damage, HP regen
-│   │   │       ├── entities.ts   # Entity store with sleep optimization
+│   │   │       ├── entities.ts   # Entity store with spatial hash grid
 │   │   │       ├── npc-templates.ts  # Type system with inheritance
 │   │   │       ├── spawn-points.ts   # Spawn point item system
 │   │   │       ├── npcs.ts       # NPC initialization
@@ -239,33 +240,35 @@ cd packages/client && npx vitest
 
 | Package | Tests | Stmts | Branch | Funcs | Lines |
 |---------|-------|-------|--------|-------|-------|
-| Server | 226 | 47% | 45% | 53% | 43% |
+| Server | 357 | 96% | 95% | 94% | 96% |
 | Client | 224 | 25% | 29% | 27% | 26% |
-| **Total** | **450** | | | | |
+| **Total** | **581** | | | | |
 
-> Overall percentages include untestable modules (Babylon.js rendering, WebRTC networking, DOM UI screens). Testable business logic is at **~95% coverage** — see below.
+> Server coverage excludes only boot files (`index.ts`) and infrastructure connections (`postgres.ts`, `redis.ts`). All game logic, routes, and WebRTC signaling are tested. Client percentages include untestable modules (Babylon.js rendering, WebRTC networking, DOM UI screens).
 
-### Modules at 100% Line Coverage (29)
+### Modules at 100% Line Coverage (34)
 
-**Server:** combat, entities, npc-templates, protocol, zones, config, jwt, middleware, oauth
+**Server (21):** app, combat, entities, npc-templates, npcs, protocol, spawn-points, world (game loop), zones, config, jwt, middleware, oauth, auth (routes), characters (routes), world (routes), rtc (routes), connections, linger, world-helpers, world-loop
 
-**Client:** Position, Movement, Renderable, Identity, Stats, Combat (all ECS components), Protocol, InterpolationSystem, MovementSystem, CombatSystem, StateSync, Loop, AssetCache, GameState, PlayerState, SessionState, TokenStore, PKCEUtils
+**Client (13):** Position, Movement, Renderable, Identity, Stats, Combat (all ECS components), Protocol, InterpolationSystem, MovementSystem, CombatSystem, StateSync, Loop, AssetCache
 
 ### Test Architecture
 
 | Category | Files | Tests | What's Covered |
 |----------|-------|-------|----------------|
-| Server game logic | 9 | 134 | Combat (mutual, ranges, sleep), entities, zones, linger, spawn-points, NPC templates, protocol encoding |
+| Server game logic | 10 | 171 | Combat, entities (spatial hash), zones, linger, spawn-points, NPC templates, protocol, world loop, world helpers |
+| Server routes | 5 | 55 | WebRTC offer/answer, auth (dev-login, OAuth, refresh), characters CRUD, world chunks |
 | Server auth | 3 | 14 | JWT round-trip, middleware (all 401 paths), OAuth token exchange |
-| Server validation | 2 | 39 | Character name/race/stats/skills rules, config defaults |
+| Server validation | 2 | 40 | Character name/race/stats/skills rules, config defaults |
 | Server contracts | 3 | 22 | Protocol.json opcode sync, binary format, constants consistency |
+| Server infra | 2 | 6 | App factory, schema |
 | Client ECS | 5 | 74 | All 6 component factories, EntityManager + spatial grid, 3 systems |
 | Client networking | 2 | 34 | Protocol pack/unpack, StateSync message routing + hash mapping |
 | Client auth | 3 | 28 | AuthManager (PKCE, dev login, refresh), TokenStore, PKCEUtils |
 | Client state | 3 | 27 | SessionState, GameState, PlayerState |
 | Client engine | 2 | 19 | Fixed timestep loop (spiral cap), LRU asset cache |
 | Client integration | 2 | 12 | ECS cross-system pipeline, shared protocol contracts |
-| **Totals** | **35** | **450** | |
+| **Totals** | **42** | **581** | |
 
 ### Cross-Package Contract Tests
 

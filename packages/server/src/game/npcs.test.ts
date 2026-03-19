@@ -9,7 +9,7 @@ vi.mock("../ws/connections.js", () => ({
   },
 }));
 
-import { spawnInitialNpcs, handleNpcDeath, getNpcTemplate, isSpawnedNPC, cleanup } from "./npcs.js";
+import { spawnInitialNpcs, handleNpcDeath, getNpcTemplate, getNpcIds, isSpawnedNPC, cleanup } from "./npcs.js";
 
 describe("npcs", () => {
   beforeEach(() => {
@@ -67,6 +67,12 @@ describe("npcs", () => {
   describe("getNpcTemplate", () => {
     it("returns undefined for non-NPC entity", () => {
       expect(getNpcTemplate("player-1")).toBeUndefined();
+    });
+  });
+
+  describe("getNpcIds", () => {
+    it("returns empty array (legacy stub)", () => {
+      expect(getNpcIds()).toEqual([]);
     });
   });
 });
