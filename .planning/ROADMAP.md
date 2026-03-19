@@ -54,11 +54,12 @@ Plans:
   2. Water bodies (ocean between continents, rivers within continents, lakes) exist as distinct terrain types in the world map
   3. Players cannot walk through water, cliffs, or steep mountain terrain — movement is blocked server-side with appropriate client feedback
   4. Biome classification rules (elevation + moisture + temperature) deterministically assign terrain types to regions
-**Plans**: TBD
+**Plans**: 3 plans
 
 Plans:
-- [ ] 02-01: TBD
-- [ ] 02-02: TBD
+- [ ] 02-01-PLAN.md — Server terrain data layer: BiomeType extension (RIVER, LAKE), river/lake generation, walkability and elevation utilities
+- [ ] 02-02-PLAN.md — Server movement blocking (rtc.ts, spawn-points.ts) and client tile system (18 biome tiles, biome-aware chunk generation)
+- [ ] 02-03-PLAN.md — Client elevation rendering: stepped terrain at 7 height levels with cliff faces, visual verification checkpoint
 
 ### Phase 3: Server-Side Chunk Generation
 **Goal**: Terrain is generated on the server from deterministic seeds and streamed to clients — no more client-side chunk generation
@@ -187,7 +188,7 @@ Plans:
   2. Separate gain buses exist for music, SFX, weather, and ambient — each independently controllable
   3. Music state machine transitions between states (Exploring, Town, Dungeon, Enemy Nearby, Combat, Boss) driven by game events
   4. Crossfades between music states are quantized to beat boundaries via Tone.js Transport for seamless transitions
-  5. A master intensity variable (0.0–1.0) globally influences stem density, SFX volume, and weather presence
+  5. A master intensity variable (0.0-1.0) globally influences stem density, SFX volume, and weather presence
 **Plans**: TBD
 
 Plans:
@@ -216,7 +217,7 @@ Plans:
 **Requirements**: AUDIO-04, AUDIO-05
 **Success Criteria** (what must be TRUE):
   1. Combat SFX plays for melee swings/hits, bow draw/release/impact, and magic cast/hit with 3 intensity tiers and weapon-type variation
-  2. Footstep sounds vary by surface type (grass, stone, wood, sand, snow) with random pitch variation (±5%) to prevent repetition
+  2. Footstep sounds vary by surface type (grass, stone, wood, sand, snow) with random pitch variation (+-5%) to prevent repetition
   3. Weather synthesis produces rain (noise-shaped) and wind (bandpass-filtered) with 3 crossfaded intensity layers on a separate audio graph
   4. Progression stingers play for rank/skill level ups and special events
   5. All positional SFX uses Web Audio API PannerNode for spatial audio based on entity distance from player
@@ -252,7 +253,7 @@ Plans:
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. World Map Data Layer | 0/3 | Planning complete | - |
-| 2. Terrain Classification & Biomes | 0/0 | Not started | - |
+| 2. Terrain Classification & Biomes | 0/3 | Planning complete | - |
 | 3. Server-Side Chunk Generation | 0/0 | Not started | - |
 | 4. Region Discovery System | 0/0 | Not started | - |
 | 5. Safe Zones & Settlements | 0/0 | Not started | - |
