@@ -1,0 +1,322 @@
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { entityStore } from "./entities.js";
+import { getCombatState, unregisterEntity } from "./combat.js";
+
+// Mock connectionManager to avoid WebRTC dependency
+vi.mock("../ws/connections.js", () => ({
+  connectionManager: {
+    broadcastReliable: vi.fn(),
+    getAll: vi.fn(() => []),
+  },
+}));
+
+import {
+  addSpawnPoint,
+  removeSpawnPoint,
+  handleNPCDeath,
+  getAllSpawnPoints,
+  isSpawnedNPC,
+  getSpawnPointTemplate,
+  tickWandering,
+  cleanup,
+  type SpawnPoint,
+} from "./spawn-points.js";
+
+function makeSpawnPoint(overrides: Partial<SpawnPoint> = {}): SpawnPoint {
+  return {
+    id: "sp-test",
+    x: 10,
+    z: 20,
+    mapId: 1,
+    npcIds: ["goblin-grunt"],
+    distance: 5,
+    maxCount: 2,
+    frequency: 5,
+    ...overrides,
+  };
+}
+
+describe("spawn-points", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    cleanup();
+    // Clear entity store
+    for (const e of entityStore.getAll()) {
+      unregisterEntity(e.entityId);
+      entityStore.remove(e.entityId);
+    }
+  });
+
+  afterEach(() => {
+    cleanup();
+    vi.useRealTimers();
+  });
+
+  describe("addSpawnPoint", () => {
+    it("spawns maxCount NPCs on creation", () => {
+      addSpawnPoint(makeSpawnPoint({ maxCount: 3 }));
+      const npcs = entityStore.getByType("npc");
+      expect(npcs.length).toBe(3);
+    });
+
+    it("registers spawned NPCs in entity store", () => {
+      addSpawnPoint(makeSpawnPoint({ maxCount: 1 }));
+      const npcs = entityStore.getByType("npc");
+      expect(npcs.length).toBe(1);
+      expect(npcs[0].entityType).toBe("npc");
+      expect(npcs[0].name).toBe("Goblin Grunt");
+    });
+
+    it("spawns NPCs within distance of spawn point", () => {
+      addSpawnPoint(makeSpawnPoint({ x: 10, z: 20, distance: 5, maxCount: 10 }));
+      const npcs = entityStore.getByType("npc");
+      for (const npc of npcs) {
+        const dist = Math.sqrt((npc.x - 10) ** 2 + (npc.z - 20) ** 2);
+        expect(dist).toBeLessThanOrEqual(6); // Allow for rounding
+      }
+    });
+
+    it("registers combat state for spawned NPCs", () => {
+      addSpawnPoint(makeSpawnPoint({ maxCount: 1 }));
+      const npc = entityStore.getByType("npc")[0];
+      const combat = getCombatState(npc.entityId);
+      expect(combat).toBeDefined();
+      expect(combat!.hp).toBeGreaterThan(0);
+    });
+
+    it("tracks spawned NPCs correctly", () => {
+      addSpawnPoint(makeSpawnPoint({ maxCount: 2 }));
+      const npcs = entityStore.getByType("npc");
+      for (const npc of npcs) {
+        expect(isSpawnedNPC(npc.entityId)).toBe(true);
+      }
+    });
+  });
+
+  describe("addSpawnPoint — edge cases", () => {
+    it("handles unknown template ID gracefully", () => {
+      const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+      addSpawnPoint(makeSpawnPoint({
+        npcIds: ["nonexistent-dragon"],
+        maxCount: 2,
+      }));
+
+      // Should log error for unknown template and not crash
+      expect(spy).toHaveBeenCalled();
+      // No NPCs spawned since template doesn't exist
+      expect(entityStore.getByType("npc").length).toBe(0);
+
+      spy.mockRestore();
+    });
+
+    it("handles empty npcIds array", () => {
+      addSpawnPoint(makeSpawnPoint({ npcIds: [], maxCount: 2 }));
+      expect(entityStore.getByType("npc").length).toBe(0);
+    });
+  });
+
+  describe("removeSpawnPoint", () => {
+    it("removes all NPCs from that spawn point", () => {
+      addSpawnPoint(makeSpawnPoint({ maxCount: 3 }));
+      expect(entityStore.getByType("npc").length).toBe(3);
+
+      removeSpawnPoint("sp-test");
+      expect(entityStore.getByType("npc").length).toBe(0);
+    });
+
+    it("removes spawn point from registry", () => {
+      addSpawnPoint(makeSpawnPoint());
+      removeSpawnPoint("sp-test");
+      expect(getAllSpawnPoints().length).toBe(0);
+    });
+  });
+
+  describe("handleNPCDeath", () => {
+    it("removes dead NPC from entity store", () => {
+      addSpawnPoint(makeSpawnPoint({ maxCount: 1 }));
+      const npc = entityStore.getByType("npc")[0];
+
+      handleNPCDeath(npc.entityId);
+      expect(entityStore.get(npc.entityId)).toBeUndefined();
+    });
+
+    it("schedules respawn after frequency seconds", () => {
+      addSpawnPoint(makeSpawnPoint({ maxCount: 1, frequency: 5 }));
+      const npc = entityStore.getByType("npc")[0];
+      const deadId = npc.entityId;
+
+      handleNPCDeath(deadId);
+      expect(entityStore.getByType("npc").length).toBe(0);
+
+      // Advance past respawn timer
+      vi.advanceTimersByTime(5 * 1000);
+      expect(entityStore.getByType("npc").length).toBe(1);
+
+      // Should be a new entity, not the dead one
+      const newNpc = entityStore.getByType("npc")[0];
+      expect(newNpc.entityId).not.toBe(deadId);
+    });
+
+    it("does not respawn if spawn point was removed", () => {
+      addSpawnPoint(makeSpawnPoint({ maxCount: 1, frequency: 5 }));
+      const npc = entityStore.getByType("npc")[0];
+
+      handleNPCDeath(npc.entityId);
+      removeSpawnPoint("sp-test");
+
+      vi.advanceTimersByTime(5 * 1000);
+      expect(entityStore.getByType("npc").length).toBe(0);
+    });
+
+    it("is safe for non-tracked entity", () => {
+      expect(() => handleNPCDeath("random-entity")).not.toThrow();
+    });
+  });
+
+  describe("getSpawnPointTemplate", () => {
+    it("returns the template for a spawned NPC", () => {
+      addSpawnPoint(makeSpawnPoint({ npcIds: ["skeleton-warrior"], maxCount: 1 }));
+      const npc = entityStore.getByType("npc")[0];
+      const template = getSpawnPointTemplate(npc.entityId);
+      expect(template).toBeDefined();
+      expect(template!.id).toBe("skeleton-warrior");
+    });
+
+    it("returns undefined for unknown entity", () => {
+      expect(getSpawnPointTemplate("nope")).toBeUndefined();
+    });
+  });
+
+  describe("getAllSpawnPoints", () => {
+    it("returns all registered spawn points", () => {
+      addSpawnPoint(makeSpawnPoint({ id: "sp-1", maxCount: 1 }));
+      addSpawnPoint(makeSpawnPoint({ id: "sp-2", maxCount: 1 }));
+      const all = getAllSpawnPoints();
+      expect(all.length).toBe(2);
+      expect(all.map(s => s.id)).toContain("sp-1");
+      expect(all.map(s => s.id)).toContain("sp-2");
+    });
+  });
+
+  describe("tickWandering", () => {
+    it("does not crash with no spawned NPCs", () => {
+      expect(() => tickWandering(0.05)).not.toThrow();
+    });
+
+    it("moves NPC when random chance triggers", () => {
+      addSpawnPoint(makeSpawnPoint({ maxCount: 1, distance: 10 }));
+      const npc = entityStore.getByType("npc")[0];
+      const origX = npc.x;
+      const origZ = npc.z;
+
+      // Mock Math.random to always return < 0.02 (force wandering)
+      // then return values for angle and distance calculations
+      const mockRandom = vi.spyOn(Math, "random");
+      mockRandom
+        .mockReturnValueOnce(0.01)  // < 0.02, triggers wander
+        .mockReturnValueOnce(0.25)  // angle = 0.25 * 2π
+        .mockReturnValueOnce(0.5);  // dist = 0.5 * point.distance
+
+      tickWandering(0.05);
+
+      // NPC should have moved one tile
+      const moved = Math.abs(npc.x - origX) + Math.abs(npc.z - origZ);
+      expect(moved).toBe(1);
+
+      mockRandom.mockRestore();
+    });
+
+    it("does not move NPC when random chance does not trigger", () => {
+      addSpawnPoint(makeSpawnPoint({ maxCount: 1 }));
+      const npc = entityStore.getByType("npc")[0];
+      const origX = npc.x;
+      const origZ = npc.z;
+
+      const mockRandom = vi.spyOn(Math, "random");
+      mockRandom.mockReturnValue(0.5); // > 0.02, no wander
+
+      tickWandering(0.05);
+      expect(npc.x).toBe(origX);
+      expect(npc.z).toBe(origZ);
+
+      mockRandom.mockRestore();
+    });
+
+    it("does not wander if NPC is in combat", () => {
+      addSpawnPoint(makeSpawnPoint({ maxCount: 1 }));
+      const npc = entityStore.getByType("npc")[0];
+      const origX = npc.x;
+
+      // Put NPC in combat
+      const combat = getCombatState(npc.entityId);
+      if (combat) combat.inCombat = true;
+
+      const mockRandom = vi.spyOn(Math, "random");
+      mockRandom.mockReturnValue(0.01); // Would trigger wander
+
+      tickWandering(0.05);
+      expect(npc.x).toBe(origX); // Didn't move
+
+      mockRandom.mockRestore();
+    });
+
+    it("moves along X when dx > dz", () => {
+      // Spawn at (10, 20), NPC spawns nearby
+      addSpawnPoint(makeSpawnPoint({ x: 10, z: 20, maxCount: 1, distance: 5 }));
+      const npc = entityStore.getByType("npc")[0];
+      const origX = npc.x;
+      const origZ = npc.z;
+
+      const mockRandom = vi.spyOn(Math, "random");
+      mockRandom
+        .mockReturnValueOnce(0.01)   // triggers wander
+        .mockReturnValueOnce(0.0)    // angle = 0 (east)
+        .mockReturnValueOnce(0.99);  // dist ≈ max distance (5 tiles east)
+
+      tickWandering(0.05);
+
+      // Should have moved in X direction (east), not Z
+      const dxMoved = Math.abs(npc.x - origX);
+      const dzMoved = Math.abs(npc.z - origZ);
+      expect(dxMoved + dzMoved).toBe(1);
+
+      mockRandom.mockRestore();
+    });
+
+    it("moves along Z when dz > dx (line 150 branch)", () => {
+      // Place NPC at spawn point center so we can control target direction
+      addSpawnPoint(makeSpawnPoint({ x: 0, z: 0, maxCount: 1, distance: 10 }));
+      const npc = entityStore.getByType("npc")[0];
+      // Force NPC to be at (0, 0) for predictable targeting
+      npc.x = 0;
+      npc.z = 0;
+
+      const mockRandom = vi.spyOn(Math, "random");
+      mockRandom
+        .mockReturnValueOnce(0.01)    // triggers wander
+        .mockReturnValueOnce(0.25)    // angle = π/2 (north)
+        .mockReturnValueOnce(0.5);    // dist = 5
+
+      // angle = 0.25 * 2π = π/2 → cos(π/2) ≈ 0, sin(π/2) = 1
+      // targetX = round(0 + 0 * 5) = 0, targetZ = round(0 + 1 * 5) = 5
+      // dx = 0, dz = 5 → |dz| > |dx| → z branch (line 150)
+      tickWandering(0.05);
+
+      expect(npc.x).toBe(0);  // X unchanged
+      expect(npc.z).toBe(1);  // Z moved by 1
+
+      mockRandom.mockRestore();
+    });
+  });
+
+  describe("cleanup", () => {
+    it("clears all spawn points and NPCs", () => {
+      addSpawnPoint(makeSpawnPoint({ maxCount: 3 }));
+      expect(entityStore.getByType("npc").length).toBe(3);
+
+      cleanup();
+      expect(getAllSpawnPoints().length).toBe(0);
+    });
+  });
+});
