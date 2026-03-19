@@ -22,4 +22,7 @@ export const config = {
     host: process.env.SERVER_HOST || "0.0.0.0",
     port: parseInt(process.env.SERVER_PORT || "8000"),
   },
+  world: {
+    seed: parseInt(process.env.WORLD_SEED || "42"),
+  },
 } as const;
