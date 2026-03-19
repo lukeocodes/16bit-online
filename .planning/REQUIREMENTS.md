@@ -10,8 +10,8 @@ Requirements for this milestone. Each maps to roadmap phases.
 ### World Structure & Geography
 
 - [x] **WORLD-01**: World map defines three continents (Human, Elf, Dwarf) with ocean separation, each containing distinct biome regions
-- [ ] **WORLD-02**: Terrain biome classification system expands tile types from 7 to 15-20 (forest, mountain, swamp, desert, snow, deep water, shallow water, cliff, etc.)
-- [ ] **WORLD-03**: Water bodies (ocean, rivers, lakes) exist as impassable or boundary terrain between and within continents
+- [x] **WORLD-02**: Terrain biome classification system expands tile types from 7 to 15-20 (forest, mountain, swamp, desert, snow, deep water, shallow water, cliff, etc.)
+- [x] **WORLD-03**: Water bodies (ocean, rivers, lakes) exist as impassable or boundary terrain between and within continents
 - [ ] **WORLD-04**: Safe zone hierarchy with cities (2-3 min walk across), towns (1-2 min), and settlements (1 min) pre-generated on the world map
 - [ ] **WORLD-05**: Movement blocking based on terrain type (water, cliffs, steep mountains) prevents player traversal
 - [ ] **WORLD-06**: Region entry notifications display region name, discoverer, and notes when a player crosses into a new region
@@ -106,8 +106,8 @@ Which phases cover which requirements. Updated during roadmap creation.
 | Requirement | Phase | Status |
 |-------------|-------|--------|
 | WORLD-01 | Phase 1: World Map Data Layer | Complete |
-| WORLD-02 | Phase 2: Terrain Classification & Biomes | Pending |
-| WORLD-03 | Phase 2: Terrain Classification & Biomes | Pending |
+| WORLD-02 | Phase 2: Terrain Classification & Biomes | Complete |
+| WORLD-03 | Phase 2: Terrain Classification & Biomes | Complete |
 | WORLD-04 | Phase 5: Safe Zones & Settlements | Pending |
 | WORLD-05 | Phase 2: Terrain Classification & Biomes | Pending |
 | WORLD-06 | Phase 6: Region Interaction & Fog of War | Pending |
