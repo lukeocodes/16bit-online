@@ -1,4 +1,4 @@
-import type { Scene } from "@babylonjs/core";
+import type { Scene } from "@babylonjs/core/scene";
 import { CHUNK_SIZE, TILE_SIZE, CHUNK_LOAD_RADIUS, WORLD_WIDTH, WORLD_HEIGHT } from "./WorldConstants";
 import { Chunk } from "./Chunk";
 
@@ -64,7 +64,17 @@ export class ChunkManager {
   }
 
   loadChunkFromData(chunkX: number, chunkY: number, chunkZ: number, tileData: Uint8Array) {
-    const chunk = new Chunk(this.mapId, chunkX, chunkY, chunkZ, tileData);
+    const elevation = this.getChunkElevation(chunkX, chunkY);
+    const elevationLevel = this.getElevationBand(elevation);
+
+    const neighborElevations = {
+      north: this.getElevationBand(this.getChunkElevation(chunkX, chunkY - 1)),
+      south: this.getElevationBand(this.getChunkElevation(chunkX, chunkY + 1)),
+      east: this.getElevationBand(this.getChunkElevation(chunkX + 1, chunkY)),
+      west: this.getElevationBand(this.getChunkElevation(chunkX - 1, chunkY)),
+    };
+
+    const chunk = new Chunk(this.mapId, chunkX, chunkY, chunkZ, tileData, elevationLevel, neighborElevations);
     chunk.buildMesh(this.scene);
     this.chunks.set(chunk.key, chunk);
   }
@@ -80,9 +90,32 @@ export class ChunkManager {
     this.chunks.clear();
   }
 
+  /**
+   * Convert continuous elevation (0.0-1.0) to discrete band level (0-6).
+   * Thresholds match server ELEVATION_BANDS in terrain.ts.
+   */
+  private getElevationBand(elevation: number): number {
+    const thresholds = [0.15, 0.30, 0.45, 0.60, 0.75, 0.90, 1.01];
+    for (let i = 0; i < thresholds.length; i++) {
+      if (elevation < thresholds[i]) return i;
+    }
+    return 6;
+  }
+
   private loadChunk(chunkX: number, chunkY: number, chunkZ: number) {
     const tileData = this.generateChunkData(chunkX, chunkY);
-    const chunk = new Chunk(this.mapId, chunkX, chunkY, chunkZ, tileData);
+
+    const elevation = this.getChunkElevation(chunkX, chunkY);
+    const elevationLevel = this.getElevationBand(elevation);
+
+    const neighborElevations = {
+      north: this.getElevationBand(this.getChunkElevation(chunkX, chunkY - 1)),
+      south: this.getElevationBand(this.getChunkElevation(chunkX, chunkY + 1)),
+      east: this.getElevationBand(this.getChunkElevation(chunkX + 1, chunkY)),
+      west: this.getElevationBand(this.getChunkElevation(chunkX - 1, chunkY)),
+    };
+
+    const chunk = new Chunk(this.mapId, chunkX, chunkY, chunkZ, tileData, elevationLevel, neighborElevations);
     chunk.buildMesh(this.scene);
     this.chunks.set(chunk.key, chunk);
   }
