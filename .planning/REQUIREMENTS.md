@@ -95,40 +95,40 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| WORLD-01 | — | Pending |
-| WORLD-02 | — | Pending |
-| WORLD-03 | — | Pending |
-| WORLD-04 | — | Pending |
-| WORLD-05 | — | Pending |
-| WORLD-06 | — | Pending |
-| WORLD-07 | — | Pending |
-| WORLD-08 | — | Pending |
-| DISC-01 | — | Pending |
-| DISC-02 | — | Pending |
-| DISC-03 | — | Pending |
-| DISC-04 | — | Pending |
-| DISC-05 | — | Pending |
-| DISC-06 | — | Pending |
-| DISC-07 | — | Pending |
-| DISC-08 | — | Pending |
-| PVP-01 | — | Pending |
-| PVP-02 | — | Pending |
-| PVP-03 | — | Pending |
-| PVP-04 | — | Pending |
-| TECH-01 | — | Pending |
-| TECH-02 | — | Pending |
-| TECH-03 | — | Pending |
-| TECH-04 | — | Pending |
-| TECH-05 | — | Pending |
-| TECH-06 | — | Pending |
-| TECH-07 | — | Pending |
-| TECH-08 | — | Pending |
+| WORLD-01 | Phase 1: World Map Data Layer | Pending |
+| WORLD-02 | Phase 2: Terrain Classification & Biomes | Pending |
+| WORLD-03 | Phase 2: Terrain Classification & Biomes | Pending |
+| WORLD-04 | Phase 5: Safe Zones & Settlements | Pending |
+| WORLD-05 | Phase 2: Terrain Classification & Biomes | Pending |
+| WORLD-06 | Phase 6: Region Interaction & Fog of War | Pending |
+| WORLD-07 | Phase 5: Safe Zones & Settlements | Pending |
+| WORLD-08 | Phase 9: Biome Atmosphere & Rendering | Pending |
+| DISC-01 | Phase 4: Region Discovery System | Pending |
+| DISC-02 | Phase 4: Region Discovery System | Pending |
+| DISC-03 | Phase 4: Region Discovery System | Pending |
+| DISC-04 | Phase 4: Region Discovery System | Pending |
+| DISC-05 | Phase 7: Wildlife & Region-Aware Spawning | Pending |
+| DISC-06 | Phase 7: Wildlife & Region-Aware Spawning | Pending |
+| DISC-07 | Phase 6: Region Interaction & Fog of War | Pending |
+| DISC-08 | Phase 6: Region Interaction & Fog of War | Pending |
+| PVP-01 | Phase 8: PvP Flagging & Combat Rules | Pending |
+| PVP-02 | Phase 8: PvP Flagging & Combat Rules | Pending |
+| PVP-03 | Phase 8: PvP Flagging & Combat Rules | Pending |
+| PVP-04 | Phase 8: PvP Flagging & Combat Rules | Pending |
+| TECH-01 | Phase 1: World Map Data Layer | Pending |
+| TECH-02 | Phase 1: World Map Data Layer | Pending |
+| TECH-03 | Phase 3: Server-Side Chunk Generation | Pending |
+| TECH-04 | Phase 7: Wildlife & Region-Aware Spawning | Pending |
+| TECH-05 | Phase 3: Server-Side Chunk Generation | Pending |
+| TECH-06 | Phase 3: Server-Side Chunk Generation | Pending |
+| TECH-07 | Phase 4: Region Discovery System | Pending |
+| TECH-08 | Phase 10: World-Scale Performance | Pending |
 
 **Coverage:**
 - v1 requirements: 28 total
-- Mapped to phases: 0
-- Unmapped: 28 ⚠️
+- Mapped to phases: 28
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-03-19*
-*Last updated: 2026-03-19 after initial definition*
+*Last updated: 2026-03-19 after roadmap creation*
