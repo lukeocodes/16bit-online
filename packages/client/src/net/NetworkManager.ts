@@ -1,6 +1,12 @@
 export type BinaryMessageHandler = (data: ArrayBuffer) => void;
 export type TextMessageHandler = (data: string) => void;
 
+export interface WorldMapData {
+  seed: number; width: number; height: number;
+  biomeMap: Uint8Array; elevationBands: Uint8Array;
+  regionMap: Uint16Array; regionBiomes: Uint8Array;
+}
+
 export class NetworkManager {
   private pc: RTCPeerConnection | null = null;
   private positionChannel: RTCDataChannel | null = null;
@@ -9,14 +15,17 @@ export class NetworkManager {
 
   private onPositionMessage: BinaryMessageHandler | null = null;
   private onReliableMessage: TextMessageHandler | null = null;
+  private onChunkData: ((data: ArrayBuffer) => void) | null = null;
   private onDisconnect: ((reason: string) => void) | null = null;
   private worldReadyResolve: (() => void) | null = null;
   public spawnPosition: { x: number; y: number; z: number; mapId: number } = { x: 0, y: 0, z: 0, mapId: 1 };
+  public worldData: WorldMapData | null = null;
 
   constructor() {}
 
   setOnPositionMessage(handler: BinaryMessageHandler) { this.onPositionMessage = handler; }
   setOnReliableMessage(handler: TextMessageHandler) { this.onReliableMessage = handler; }
+  setOnChunkData(handler: (data: ArrayBuffer) => void) { this.onChunkData = handler; }
   setOnDisconnect(handler: (reason: string) => void) { this.onDisconnect = handler; }
 
   async connect(token: string, characterId: string): Promise<void> {
@@ -37,6 +46,12 @@ export class NetworkManager {
 
     const offer = await offerRes.json();
     if (offer.spawn) this.spawnPosition = offer.spawn;
+
+    // Parse world map from server response
+    if (offer.worldMap) {
+      this.worldData = await this.parseWorldMap(offer.worldMap);
+      console.log(`[WebRTC] World map received: ${this.worldData.width}x${this.worldData.height}, seed=${this.worldData.seed}`);
+    }
 
     // Phase 2: Create peer connection, receive server's DataChannels
     // Use ICE servers from server response (includes STUN + TURN if configured)
@@ -62,6 +77,14 @@ export class NetworkManager {
           this.reliableChannel = channel;
           channel.binaryType = "arraybuffer";
           channel.onmessage = (e) => {
+            // Binary CHUNK_DATA messages (opcode 11) arrive as ArrayBuffer
+            if (e.data instanceof ArrayBuffer && e.data.byteLength >= 5) {
+              const firstByte = new Uint8Array(e.data)[0];
+              if (firstByte === 11) { // Opcode.CHUNK_DATA
+                if (this.onChunkData) this.onChunkData(e.data);
+                return;
+              }
+            }
             const str = typeof e.data === "string" ? e.data : new TextDecoder().decode(e.data);
             try {
               const parsed = JSON.parse(str);
@@ -152,6 +175,52 @@ export class NetworkManager {
   }
 
   isConnected(): boolean { return this.connected; }
+
+  async parseWorldMap(base64Data: string): Promise<WorldMapData> {
+    // Decode base64
+    const binary = Uint8Array.from(atob(base64Data), c => c.charCodeAt(0));
+
+    // Decompress gzip via DecompressionStream
+    const ds = new DecompressionStream("gzip");
+    const writer = ds.writable.getWriter();
+    writer.write(binary);
+    writer.close();
+    const reader = ds.readable.getReader();
+    const chunks: Uint8Array[] = [];
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      chunks.push(value);
+    }
+    const totalLen = chunks.reduce((n, c) => n + c.length, 0);
+    const decompressed = new Uint8Array(totalLen);
+    let pos = 0;
+    for (const c of chunks) { decompressed.set(c, pos); pos += c.length; }
+
+    // Parse header (28 bytes)
+    const view = new DataView(decompressed.buffer, decompressed.byteOffset, decompressed.byteLength);
+    let offset = 0;
+    const magic = view.getUint32(offset, true); offset += 4;
+    if (magic !== 0x574D4150) throw new Error("Invalid world map magic");
+    const seed = view.getUint32(offset, true); offset += 4;
+    const width = view.getUint16(offset, true); offset += 2;
+    const height = view.getUint16(offset, true); offset += 2;
+    const biomeLen = view.getUint32(offset, true); offset += 4;
+    const elevLen = view.getUint32(offset, true); offset += 4;
+    const regionLen = view.getUint32(offset, true); offset += 4;
+    const regionBiomesLen = view.getUint32(offset, true); offset += 4;
+
+    // Extract arrays (copy to ensure proper alignment)
+    const biomeMap = new Uint8Array(decompressed.buffer, decompressed.byteOffset + offset, biomeLen); offset += biomeLen;
+    const elevationBands = new Uint8Array(decompressed.buffer, decompressed.byteOffset + offset, elevLen); offset += elevLen;
+    // Uint16Array needs aligned buffer -- slice to copy
+    const regionMapBytes = decompressed.slice(offset, offset + regionLen);
+    const regionMap = new Uint16Array(regionMapBytes.buffer, regionMapBytes.byteOffset, regionLen / 2);
+    offset += regionLen;
+    const regionBiomes = new Uint8Array(decompressed.buffer, decompressed.byteOffset + offset, regionBiomesLen);
+
+    return { seed, width, height, biomeMap, elevationBands, regionMap, regionBiomes };
+  }
 
   disconnect() {
     if (this.worldReadyTimer) { clearTimeout(this.worldReadyTimer); this.worldReadyTimer = null; }

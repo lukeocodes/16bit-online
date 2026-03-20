@@ -15,6 +15,7 @@ export type DeathCallback = (entityId: string) => void;
 export type CombatStateCallback = (entityId: string, inCombat: boolean, autoAttacking: boolean, targetId: string | null) => void;
 export type EnemyNearbyCallback = (entityIds: string[], nearby: boolean) => void;
 export type ZoneMusicTagCallback = (musicState: string) => void;
+export type ChunkDataCallback = (cx: number, cz: number, heights: Float32Array) => void;
 
 export class StateSync {
   private entityManager: EntityManager;
@@ -26,6 +27,7 @@ export class StateSync {
   private onCombatState: CombatStateCallback | null = null;
   private onEnemyNearby: EnemyNearbyCallback | null = null;
   private onZoneMusicTag: ZoneMusicTagCallback | null = null;
+  private onChunkDataCb: ChunkDataCallback | null = null;
   private terrainYResolver: ((x: number, z: number) => number) | null = null;
 
   // Spawn points (for dev mode rendering)
@@ -56,6 +58,39 @@ export class StateSync {
   setOnCombatState(handler: CombatStateCallback) { this.onCombatState = handler; }
   setOnEnemyNearby(handler: EnemyNearbyCallback) { this.onEnemyNearby = handler; }
   setOnZoneMusicTag(handler: ZoneMusicTagCallback) { this.onZoneMusicTag = handler; }
+  setOnChunkData(handler: ChunkDataCallback) { this.onChunkDataCb = handler; }
+
+  handleChunkData(data: ArrayBuffer): void {
+    // Format: [opcode:u8] [cx:i16LE] [cz:i16LE] [heights:2048 bytes Float16]
+    if (data.byteLength < 2053) return;
+    const view = new DataView(data);
+    const cx = view.getInt16(1, true);
+    const cz = view.getInt16(3, true);
+
+    // Decode Float16 heights to Float32 for client use
+    const heights = new Float32Array(1024);
+    for (let i = 0; i < 1024; i++) {
+      const offset = 5 + i * 2;
+      const h = view.getUint16(offset, true);
+      // IEEE 754 half-precision decode
+      const sign = (h >> 15) & 1;
+      const exp = (h >> 10) & 0x1f;
+      const frac = h & 0x3ff;
+      let val: number;
+      if (exp === 0) {
+        val = (sign ? -1 : 1) * 2 ** -14 * (frac / 1024);
+      } else if (exp === 0x1f) {
+        val = frac === 0 ? (sign ? -Infinity : Infinity) : NaN;
+      } else {
+        val = (sign ? -1 : 1) * 2 ** (exp - 15) * (1 + frac / 1024);
+      }
+      heights[i] = val;
+    }
+
+    if (this.onChunkDataCb) {
+      this.onChunkDataCb(cx, cz, heights);
+    }
+  }
 
   handlePositionMessage(data: ArrayBuffer) {
     // Batched format: [count:u16LE] then N * 20 bytes: [entityId:u32LE][x:f32LE][y:f32LE][z:f32LE][rotation:f32LE]
