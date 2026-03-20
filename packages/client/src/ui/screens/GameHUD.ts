@@ -1,4 +1,7 @@
 import type { Screen } from "../UIManager";
+import { MiniMap } from "../components/MiniMap";
+import { WorldMap } from "../components/WorldMap";
+import { SettingsMenu } from "../components/SettingsMenu";
 
 export interface TargetInfo {
   name: string;
@@ -16,7 +19,17 @@ export class GameHUD implements Screen {
   private combatIndicator: HTMLElement | null = null;
   private playerPanel: HTMLElement | null = null;
 
+  public miniMap: MiniMap;
+  public worldMap: WorldMap;
+  public settingsMenu: SettingsMenu;
+
   private onAutoAttackToggle: (() => void) | null = null;
+
+  constructor() {
+    this.miniMap = new MiniMap();
+    this.worldMap = new WorldMap();
+    this.settingsMenu = new SettingsMenu();
+  }
 
   setOnAutoAttackToggle(handler: () => void) {
     this.onAutoAttackToggle = handler;
@@ -30,6 +43,9 @@ export class GameHUD implements Screen {
     this.container.appendChild(this.createPlayerInfo());
     this.container.appendChild(this.createTargetPanel());
     this.container.appendChild(this.createActionBar());
+    this.container.appendChild(this.createMiniMap());
+    this.container.appendChild(this.worldMap.render());
+    this.container.appendChild(this.settingsMenu.render());
 
     return this.container;
   }
@@ -204,7 +220,19 @@ export class GameHUD implements Screen {
     return this.targetPanel;
   }
 
+  private createMiniMap(): HTMLElement {
+    const wrapper = document.createElement("div");
+    wrapper.style.cssText = `
+      position: absolute; top: 12px; right: 12px; pointer-events: auto;
+    `;
+    wrapper.appendChild(this.miniMap.render());
+    return wrapper;
+  }
+
   dispose() {
+    this.miniMap.dispose();
+    this.worldMap.dispose();
+    this.settingsMenu.dispose();
     this.container = null;
     this.targetPanel = null;
     this.autoAttackBtn = null;

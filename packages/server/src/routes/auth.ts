@@ -8,7 +8,7 @@ import { accounts, characters } from "../db/schema.js";
 import { eq } from "drizzle-orm";
 
 function accountToJson(a: typeof accounts.$inferSelect) {
-  return { id: a.id, email: a.email, displayName: a.displayName, isOnboarded: a.isOnboarded };
+  return { id: a.id, email: a.email, displayName: a.displayName, isOnboarded: a.isOnboarded, preferences: a.preferences || {} };
 }
 
 function charSummary(c: typeof characters.$inferSelect) {
@@ -81,4 +81,21 @@ export async function authRoutes(app: FastifyInstance) {
     const gameJwt = createGameJwt(account.id, account.email);
     return { gameJwt, account: accountToJson(account), characters: chars.map(charSummary) };
   });
+
+  app.put<{ Body: { preferences: Record<string, any> } }>(
+    "/preferences",
+    { preHandler: [requireAuth] },
+    async (request, reply) => {
+      const account = (request as any).account;
+      const { preferences } = request.body;
+      if (!preferences || typeof preferences !== "object") {
+        return reply.status(400).send({ detail: "Invalid preferences" });
+      }
+      // Merge with existing preferences
+      const existing = (account.preferences as Record<string, any>) || {};
+      const merged = { ...existing, ...preferences };
+      await db.update(accounts).set({ preferences: merged }).where(eq(accounts.id, account.id));
+      return { preferences: merged };
+    }
+  );
 }

@@ -8,6 +8,7 @@ export const accounts = pgTable("accounts", {
   email: varchar("email", { length: 255 }).notNull(),
   displayName: varchar("display_name", { length: 100 }).notNull(),
   isOnboarded: boolean("is_onboarded").default(false).notNull(),
+  preferences: jsonb("preferences").default({}).notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });
 
