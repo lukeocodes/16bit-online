@@ -12,6 +12,8 @@ import { RenderSystem } from "../ecs/systems/RenderSystem";
 import { AnimationSystem } from "../ecs/systems/AnimationSystem";
 import { InterpolationSystem } from "../ecs/systems/InterpolationSystem";
 import { ChunkManager } from "../world/ChunkManager";
+import { AudioSystem } from "../audio/AudioSystem";
+import { MusicState } from "../audio/types";
 import { NetworkManager } from "../net/NetworkManager";
 import { StateSync } from "../net/StateSync";
 import { packPosition, packReliable, Opcode } from "../net/Protocol";
@@ -27,7 +29,8 @@ import type { CombatComponent } from "../ecs/components/Combat";
 import type { StatsComponent } from "../ecs/components/Stats";
 import type { IdentityComponent } from "../ecs/components/Identity";
 import type { GameHUD } from "../ui/screens/GameHUD";
-import { generateWorld } from "@server/world/worldgen";
+import { WORLD_WIDTH, WORLD_HEIGHT } from "../world/WorldConstants";
+import WorldgenWorker from "../world/worldgen.worker?worker";
 
 const PLAYER_SPEED = 3.0;
 const POSITION_SEND_INTERVAL = 1000 / 15;
@@ -50,8 +53,13 @@ export class Game {
   private selectedTargetId: string | null = null;
   private hud: GameHUD | null = null;
 
+  // Reusable objects to avoid per-frame allocations
+  private cameraTarget = Vector3.Zero();
+  private minimapEntities: Array<{ x: number; z: number; type: string }> = [];
+
   private chunkManager: ChunkManager;
 
+  private audioSystem: AudioSystem;
   private network: NetworkManager | null = null;
   private stateSync: StateSync;
   private positionSequence = 0;
@@ -74,6 +82,10 @@ export class Game {
     this.chunkManager = new ChunkManager(this.sceneManager.scene);
     this.stateSync = new StateSync(this.entityManager);
 
+    // Initialize audio system
+    this.audioSystem = new AudioSystem();
+    this.audioSystem.init();
+
     this.stateSync.setOnDamage((attackerId, targetId, damage, weaponType) => {
       this.renderSystem.flashEntity(targetId, "#ff0000");
       this.renderSystem.showAttackLine(attackerId, targetId);
@@ -93,6 +105,43 @@ export class Game {
           combat.autoAttacking = autoAttacking;
           combat.targetEntityId = targetId;
         }
+        // Drive music state machine
+        const sm = this.audioSystem.getMusicStateMachine();
+        if (sm) {
+          if (inCombat) {
+            sm.requestState(MusicState.Combat);
+          } else {
+            sm.requestState(MusicState.Victory);
+          }
+        }
+      }
+    });
+
+    this.stateSync.setOnEnemyNearby((entityIds, nearby) => {
+      const sm = this.audioSystem.getMusicStateMachine();
+      if (sm) {
+        if (nearby && entityIds.length > 0) {
+          sm.requestState(MusicState.EnemyNearby);
+        } else if (!nearby) {
+          if (sm.getState() === MusicState.EnemyNearby) {
+            sm.forceState(sm.getAmbientState());
+          }
+        }
+      }
+    });
+
+    this.stateSync.setOnZoneMusicTag((musicState) => {
+      const sm = this.audioSystem.getMusicStateMachine();
+      if (sm) {
+        const stateMap: Record<string, MusicState> = {
+          "exploring": MusicState.Exploring,
+          "town": MusicState.Town,
+          "dungeon": MusicState.Dungeon,
+        };
+        const mapped = stateMap[musicState];
+        if (mapped) {
+          sm.forceState(mapped);
+        }
       }
     });
 
@@ -103,15 +152,10 @@ export class Game {
 
   start(characterId?: string) {
     const id = characterId || "local-player";
-    this.createLocalPlayer(id);
     this.stateSync.setLocalEntityId(id);
 
-    // Phase 2: Generate world map client-side for biome/elevation data
-    // Uses same seed as server for deterministic matching
-    // Will be replaced by server-streamed data in Phase 3
-    const worldMap = generateWorld(42);
-    this.chunkManager.setWorldData(worldMap.biomeMap, worldMap.elevation);
-
+    // Create player — world data already loaded in constructor
+    this.createLocalPlayer(id);
     this.chunkManager.updatePlayerPosition(this.spawnPosition.x, this.spawnPosition.z);
     this.sceneManager.scene.activeCamera = this.camera.camera;
 
@@ -122,8 +166,23 @@ export class Game {
       if (this.localEntityId) {
         const pos = this.entityManager.getComponent<PositionComponent>(this.localEntityId, "position");
         if (pos) {
-          this.camera.setTarget(new Vector3(pos.x, pos.y, pos.z));
+          this.cameraTarget.set(pos.x, pos.y, pos.z);
+          this.camera.setTarget(this.cameraTarget);
           this.chunkManager.updatePlayerPosition(pos.x, pos.z);
+          // Update minimap and world map
+          if (this.hud) {
+            this.hud.miniMap.updatePlayerPosition(pos.x, pos.z);
+            this.hud.worldMap.updatePlayerPosition(pos.x, pos.z);
+            // Feed entity positions to minimap (reuse array)
+            this.minimapEntities.length = 0;
+            for (const ent of this.entityManager.getAllEntities()) {
+              if (ent.id === this.localEntityId) continue;
+              const epos = ent.components.get("position") as PositionComponent | undefined;
+              const eid = ent.components.get("identity") as IdentityComponent | undefined;
+              if (epos && eid) this.minimapEntities.push({ x: epos.x, z: epos.z, type: eid.entityType });
+            }
+            this.hud.miniMap.updateEntities(this.minimapEntities);
+          }
         }
       }
       this.renderSystem.update(frameDt);
@@ -133,6 +192,7 @@ export class Game {
         this.renderSystem.renderSpawnPoints(this.stateSync.spawnPoints);
       }
       this.animationSystem.update(frameDt);
+      this.audioSystem.update(frameDt);
       this.updateHUD();
       this.camera.update();
       this.sceneManager.render();
@@ -159,11 +219,41 @@ export class Game {
     this.spawnPosition = this.network.spawnPosition;
   }
 
+  /** Run worldgen in a web worker so the loading screen stays responsive */
+  async generateWorldAsync(seed = 42): Promise<void> {
+    console.log("[Game] Generating world map (worker)...");
+    const start = performance.now();
+
+    const { biomeMap, elevation } = await new Promise<{ biomeMap: Uint8Array; elevation: Float32Array }>((resolve, reject) => {
+      const worker = new WorldgenWorker();
+      worker.onmessage = (e: MessageEvent) => {
+        resolve(e.data);
+        worker.terminate();
+      };
+      worker.onerror = (err) => {
+        reject(err);
+        worker.terminate();
+      };
+      worker.postMessage({ seed });
+    });
+
+    this.chunkManager.setWorldData(biomeMap, elevation);
+    console.log(`[Game] World map loaded in ${Math.round(performance.now() - start)}ms (worker)`);
+
+    this.stateSync.setTerrainYResolver((x, z) => this.chunkManager.getTerrainY(x, z));
+    this.movementSystem.setTerrainResolvers(
+      (x, z) => this.chunkManager.getTerrainY(x, z),
+      (x, z) => this.chunkManager.getElevationBandAt(x, z),
+      (x, z) => this.chunkManager.isWalkable(x, z),
+    );
+  }
+
   private spawnPosition = { x: 0, y: 0, z: 0 };
 
   stop() {
     this.loop.stop();
     this.network?.disconnect();
+    this.audioSystem.dispose();
     this.chunkManager.dispose();
     this.assetCache.clear();
     this.sceneManager.dispose();
@@ -176,10 +266,41 @@ export class Game {
   setHUD(hud: GameHUD) {
     this.hud = hud;
     hud.setOnAutoAttackToggle(() => this.handleToggleAutoAttack());
+
+    // Pass biome data to minimap and world map
+    const biomeData = this.chunkManager.getBiomeData();
+    if (biomeData) {
+      hud.miniMap.setBiomeData(biomeData, WORLD_WIDTH, WORLD_HEIGHT);
+      hud.worldMap.setBiomeData(biomeData, WORLD_WIDTH, WORLD_HEIGHT);
+    }
+
+    // Wire settings menu volume changes to audio system + server persistence
+    hud.settingsMenu.setOnVolumeChange((master, music, sfx) => {
+      this.audioSystem.setPreferences({ masterVolume: master, musicVolume: music, sfxVolume: sfx });
+      const token = sessionStorage.getItem("gameJwt") || "";
+      if (token) {
+        fetch("/api/auth/preferences", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+          body: JSON.stringify({ preferences: { masterVolume: master, musicVolume: music, sfxVolume: sfx } }),
+        }).catch(() => {});
+      }
+    });
+
+    // M key toggles world map
+    window.addEventListener("keydown", (e) => {
+      if (e.code === "KeyM" && this.hud) {
+        this.hud.worldMap.toggle();
+      }
+      if (e.code === "Escape" && this.hud?.worldMap.isVisible()) {
+        this.hud.worldMap.toggle();
+      }
+    });
   }
 
   getInputManager() { return this.input; }
   getEntityManager() { return this.entityManager; }
+  getAudioSystem(): AudioSystem { return this.audioSystem; }
 
   private tick(dt: number) {
     if (!this.localEntityId) return;
@@ -195,10 +316,14 @@ export class Game {
 
     if (dx !== 0 || dz !== 0) {
       if (!movement.moving) {
-        movement.targetX = movement.tileX + dx;
-        movement.targetZ = movement.tileZ + dz;
-        movement.progress = 0;
-        movement.moving = true;
+        const tx = movement.tileX + dx;
+        const tz = movement.tileZ + dz;
+        if (this.movementSystem.canMoveTo(movement.tileX, movement.tileZ, tx, tz)) {
+          movement.targetX = tx;
+          movement.targetZ = tz;
+          movement.progress = 0;
+          movement.moving = true;
+        }
       } else {
         movement.queuedDx = dx;
         movement.queuedDz = dz;
@@ -278,7 +403,9 @@ export class Game {
     this.entityManager.addComponent(characterId, createIdentity(characterId, "Player", "player", true));
     const sx = this.spawnPosition.x;
     const sz = this.spawnPosition.z;
-    this.entityManager.addComponent(characterId, createPosition(sx, 0, sz));
+    // Compute player Y from terrain elevation so they stand on top of the ground
+    const terrainY = this.chunkManager.getTerrainY(sx, sz);
+    this.entityManager.addComponent(characterId, createPosition(sx, terrainY, sz));
     this.entityManager.addComponent(characterId, createMovement(PLAYER_SPEED, sx, sz));
     this.entityManager.addComponent(characterId, createRenderable("player", "#4466aa", "#e8c4a0", "#2c1b0e"));
     this.entityManager.addComponent(characterId, createStats(10, 10, 10));

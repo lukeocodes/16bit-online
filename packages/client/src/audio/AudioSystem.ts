@@ -7,6 +7,8 @@
 import { GainBus } from "./GainBus";
 import { initTone, getToneContext, startTone } from "./ToneSetup";
 import { initHowlerBridge } from "./HowlerBridge";
+import { MusicStateMachine } from "./MusicStateMachine";
+import { CrossfadeManager } from "./CrossfadeManager";
 import type { BusName, AudioPreferences } from "./types";
 import { DEFAULT_AUDIO_PREFERENCES } from "./types";
 
@@ -21,6 +23,8 @@ export class AudioSystem {
   private visibilityHandler: (() => void) | null = null;
   private resumeClickHandler: (() => void) | null = null;
   private resumeKeyHandler: (() => void) | null = null;
+  private musicStateMachine: MusicStateMachine | null = null;
+  private crossfadeManager: CrossfadeManager | null = null;
 
   init(): void {
     initTone(120);
@@ -45,6 +49,18 @@ export class AudioSystem {
     const sfxNode = this.buses.get("sfx")!.node;
     initHowlerBridge(sfxNode);
 
+    // Create music state machine and crossfade manager
+    this.musicStateMachine = new MusicStateMachine();
+    this.crossfadeManager = new CrossfadeManager(this.buses.get("music")!);
+
+    // Wire state transitions to crossfade
+    this.musicStateMachine.onTransition((from, to) => {
+      console.log(`[Audio] Music: ${from} -> ${to}`);
+      if (this.crossfadeManager) {
+        this.crossfadeManager.transition(from, to);
+      }
+    });
+
     // Setup tab visibility ducking
     this.setupVisibilityDucking();
 
@@ -64,6 +80,14 @@ export class AudioSystem {
 
   getContext(): AudioContext {
     return this.ctx;
+  }
+
+  getMusicStateMachine(): MusicStateMachine | null {
+    return this.musicStateMachine;
+  }
+
+  getCrossfadeManager(): CrossfadeManager | null {
+    return this.crossfadeManager;
   }
 
   isResumed(): boolean {
@@ -138,6 +162,14 @@ export class AudioSystem {
   dispose(): void {
     if (this._disposed) return;
     this._disposed = true;
+    if (this.musicStateMachine) {
+      this.musicStateMachine.dispose();
+      this.musicStateMachine = null;
+    }
+    if (this.crossfadeManager) {
+      this.crossfadeManager.dispose();
+      this.crossfadeManager = null;
+    }
     if (this.visibilityHandler) {
       document.removeEventListener("visibilitychange", this.visibilityHandler);
     }

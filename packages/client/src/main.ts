@@ -49,9 +49,16 @@ async function boot() {
     const token = session.getToken();
     if (!token) throw new Error("Not authenticated");
 
-    loading.setStatus("Connecting to server...", 20);
-    await game.connectToServer(token, characterId);
-    loading.setStatus("Loading entities...", 80);
+    loading.setStatus("Generating world...", 10);
+    // Run worldgen and server connection in parallel
+    await Promise.all([
+      game.generateWorldAsync(42),
+      (async () => {
+        loading.setStatus("Connecting to server...", 30);
+        await game.connectToServer(token, characterId);
+        loading.setStatus("Loading entities...", 80);
+      })(),
+    ]);
 
     loading.setStatus("Entering world...", 95);
     game.start(characterId);
@@ -60,6 +67,20 @@ async function boot() {
     setTimeout(() => {
       const hud = (router as any)._activeHud;
       if (hud && game) game.setHUD(hud);
+
+      // Expose audio dev API for console testing
+      if (import.meta.env.DEV && game) {
+        (window as any).__audio = {
+          getState: () => game?.getAudioSystem().getMusicStateMachine()?.getState(),
+          requestState: (s: string) => game?.getAudioSystem().getMusicStateMachine()?.requestState(s as any),
+          forceState: (s: string) => game?.getAudioSystem().getMusicStateMachine()?.forceState(s as any),
+          startTestTone: (side: string) => game?.getAudioSystem().getCrossfadeManager()?.startTestTone(side as any),
+          stopTestTone: (side: string) => game?.getAudioSystem().getCrossfadeManager()?.stopTestTone(side as any),
+          setIntensity: (v: number) => { if (game) game.getAudioSystem().intensity = v; },
+          getIntensity: () => game?.getAudioSystem().intensity,
+        };
+        console.log("[Dev] Audio API available at window.__audio");
+      }
     }, 50);
   });
 

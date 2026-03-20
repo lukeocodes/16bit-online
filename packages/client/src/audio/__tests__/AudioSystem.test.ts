@@ -10,6 +10,8 @@ vi.mock("tone", () => {
     start: vi.fn(() => {
       mockTransport.state = "started";
     }),
+    schedule: vi.fn(() => 0),
+    clear: vi.fn(),
   };
 
   const mockContext = {
@@ -17,12 +19,34 @@ vi.mock("tone", () => {
     state: "suspended",
   };
 
+  // Mock CrossFade class used by CrossfadeManager
+  class MockCrossFade {
+    fade = { linearRampTo: vi.fn() };
+    a = {};
+    b = {};
+    dispose = vi.fn();
+    connect = vi.fn();
+    constructor(_initialFade?: number) {}
+  }
+
+  // Mock Synth class used by CrossfadeManager test tones
+  class MockSynth {
+    connect = vi.fn();
+    triggerAttack = vi.fn();
+    triggerRelease = vi.fn();
+    dispose = vi.fn();
+    constructor(_opts?: any) {}
+  }
+
   return {
     getTransport: vi.fn(() => mockTransport),
     getContext: vi.fn(() => mockContext),
     start: vi.fn(async () => {
       mockContext.state = "running";
     }),
+    connect: vi.fn(),
+    CrossFade: MockCrossFade,
+    Synth: MockSynth,
     __mockTransport: mockTransport,
     __mockContext: mockContext,
   };
