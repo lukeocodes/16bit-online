@@ -79,15 +79,20 @@ export abstract class BaseTrack {
   /**
    * Full cleanup: stop playback, dispose all Tone nodes, disconnect output,
    * dispose proximity mixer.
+   *
+   * NOTE: Samplers are NOT disposed here — they are shared via SampleCache
+   * and may be in use by other tracks. Only SampleCache.disposeAll() or
+   * SampleCache.evictLRU() should dispose samplers.
    */
   dispose(): void {
     this.stop();
 
+    // Disconnect samplers from this track's audio graph but don't dispose them
     for (const sampler of this.samplers) {
       try {
-        sampler.dispose();
+        sampler.disconnect();
       } catch {
-        // Already disposed
+        // Already disconnected
       }
     }
     this.samplers = [];
