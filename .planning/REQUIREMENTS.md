@@ -49,7 +49,7 @@ Requirements for this milestone. Each maps to roadmap phases.
 
 ### Procedural Audio
 
-- [ ] **AUDIO-01**: Core audio engine with AudioContext lifecycle, separate gain buses (music, SFX, weather, ambient), and master intensity variable
+- [x] **AUDIO-01**: Core audio engine with AudioContext lifecycle, separate gain buses (music, SFX, weather, ambient), and master intensity variable
 - [ ] **AUDIO-02**: Music state machine with states (Exploring, Town, Dungeon, Enemy Nearby, Combat, Boss) and beat-quantized crossfade transitions
 - [ ] **AUDIO-03**: Procedural background music using Tone.js with layered stems per location type (towns, dungeons, biomes) and procedural melodic variation
 - [ ] **AUDIO-04**: Combat, movement, and progression sound effects with spatial positioning via Web Audio API PannerNode
@@ -134,7 +134,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | TECH-07 | Phase 4: Region Discovery System | Pending |
 | TECH-08 | Phase 10: World-Scale Performance | Pending |
 
-| AUDIO-01 | Phase 11: Core Audio Engine | Pending |
+| AUDIO-01 | Phase 11: Core Audio Engine | Complete |
 | AUDIO-02 | Phase 11: Core Audio Engine | Pending |
 | AUDIO-03 | Phase 12: Procedural Background Music | Pending |
 | AUDIO-04 | Phase 13: Sound Effects | Pending |
