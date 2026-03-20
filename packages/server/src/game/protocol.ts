@@ -13,6 +13,8 @@ export const Opcode = {
   SPAWN_POINT: 60,
   ENEMY_NEARBY: 70,
   ZONE_MUSIC_TAG: 71,
+  CHUNK_REQUEST: 10,
+  CHUNK_DATA: 11,
   WORLD_READY: 100,
   PING: 253,
   PONG: 254,
@@ -88,4 +90,19 @@ export function unpackPosition(buf: Buffer): { entityId: number; x: number; y: n
     z: buf.readFloatLE(16),
     rotation: buf.readFloatLE(20),
   };
+}
+
+/**
+ * Pack chunk height data into a binary buffer for DataChannel delivery.
+ * Format: [opcode:u8 = CHUNK_DATA] [chunkX:i16LE] [chunkZ:i16LE] [heightData: Float16 bytes]
+ * Total: 5 + heightData.length bytes (typically 2053 for 32x32 chunk)
+ */
+export function packChunkData(cx: number, cz: number, heightData: Buffer): Buffer {
+  const HEADER = 5; // opcode(1) + cx(2) + cz(2)
+  const buf = Buffer.alloc(HEADER + heightData.length);
+  buf.writeUInt8(Opcode.CHUNK_DATA, 0);
+  buf.writeInt16LE(cx, 1);
+  buf.writeInt16LE(cz, 3);
+  heightData.copy(buf, HEADER);
+  return buf;
 }

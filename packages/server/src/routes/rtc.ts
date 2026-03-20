@@ -10,7 +10,10 @@ import { getAllSpawnPoints } from "../game/spawn-points.js";
 import { isInSafeZone } from "../game/zones.js";
 import { isWalkable } from "../world/terrain.js";
 import { startLingering, cancelLingering, isLingering } from "../game/linger.js";
-import { Opcode, packEntitySpawn, packEntityDespawn, packReliable, packSpawnPoint } from "../game/protocol.js";
+import { Opcode, packEntitySpawn, packEntityDespawn, packReliable, packSpawnPoint, packChunkData } from "../game/protocol.js";
+import { getServerNoisePerm, getCachedWorldMapGzip, getWorldMap } from "../world/queries.js";
+import { getOrGenerateChunkHeights } from "../world/chunk-cache.js";
+import { generateTileHeight, CONTINENTAL_SCALE } from "../world/terrain-noise.js";
 import { db } from "../db/postgres.js";
 import { characters } from "../db/schema.js";
 import { eq } from "drizzle-orm";
@@ -46,12 +49,15 @@ export async function rtcRoutes(app: FastifyInstance) {
       }
 
       // Load position from database
-      let startX = 0, startY = 0, startZ = 0, startMapId = 1;
+      // Default spawn on Human continent (Aethermere) — chunk (666, 575) in tile coords
+      const DEFAULT_SPAWN_X = 666 * 32; // 21312
+      const DEFAULT_SPAWN_Z = 575 * 32; // 18400
+      let startX = DEFAULT_SPAWN_X, startY = 0, startZ = DEFAULT_SPAWN_Z, startMapId = 1;
       const [charRow] = await db.select({
         posX: characters.posX, posY: characters.posY,
         posZ: characters.posZ, mapId: characters.mapId,
       }).from(characters).where(eq(characters.id, characterId));
-      if (charRow) {
+      if (charRow && !(charRow.posX === 0 && charRow.posZ === 0)) {
         startX = charRow.posX;
         startY = charRow.posY;
         startZ = charRow.posZ;
@@ -140,6 +146,25 @@ export async function rtcRoutes(app: FastifyInstance) {
           // Phase 2: Validate movement against terrain walkability
           // Silent rejection: if target tile is blocked, just don't update position
           if (isWalkable(Math.round(newX), Math.round(newZ))) {
+            // Phase 3: Validate player Y against terrain height
+            const world = getWorldMap();
+            if (world) {
+              const tileX = Math.round(newX);
+              const tileZ = Math.round(newZ);
+              const perm = getServerNoisePerm();
+              const chunkX = Math.floor(tileX / 32); // CHUNK_SIZE
+              const chunkZ = Math.floor(tileZ / 32);
+              if (chunkX >= 0 && chunkX < world.width && chunkZ >= 0 && chunkZ < world.height) {
+                const continentalElev = world.elevation[chunkZ * world.width + chunkX];
+                const biomeId = world.biomeMap[chunkZ * world.width + chunkX];
+                const expectedY = generateTileHeight(tileX, tileZ, continentalElev, biomeId, perm);
+                const clientY = msg.readFloatLE(12);
+                if (Math.abs(clientY - expectedY) > 0.5) {
+                  // Y mismatch -- likely cheat, silently reject
+                  return;
+                }
+              }
+            }
             entityStore.updatePosition(entityId, newX, newZ);
           }
           // Always update rotation even if position is rejected
@@ -156,6 +181,22 @@ export async function rtcRoutes(app: FastifyInstance) {
           engageTarget(entityId, parsed.targetId);
         } else if (parsed.op === Opcode.AUTO_ATTACK_CANCEL) {
           disengage(entityId);
+        } else if (parsed.op === Opcode.CHUNK_REQUEST && parsed.cx !== undefined && parsed.cz !== undefined) {
+          const world = getWorldMap();
+          if (!world) return;
+          const perm = getServerNoisePerm();
+          const cx = parsed.cx as number;
+          const cz = parsed.cz as number;
+          // Bounds check
+          if (cx < 0 || cx >= world.width || cz < 0 || cz >= world.height) return;
+          // Generate or retrieve from Redis cache
+          getOrGenerateChunkHeights(config.world.seed, cx, cz, world, perm).then((heightBuf) => {
+            if (reliableChannel.readyState === "open") {
+              reliableChannel.send(packChunkData(cx, cz, heightBuf));
+            }
+          }).catch((err) => {
+            console.error(`[WebRTC] Chunk generation error for (${cx},${cz}):`, err);
+          });
         }
       });
 
@@ -241,6 +282,9 @@ export async function rtcRoutes(app: FastifyInstance) {
 
       console.log(`[WebRTC] Offer created for ${entityId}`);
 
+      // Get gzipped world map (cached in memory from startup)
+      const worldMapGzip = getCachedWorldMapGzip();
+
       return {
         sdp: pc.localDescription!.sdp,
         type: pc.localDescription!.type,
@@ -250,6 +294,7 @@ export async function rtcRoutes(app: FastifyInstance) {
           if (s.username) return { urls: s.urls, username: s.username, credential: s.credential };
           return { urls: s.urls };
         }),
+        worldMap: worldMapGzip.toString("base64"),
       };
     }
   );

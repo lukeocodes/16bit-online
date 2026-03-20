@@ -103,6 +103,31 @@ vi.mock("../world/terrain.js", () => ({
   isWalkable: vi.fn(() => true),
 }));
 
+// Mock world queries for Phase 3 world map delivery
+vi.mock("../world/queries.js", () => ({
+  getServerNoisePerm: vi.fn(() => new Uint8Array(512)),
+  getCachedWorldMapGzip: vi.fn(() => Buffer.from("mock-gzipped-world-map")),
+  getWorldMap: vi.fn(() => ({
+    seed: 42, width: 900, height: 900,
+    elevation: new Float32Array(900 * 900),
+    biomeMap: new Uint8Array(900 * 900),
+    regionMap: new Uint16Array(900 * 900),
+    continentMap: new Uint8Array(900 * 900),
+    continents: [], regions: [],
+  })),
+}));
+
+// Mock chunk cache for CHUNK_REQUEST handler
+vi.mock("../world/chunk-cache.js", () => ({
+  getOrGenerateChunkHeights: vi.fn(() => Promise.resolve(Buffer.alloc(2048))),
+}));
+
+// Mock terrain noise for Y validation
+vi.mock("../world/terrain-noise.js", () => ({
+  generateTileHeight: vi.fn(() => 0),
+  CONTINENTAL_SCALE: 8.0,
+}));
+
 vi.mock("../game/linger.js", () => ({
   cancelLingering: vi.fn(() => false),
   startLingering: vi.fn(),
@@ -117,6 +142,7 @@ import { cancelLingering, startLingering } from "../game/linger.js";
 import { isInSafeZone } from "../game/zones.js";
 import { getAllSpawnPoints } from "../game/spawn-points.js";
 import { Opcode } from "../game/protocol.js";
+import { generateTileHeight } from "../world/terrain-noise.js";
 
 async function buildApp() {
   const app = Fastify();
@@ -196,7 +222,8 @@ describe("rtc routes", () => {
 
       expect(res.statusCode).toBe(200);
       const body = JSON.parse(res.body);
-      expect(body.spawn).toEqual({ x: 0, y: 0, z: 0, mapId: 1 });
+      // Default spawn is at Human continent (chunk 666,575 in tile coords)
+      expect(body.spawn).toEqual({ x: 21312, y: 0, z: 18400, mapId: 1 });
     });
 
     it("cleans up stale entity on fresh connect", async () => {
@@ -295,6 +322,9 @@ describe("rtc routes", () => {
 
   describe("position channel handler", () => {
     it("updates entity position via updatePosition on valid message", async () => {
+      // Mock generateTileHeight to return Y matching the client value (Phase 3 Y validation)
+      (generateTileHeight as any).mockReturnValue(1.0);
+
       await app.inject({
         method: "POST", url: "/offer",
         payload: { characterId: "char-pos" },

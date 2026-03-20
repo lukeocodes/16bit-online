@@ -1,6 +1,7 @@
-import { getWorldMap } from "./queries.js";
+import { getWorldMap, getServerNoisePerm } from "./queries.js";
 import { BiomeType } from "./types.js";
 import { CHUNK_SIZE } from "./constants.js";
+import { generateTileHeight } from "./terrain-noise.js";
 
 // Biomes that block all movement (player and NPC)
 export const BLOCKING_BIOMES = new Set<number>([
@@ -59,4 +60,41 @@ export function isWalkable(tileX: number, tileZ: number): boolean {
  */
 export function isBiomeWalkable(biome: number): boolean {
   return !BLOCKING_BIOMES.has(biome);
+}
+
+/** Height gradient threshold for movement blocking (world units) */
+export const HEIGHT_GRADIENT_THRESHOLD = 0.8;
+
+/**
+ * Check if movement between two tiles is allowed based on height gradient.
+ * Returns false if the height difference exceeds HEIGHT_GRADIENT_THRESHOLD.
+ */
+export function isGradientWalkable(fromX: number, fromZ: number, toX: number, toZ: number): boolean {
+  const world = getWorldMap();
+  if (!world) return true; // Permissive if world not loaded
+
+  let perm: Uint8Array;
+  try {
+    perm = getServerNoisePerm();
+  } catch {
+    return true; // Permissive if noise not initialized
+  }
+
+  const fromChunkX = Math.floor(fromX / CHUNK_SIZE);
+  const fromChunkZ = Math.floor(fromZ / CHUNK_SIZE);
+  const toChunkX = Math.floor(toX / CHUNK_SIZE);
+  const toChunkZ = Math.floor(toZ / CHUNK_SIZE);
+
+  if (fromChunkX < 0 || fromChunkX >= world.width || fromChunkZ < 0 || fromChunkZ >= world.height) return false;
+  if (toChunkX < 0 || toChunkX >= world.width || toChunkZ < 0 || toChunkZ >= world.height) return false;
+
+  const fromElev = world.elevation[fromChunkZ * world.width + fromChunkX];
+  const fromBiome = world.biomeMap[fromChunkZ * world.width + fromChunkX];
+  const fromY = generateTileHeight(fromX, fromZ, fromElev, fromBiome, perm);
+
+  const toElev = world.elevation[toChunkZ * world.width + toChunkX];
+  const toBiome = world.biomeMap[toChunkZ * world.width + toChunkX];
+  const toY = generateTileHeight(toX, toZ, toElev, toBiome, perm);
+
+  return Math.abs(toY - fromY) <= HEIGHT_GRADIENT_THRESHOLD;
 }
