@@ -122,19 +122,21 @@ import { CombatTrack } from "../music/tracks/CombatTrack";
 import { BossFightTrack } from "../music/tracks/BossFightTrack";
 
 function createMockAudioContext() {
-  return {
+  const ctx: any = {
     currentTime: 0,
-    createGain: () => ({
-      gain: {
-        value: 1.0,
-        setValueAtTime: vi.fn(),
-        linearRampToValueAtTime: vi.fn(),
-      },
-      connect: vi.fn(),
-      disconnect: vi.fn(),
-    }),
     destination: { name: "destination" },
-  } as unknown as AudioContext;
+  };
+  ctx.createGain = () => ({
+    gain: {
+      value: 1.0,
+      setValueAtTime: vi.fn(),
+      linearRampToValueAtTime: vi.fn(),
+    },
+    connect: vi.fn(),
+    disconnect: vi.fn(),
+    context: ctx, // needed by ProximityMixer.dispose()
+  });
+  return ctx as unknown as AudioContext;
 }
 
 describe("MusicContentManager", () => {
