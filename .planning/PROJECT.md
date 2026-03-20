@@ -64,6 +64,7 @@ Players can freely explore a vast, dangerous world where every region they disco
 - Spiritual successor to Ultima Online, built entirely from memory — no assets or code copied
 - Existing codebase has solid networking (WebRTC), combat, and ECS foundation
 - World map data layer complete (Phase 1) — 900x900 chunk world with 3 continents, Voronoi regions, biome classification, O(1) spatial queries
+- Core audio engine complete (Phase 11) — Tone.js + Howler.js, 4-bus gain architecture, 7-state music state machine with beat-quantized crossfades, settings menu with server-persisted preferences
 - Target audience: serious project aiming for real player base ("as big as it gets")
 - World design takes inspiration from famous fantasy world maps for multi-continent layout
 - Terrain classification is deterministic (pre-set), but visual detail is procedurally generated on first exploration
@@ -90,6 +91,9 @@ Players can freely explore a vast, dangerous world where every region they disco
 | Permanent region seeding | First explorer shapes the region forever — exploration has lasting impact | — Pending |
 | Region discovery with notes | Procedural names + player notes create shared world narrative | — Pending |
 | Expand existing foundation | Don't refactor what works — build new systems on top of solid base | — Pending |
+| Tone.js owns AudioContext | All Web Audio nodes use Tone.js context; Howler.js masterGain rerouted to SFX bus | Phase 11 |
+| Server-authoritative music triggers | Zone tags, combat state, enemy proximity all flow from server events | Phase 11 |
+| Account-level audio preferences | Audio settings stored per-account (not per-character) as JSONB | Phase 11 |
 
 ---
-*Last updated: 2026-03-19 after Phase 1 completion*
+*Last updated: 2026-03-20 after Phase 11 completion*
