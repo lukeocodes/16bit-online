@@ -52,9 +52,17 @@ export class MusicContentManager {
 
   /**
    * Handle a music state transition by loading the appropriate track
-   * onto the inactive CrossFade side.
+   * onto the inactive CrossFade side. Samples are loaded before
+   * sequences start to prevent "no buffer" errors.
    */
   handleTransition(from: MusicState, to: MusicState): void {
+    // Fire the async load — errors are caught and logged
+    this.loadAndStartTrack(from, to).catch((err) => {
+      console.warn(`[MusicContentManager] Track transition failed:`, err);
+    });
+  }
+
+  private async loadAndStartTrack(from: MusicState, to: MusicState): Promise<void> {
     const factory = this.trackRegistry.getTrack(to, this.currentZoneTag);
     if (!factory) {
       console.warn(`[MusicContentManager] No track found for state=${to}, zone=${this.currentZoneTag}`);
@@ -90,10 +98,10 @@ export class MusicContentManager {
       this.applySessionBPMDrift();
     }
 
-    // Start track (async but we fire-and-forget since samples may need loading)
-    track.start().catch((err) => {
-      console.warn(`[MusicContentManager] Track start failed for ${trackId}:`, err);
-    });
+    // Await sample loading — sequences don't start until buffers are ready
+    console.log(`[MusicContentManager] Loading track ${trackId}...`);
+    await track.start();
+    console.log(`[MusicContentManager] Track ${trackId} started on side ${side}`);
 
     // Store
     this.activeTracks.set(side, track);
