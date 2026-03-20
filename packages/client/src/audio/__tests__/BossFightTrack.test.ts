@@ -97,6 +97,7 @@ vi.mock("tone", () => {
   };
 });
 
+import * as Tone from "tone";
 import { BossFightTrack } from "../music/tracks/BossFightTrack";
 import { SampleCache } from "../music/SampleCache";
 
@@ -192,7 +193,6 @@ describe("BossFightTrack", () => {
     });
 
     it("phase 3 triggers BPM ramp to 160", () => {
-      const Tone = require("tone");
       const transport = Tone.getTransport();
       track.updateBossPhase(0.15);
       expect(transport.bpm.rampTo).toHaveBeenCalledWith(160, 3);
