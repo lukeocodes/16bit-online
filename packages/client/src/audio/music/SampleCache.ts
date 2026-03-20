@@ -107,12 +107,20 @@ export class SampleCache {
     // Load ALL notes from the soundfont. Since it's a single JS file fetch,
     // there's no network cost to loading every note. This avoids Sampler
     // interpolation issues where sparse buffers haven't decoded yet.
+    const noteCount = Object.keys(urls).length;
+    console.log(`[SampleCache] Parsed ${noteCount} notes for ${gmName}, first keys:`, Object.keys(urls).slice(0, 5));
 
     return new Promise<Tone.Sampler>((resolve, reject) => {
       const sampler = new Tone.Sampler({
         urls,
-        onload: () => resolve(sampler),
-        onerror: (err: Error) => reject(err),
+        onload: () => {
+          console.log(`[SampleCache] Sampler loaded for ${gmName}, loaded=${sampler.loaded}`);
+          resolve(sampler);
+        },
+        onerror: (err: Error) => {
+          console.error(`[SampleCache] Sampler error for ${gmName}:`, err);
+          reject(err);
+        },
       });
     });
   }
@@ -121,24 +129,22 @@ export class SampleCache {
    * Parse the soundfont JS file format:
    * `MIDI.Soundfont.instrument_name = { "C4": "data:audio/...", ... }`
    * Returns a Record<noteName, dataURI>.
+   *
+   * Uses regex to extract key-value pairs since the base64 data URIs
+   * can contain { and } characters that break naive brace matching.
    */
   private parseSoundfontJS(jsText: string): Record<string, string> {
-    // Find the object literal between { and the final }
-    const startIdx = jsText.indexOf("{");
-    const endIdx = jsText.lastIndexOf("}");
-    if (startIdx === -1 || endIdx === -1) {
-      throw new Error("Invalid soundfont JS format");
+    const result: Record<string, string> = {};
+
+    // Match patterns like: "Ab4": "data:audio/mp3;base64,..."
+    // Note names are 1-3 chars + digit, values are data URIs
+    const noteRegex = /"([A-Ga-g][b#]?\d)"\s*:\s*"(data:audio[^"]+)"/g;
+    let match: RegExpExecArray | null;
+
+    while ((match = noteRegex.exec(jsText)) !== null) {
+      result[match[1]] = match[2];
     }
 
-    const objText = jsText.slice(startIdx, endIdx + 1);
-
-    // Use Function constructor to safely evaluate the object literal
-    // (it's a simple key-value map of strings, no executable code)
-    try {
-      const parsed = new Function(`return ${objText}`)();
-      return parsed as Record<string, string>;
-    } catch {
-      throw new Error("Failed to parse soundfont JS object");
-    }
+    return result;
   }
 }
