@@ -189,11 +189,13 @@ Plans:
   3. Music state machine transitions between states (Exploring, Town, Dungeon, Enemy Nearby, Combat, Boss) driven by game events
   4. Crossfades between music states are quantized to beat boundaries via Tone.js Transport for seamless transitions
   5. A master intensity variable (0.0-1.0) globally influences stem density, SFX volume, and weather presence
-**Plans**: TBD
+**Plans**: 4 plans
 
 Plans:
-- [ ] 11-01: TBD
-- [ ] 11-02: TBD
+- [ ] 11-01-PLAN.md — Audio types, Tone.js/Howler.js install, gain bus architecture, AudioSystem core with lifecycle and intensity
+- [ ] 11-02-PLAN.md — Music state machine (7 states with priority), beat-quantized CrossfadeManager with test tones
+- [ ] 11-03-PLAN.md — Server ENEMY_NEARBY/ZONE_MUSIC_TAG opcodes, account audio preferences, Settings menu UI
+- [ ] 11-04-PLAN.md — Game.ts integration wiring, StateSync audio callbacks, dev test API, browser verification
 
 ### Phase 12: Procedural Background Music
 **Goal**: Every location in the game has distinctive procedural music — towns sound warm and busy, dungeons feel tense, wilderness biomes each have their own character, and combat drives adrenaline
@@ -262,7 +264,7 @@ Plans:
 | 8. PvP Flagging & Combat Rules | 0/0 | Not started | - |
 | 9. Biome Atmosphere & Rendering | 0/0 | Not started | - |
 | 10. World-Scale Performance | 0/0 | Not started | - |
-| 11. Core Audio Engine | 0/0 | Not started | - |
+| 11. Core Audio Engine | 0/4 | Planning complete | - |
 | 12. Procedural Background Music | 0/0 | Not started | - |
 | 13. Sound Effects | 0/0 | Not started | - |
 | 14. Ambient Audio & Acoustic Occlusion | 0/0 | Not started | - |
