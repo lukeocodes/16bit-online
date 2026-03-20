@@ -35,36 +35,24 @@ export class GrasslandsTrack extends BaseTrack {
   async start(): Promise<void> {
     if (this.isPlaying) return;
 
-    // Load instruments
-    const guitar = await this.sampleCache.loadInstrument("acousticGuitar");
+    // Load instruments — one melodic voice (wind)
     const pennywhistle = await this.sampleCache.loadInstrument("pennywhistle");
-    this.samplers.push(guitar, pennywhistle);
+    this.samplers.push(pennywhistle);
 
     // Stem gain nodes
     const melodyStem = this.ctx.createGain();
     melodyStem.gain.value = 0.7;
     melodyStem.connect(this.output);
 
-    const whistleStem = this.ctx.createGain();
-    whistleStem.gain.value = 0.5;
-    whistleStem.connect(this.output);
-
     const percStem = this.ctx.createGain();
     percStem.gain.value = 0.25;
     percStem.connect(this.output);
 
-    // Guitar folk picking
-    const guitarEngine = new PhraseEngine(PHRASE_POOL, "8n");
-    this.phraseEngines.push(guitarEngine);
-    const guitarSeq = guitarEngine.createSequence(guitar, 0.65);
-    Tone.connect(guitar, melodyStem);
-    this.sequences.push(guitarSeq);
-
-    // Penny whistle melody
+    // Penny whistle melody (sole melodic voice)
     const whistleEngine = new PhraseEngine(PHRASE_POOL, "8n");
     this.phraseEngines.push(whistleEngine);
-    const whistleSeq = whistleEngine.createSequence(pennywhistle, 0.5);
-    Tone.connect(pennywhistle, whistleStem);
+    const whistleSeq = whistleEngine.createSequence(pennywhistle, 0.65);
+    Tone.connect(pennywhistle, melodyStem);
     this.sequences.push(whistleSeq);
 
     // Light percussion: kick + hihat

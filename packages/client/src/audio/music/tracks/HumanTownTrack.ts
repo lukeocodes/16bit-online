@@ -36,20 +36,14 @@ export class HumanTownTrack extends BaseTrack {
   async start(): Promise<void> {
     if (this.isPlaying) return;
 
-    // Load instruments
+    // Load instruments — one melodic (string), one pad (synth), one percussion
     const guitar = await this.sampleCache.loadInstrument("acousticGuitar");
-    const flute = await this.sampleCache.loadInstrument("flute");
-    const violin = await this.sampleCache.loadInstrument("violin");
-    this.samplers.push(guitar, flute, violin);
+    this.samplers.push(guitar);
 
     // Stem gain nodes
     const melodyStem = this.ctx.createGain();
     melodyStem.gain.value = 0.7;
     melodyStem.connect(this.output);
-
-    const counterStem = this.ctx.createGain();
-    counterStem.gain.value = 0.5;
-    counterStem.connect(this.output);
 
     const padStem = this.ctx.createGain();
     padStem.gain.value = 0.25;
@@ -59,19 +53,12 @@ export class HumanTownTrack extends BaseTrack {
     percStem.gain.value = 0.3;
     percStem.connect(this.output);
 
-    // Guitar melody via PhraseEngine
+    // Guitar melody via PhraseEngine (sole melodic voice)
     const guitarEngine = new PhraseEngine(PHRASE_POOL, "8n");
     this.phraseEngines.push(guitarEngine);
     const guitarSeq = guitarEngine.createSequence(guitar, 0.7);
     Tone.connect(guitar, melodyStem);
     this.sequences.push(guitarSeq);
-
-    // Flute counter-melody (same pool, different velocity)
-    const fluteEngine = new PhraseEngine(PHRASE_POOL, "8n");
-    this.phraseEngines.push(fluteEngine);
-    const fluteSeq = fluteEngine.createSequence(flute, 0.5);
-    Tone.connect(flute, counterStem);
-    this.sequences.push(fluteSeq);
 
     // Warm pad synth
     const pad = new Tone.FMSynth({
@@ -122,23 +109,10 @@ export class HumanTownTrack extends BaseTrack {
     percSeq.loop = true;
     this.sequences.push(percSeq);
 
-    // Proximity stems
+    // Proximity stems — ambient layers that fade in near POIs
     this.proximityMixer = new ProximityMixer();
 
-    // Tavern fiddle stem
-    const fiddleStem = this.ctx.createGain();
-    fiddleStem.connect(this.output);
-    Tone.connect(violin, fiddleStem);
-    const fiddleEngine = new PhraseEngine(PHRASE_POOL, "8n");
-    this.phraseEngines.push(fiddleEngine);
-    const fiddleSeq = fiddleEngine.createSequence(violin, 0.6);
-    this.sequences.push(fiddleSeq);
-    this.proximityMixer.addStem("tavern-fiddle", fiddleStem, {
-      triggerDistance: 20,
-      fullDistance: 5,
-    });
-
-    // Market bustle stem (filtered noise)
+    // Market bustle stem (filtered noise — ambient, not melodic)
     const bustleStem = this.ctx.createGain();
     bustleStem.connect(this.output);
     const bustle = new Tone.NoiseSynth({

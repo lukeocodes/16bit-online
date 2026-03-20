@@ -42,19 +42,14 @@ export class CombatTrack extends BaseTrack {
     // Save original BPM to restore on stop
     this.savedBPM = Tone.getTransport().bpm.value;
 
-    // Load instruments
+    // Load instruments — one melodic voice (string ostinato)
     const violin = await this.sampleCache.loadInstrument("violin");
-    const trumpet = await this.sampleCache.loadInstrument("trumpet");
-    this.samplers.push(violin, trumpet);
+    this.samplers.push(violin);
 
     // Stem gain nodes
     const ostinatoStem = this.ctx.createGain();
     ostinatoStem.gain.value = 0.7;
     ostinatoStem.connect(this.output);
-
-    const brassStem = this.ctx.createGain();
-    brassStem.gain.value = 0.5;
-    brassStem.connect(this.output);
 
     const percStem = this.ctx.createGain();
     percStem.gain.value = 0.55;
@@ -64,23 +59,12 @@ export class CombatTrack extends BaseTrack {
     bassStem.gain.value = 0.4;
     bassStem.connect(this.output);
 
-    // Fast violin ostinato
+    // Fast violin ostinato (sole melodic voice)
     const violinEngine = new PhraseEngine(PHRASE_POOL, "8n");
     this.phraseEngines.push(violinEngine);
     const violinSeq = violinEngine.createSequence(violin, 0.75);
     Tone.connect(violin, ostinatoStem);
     this.sequences.push(violinSeq);
-
-    // Trumpet brass hits
-    const trumpetPool: (string | null)[][] = [
-      ["E5", null, null, "B4", null, null, "E5", null],
-      [null, "G5", null, null, "E5", null, null, "B4"],
-    ];
-    const trumpetEngine = new PhraseEngine(trumpetPool, "8n");
-    this.phraseEngines.push(trumpetEngine);
-    const trumpetSeq = trumpetEngine.createSequence(trumpet, 0.65);
-    Tone.connect(trumpet, brassStem);
-    this.sequences.push(trumpetSeq);
 
     // Aggressive percussion: kick, snare, hihat (double time)
     const kick = new Tone.MembraneSynth({
