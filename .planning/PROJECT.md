@@ -64,6 +64,7 @@ Players can freely explore a vast, dangerous world where every region they disco
 - Spiritual successor to Ultima Online, built entirely from memory — no assets or code copied
 - Existing codebase has solid networking (WebRTC), combat, and ECS foundation
 - World map data layer complete (Phase 1) — 900x900 chunk world with 3 continents, Voronoi regions, biome classification, O(1) spatial queries
+- Server-side chunk generation complete (Phase 3) — server generates multi-layer terrain noise per tile, streams world map via HTTP signaling + per-chunk Float16 heights via DataChannel, Redis caching, gradient-based Y validation, client worldgen removed
 - Core audio engine complete (Phase 11) — Tone.js + Howler.js, 4-bus gain architecture, 7-state music state machine with beat-quantized crossfades, settings menu with server-persisted preferences
 - Target audience: serious project aiming for real player base ("as big as it gets")
 - World design takes inspiration from famous fantasy world maps for multi-continent layout
@@ -94,6 +95,10 @@ Players can freely explore a vast, dangerous world where every region they disco
 | Tone.js owns AudioContext | All Web Audio nodes use Tone.js context; Howler.js masterGain rerouted to SFX bus | Phase 11 |
 | Server-authoritative music triggers | Zone tags, combat state, enemy proximity all flow from server events | Phase 11 |
 | Account-level audio preferences | Audio settings stored per-account (not per-character) as JSONB | Phase 11 |
+| Server-authoritative terrain | Server generates all terrain from seed, streams to client — no client-side worldgen | Phase 3 |
+| Two-layer data delivery | Bulk world map via HTTP signaling (~400KB gzip) + per-chunk heights via DataChannel (~2KB each) | Phase 3 |
+| Gradient-based movement blocking | |srcY - dstY| > 0.8 blocks movement — universal across all biomes, replaces elevation band checks | Phase 3 |
+| Smooth per-tile heights | Multi-layer noise (continental + regional + local) replaces discrete elevation bands | Phase 3 |
 
 ---
-*Last updated: 2026-03-20 after Phase 11 completion*
+*Last updated: 2026-03-20 after Phase 3 completion*
