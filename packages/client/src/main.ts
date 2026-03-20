@@ -80,6 +80,13 @@ async function boot() {
           setIntensity: (v: number) => { if (game) game.getAudioSystem().intensity = v; },
           getIntensity: () => game?.getAudioSystem().intensity,
           getFadeValue: () => game?.getAudioSystem().getCrossfadeManager()?.getCrossFade().fade.value,
+          // MusicContentManager controls (Phase 12-04)
+          getActiveTrack: (side: "a" | "b") => game?.getAudioSystem().getMusicContentManager()?.getActiveTrackId(side),
+          setZone: (tag: string) => game?.getAudioSystem().getMusicContentManager()?.setZoneMetadata(tag),
+          setEnemyCount: (n: number) => game?.getAudioSystem().getMusicContentManager()?.updateEnemyCount(n),
+          setBossHP: (hp: number) => game?.getAudioSystem().getMusicContentManager()?.updateBossHP(hp),
+          setEnemyProximity: (d: number) => game?.getAudioSystem().getMusicContentManager()?.updateEnemyProximity(d),
+          listTracks: () => game?.getAudioSystem().getMusicContentManager()?.getTrackRegistry()?.getAllTrackIds(),
         };
         console.log("[Dev] Audio API available at window.__audio");
       }

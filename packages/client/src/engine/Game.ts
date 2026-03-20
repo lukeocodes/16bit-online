@@ -31,9 +31,10 @@ import type { StatsComponent } from "../ecs/components/Stats";
 import type { IdentityComponent } from "../ecs/components/Identity";
 import type { GameHUD } from "../ui/screens/GameHUD";
 import { WORLD_WIDTH, WORLD_HEIGHT } from "../world/WorldConstants";
+import { initTerrainNoise } from "../world/TerrainNoise";
 import WorldgenWorker from "../world/worldgen.worker?worker";
 
-const PLAYER_SPEED = 3.0;
+const PLAYER_SPEED = 5.0;
 const POSITION_SEND_INTERVAL = 1000 / 15;
 
 export class Game {
@@ -118,6 +119,13 @@ export class Game {
             sm.requestState(MusicState.Victory);
           }
         }
+        // Update enemy count for combat BPM scaling
+        const mcm = this.audioSystem.getMusicContentManager();
+        if (mcm && inCombat) {
+          mcm.updateEnemyCount(1); // TODO: pass real enemy count when combat data includes it
+        }
+        // TODO: Wire boss HP updates when boss content exists
+        // this.audioSystem.getMusicContentManager()?.updateBossHP(hpPercent);
       }
     });
 
@@ -147,6 +155,9 @@ export class Game {
           sm.forceState(mapped);
         }
       }
+      // TODO: Set zone metadata (e.g., "human", "elf") when server sends zone tag
+      // const mcm = this.audioSystem.getMusicContentManager();
+      // if (mcm) { mcm.setZoneMetadata(zoneTag); }
     });
 
     this.input.setOnLeftClick((sx, sy) => this.handleLeftClick(sx, sy));
@@ -197,7 +208,11 @@ export class Game {
         this.renderSystem.renderSpawnPoints(this.stateSync.spawnPoints);
       }
       this.animationSystem.update(frameDt);
-      this.audioSystem.update(frameDt);
+      // Pass player position for proximity-based music stem fading
+      const playerPos = this.localEntityId
+        ? this.entityManager.getComponent<PositionComponent>(this.localEntityId, "position")
+        : null;
+      this.audioSystem.update(frameDt, playerPos ? { x: playerPos.x, z: playerPos.z } : undefined);
       this.updateHUD();
       this.camera.update();
       this.sceneManager.render();
@@ -229,20 +244,24 @@ export class Game {
     console.log("[Game] Generating world map (worker)...");
     const start = performance.now();
 
-    const { biomeMap, elevation } = await new Promise<{ biomeMap: Uint8Array; elevation: Float32Array }>((resolve, reject) => {
+    const { biomeMap, elevation, regionMap, regionBiomes } = await new Promise<{
+      biomeMap: Uint8Array; elevation: Float32Array;
+      regionMap: Uint16Array; regionBiomes: Uint8Array;
+    }>((resolve, reject) => {
       const worker = new WorldgenWorker();
       worker.onmessage = (e: MessageEvent) => {
         resolve(e.data);
         worker.terminate();
       };
-      worker.onerror = (err) => {
+      worker.onerror = (err: ErrorEvent) => {
         reject(err);
         worker.terminate();
       };
       worker.postMessage({ seed });
     });
 
-    this.chunkManager.setWorldData(biomeMap, elevation);
+    this.chunkManager.setWorldData(biomeMap, elevation, regionMap, regionBiomes);
+    initTerrainNoise(seed);
     console.log(`[Game] World map loaded in ${Math.round(performance.now() - start)}ms (worker)`);
 
     this.stateSync.setTerrainYResolver((x, z) => this.chunkManager.getTerrainY(x, z));
@@ -411,12 +430,12 @@ export class Game {
     this.localEntityId = characterId;
     this.entityManager.addEntity(characterId);
     this.entityManager.addComponent(characterId, createIdentity(characterId, "Player", "player", true));
-    const sx = this.spawnPosition.x;
-    const sz = this.spawnPosition.z;
-    // Compute player Y from terrain elevation so they stand on top of the ground
-    const terrainY = this.chunkManager.getTerrainY(sx, sz);
-    this.entityManager.addComponent(characterId, createPosition(sx, terrainY, sz));
-    this.entityManager.addComponent(characterId, createMovement(PLAYER_SPEED, sx, sz));
+    // Round spawn to integer tile coords, position at tile center (+0.5)
+    const tileX = Math.round(this.spawnPosition.x);
+    const tileZ = Math.round(this.spawnPosition.z);
+    const terrainY = this.chunkManager.getTerrainY(tileX, tileZ);
+    this.entityManager.addComponent(characterId, createPosition(tileX + 0.5, terrainY, tileZ + 0.5));
+    this.entityManager.addComponent(characterId, createMovement(PLAYER_SPEED, tileX, tileZ));
     this.entityManager.addComponent(characterId, createRenderable("player", "#4466aa", "#e8c4a0", "#2c1b0e"));
     this.entityManager.addComponent(characterId, createStats(10, 10, 10));
     this.entityManager.addComponent(characterId, createCombat("melee", 5, 2.0));

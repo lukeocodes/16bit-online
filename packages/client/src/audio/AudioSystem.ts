@@ -9,6 +9,7 @@ import { initTone, getToneContext, startTone } from "./ToneSetup";
 import { initHowlerBridge } from "./HowlerBridge";
 import { MusicStateMachine } from "./MusicStateMachine";
 import { CrossfadeManager } from "./CrossfadeManager";
+import { MusicContentManager } from "./music/MusicContentManager";
 import type { BusName, AudioPreferences } from "./types";
 import { DEFAULT_AUDIO_PREFERENCES } from "./types";
 
@@ -25,6 +26,7 @@ export class AudioSystem {
   private resumeKeyHandler: (() => void) | null = null;
   private musicStateMachine: MusicStateMachine | null = null;
   private crossfadeManager: CrossfadeManager | null = null;
+  private musicContentManager: MusicContentManager | null = null;
 
   init(): void {
     initTone(120);
@@ -61,6 +63,13 @@ export class AudioSystem {
       }
     });
 
+    // Create MusicContentManager (registers its own onTransition callback)
+    this.musicContentManager = new MusicContentManager(
+      this.ctx,
+      this.musicStateMachine,
+      this.crossfadeManager,
+    );
+
     // Setup tab visibility ducking
     this.setupVisibilityDucking();
 
@@ -88,6 +97,10 @@ export class AudioSystem {
 
   getCrossfadeManager(): CrossfadeManager | null {
     return this.crossfadeManager;
+  }
+
+  getMusicContentManager(): MusicContentManager | null {
+    return this.musicContentManager;
   }
 
   isResumed(): boolean {
@@ -155,13 +168,19 @@ export class AudioSystem {
     console.log("[AudioSystem] AudioContext resumed");
   }
 
-  update(_dt: number): void {
-    // Reserved for future per-frame audio updates (intensity interpolation, etc.)
+  update(_dt: number, playerPos?: { x: number; z: number }): void {
+    if (playerPos && this.musicContentManager) {
+      this.musicContentManager.updatePlayerPosition(playerPos);
+    }
   }
 
   dispose(): void {
     if (this._disposed) return;
     this._disposed = true;
+    if (this.musicContentManager) {
+      this.musicContentManager.dispose();
+      this.musicContentManager = null;
+    }
     if (this.musicStateMachine) {
       this.musicStateMachine.dispose();
       this.musicStateMachine = null;

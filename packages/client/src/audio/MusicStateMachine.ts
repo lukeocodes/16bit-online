@@ -7,7 +7,7 @@ export class MusicStateMachine {
   private ambientState: MusicState = MusicState.Exploring; // last non-combat/non-transient
   private bossOverride = false;
   private victoryTimer: ReturnType<typeof setTimeout> | null = null;
-  private onTransitionCb: TransitionCallback | null = null;
+  private onTransitionCbs: TransitionCallback[] = [];
 
   getState(): MusicState {
     return this.currentState;
@@ -22,7 +22,7 @@ export class MusicStateMachine {
   }
 
   onTransition(cb: TransitionCallback): void {
-    this.onTransitionCb = cb;
+    this.onTransitionCbs.push(cb);
   }
 
   requestState(newState: MusicState): boolean {
@@ -60,7 +60,7 @@ export class MusicStateMachine {
       clearTimeout(this.victoryTimer);
       this.victoryTimer = null;
     }
-    this.onTransitionCb = null;
+    this.onTransitionCbs = [];
   }
 
   private doTransition(newState: MusicState): void {
@@ -88,9 +88,9 @@ export class MusicStateMachine {
 
     this.currentState = newState;
 
-    // Fire transition callback
-    if (this.onTransitionCb) {
-      this.onTransitionCb(from, newState);
+    // Fire transition callbacks
+    for (const cb of this.onTransitionCbs) {
+      cb(from, newState);
     }
 
     // Victory auto-transitions back to ambient after timeout
