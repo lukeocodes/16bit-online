@@ -207,11 +207,13 @@ Plans:
   3. Combat music crossfades in on enemy aggro with intensity scaling by enemy count; boss music has HP-threshold phase transitions
   4. Enemy detection state plays a transitional tension track with proximity-driven pulse tempo
   5. Music never loops identically — procedural variation (BPM drift, phrase selection, ornamental injection) ensures each session sounds fresh
-**Plans**: TBD
+**Plans**: 4 plans
 
 Plans:
-- [ ] 12-01: TBD
-- [ ] 12-02: TBD
+- [ ] 12-01-PLAN.md — Core music infrastructure: type definitions, scale/mode system, SampleCache LRU, PhraseEngine
+- [ ] 12-02-PLAN.md — Track framework: abstract BaseTrack lifecycle, ProximityMixer distance-based stem fading, TrackRegistry lookup
+- [ ] 12-03-PLAN.md — All 16 track definitions: 6 towns, 2 dungeons, 4 exploration biomes, combat, boss fight, enemy nearby, victory stinger
+- [ ] 12-04-PLAN.md — MusicContentManager orchestrator, AudioSystem integration, Game.ts wiring, dev API, browser verification
 
 ### Phase 13: Sound Effects
 **Goal**: Player actions and world events have audio feedback — weapon swings, footsteps on different surfaces, weather atmosphere, and progression fanfares
@@ -265,6 +267,6 @@ Plans:
 | 9. Biome Atmosphere & Rendering | 0/0 | Not started | - |
 | 10. World-Scale Performance | 0/0 | Not started | - |
 | 11. Core Audio Engine | 4/4 | Complete    | 2026-03-20 |
-| 12. Procedural Background Music | 0/0 | Not started | - |
+| 12. Procedural Background Music | 0/4 | Planning complete | - |
 | 13. Sound Effects | 0/0 | Not started | - |
 | 14. Ambient Audio & Acoustic Occlusion | 0/0 | Not started | - |
