@@ -25,21 +25,28 @@ const mockSynthDispose = vi.fn();
 const mockConnect = vi.fn();
 
 vi.mock("tone", () => {
+  // Use function() constructors so `new` works correctly
+  const CrossFade = vi.fn(function (this: Record<string, unknown>) {
+    Object.assign(this, { ...mockCrossFade });
+  });
+  const Synth = vi.fn(function (this: Record<string, unknown>) {
+    this.connect = mockSynthConnect;
+    this.triggerAttack = mockSynthTriggerAttack;
+    this.triggerRelease = mockSynthTriggerRelease;
+    this.dispose = mockSynthDispose;
+  });
+
   return {
-    CrossFade: vi.fn(() => ({ ...mockCrossFade })),
+    CrossFade,
     getTransport: vi.fn(() => mockTransport),
     connect: vi.fn((...args: unknown[]) => mockConnect(...args)),
-    Synth: vi.fn(() => ({
-      connect: mockSynthConnect,
-      triggerAttack: mockSynthTriggerAttack,
-      triggerRelease: mockSynthTriggerRelease,
-      dispose: mockSynthDispose,
-    })),
+    Synth,
   };
 });
 
 import { CrossfadeManager } from "../CrossfadeManager";
 import { MusicState, CROSSFADE_DURATIONS } from "../types";
+import * as Tone from "tone";
 import type { GainBus } from "../GainBus";
 
 function createMockGainBus(): GainBus {
@@ -71,7 +78,6 @@ describe("CrossfadeManager", () => {
   describe("constructor", () => {
     it("creates a CrossFade node and connects it to the music bus", () => {
       // CrossFade was instantiated
-      const Tone = require("tone");
       expect(Tone.CrossFade).toHaveBeenCalledWith(0);
       // connect was called to bridge CrossFade output to music bus
       expect(Tone.connect).toHaveBeenCalled();
@@ -171,7 +177,6 @@ describe("CrossfadeManager", () => {
     it("startTestTone('a') creates a synth connected to crossFade.a", () => {
       manager.startTestTone("a");
 
-      const Tone = require("tone");
       expect(Tone.Synth).toHaveBeenCalled();
       expect(mockSynthConnect).toHaveBeenCalled();
       expect(mockSynthTriggerAttack).toHaveBeenCalledWith(440);
