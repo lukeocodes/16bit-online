@@ -25,14 +25,17 @@ const BOSS_VARIANTS: Record<string, string> = {
   "king-rabbit": "rabbit-body",
   "skeleton-lord": "skeleton-body",
   "alpha-wolf": "wolf-body",
+  "goblin-chieftain": "goblin-body",
+  "imp-overlord": "imp-body",
+  "elder-bear": "bear-body",
 };
 
-const QUADRUPEDS = new Set(["rabbit-body", "wolf-body", "bear-body", "king-rabbit", "alpha-wolf"]);
+const QUADRUPEDS = new Set(["rabbit-body", "wolf-body", "bear-body", "king-rabbit", "alpha-wolf", "elder-bear"]);
 
 const WEAPON_HOLDERS = new Set([
   "human-body", "elf-body", "dwarf-body",
   "skeleton-body", "goblin-body", "imp-body", "ogre-body", "wraith-body",
-  "skeleton-lord",
+  "skeleton-lord", "goblin-chieftain", "imp-overlord",
 ]);
 
 /**

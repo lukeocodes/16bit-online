@@ -43,6 +43,7 @@ export interface DungeonInstance {
 }
 
 const instances = new Map<string, DungeonInstance>();
+const npcToInstance = new Map<string, string>(); // npcId -> instanceId (reverse lookup)
 const playerInstance = new Map<string, string>(); // entityId -> instanceId
 let nextMapId = 1000; // Start dungeon map IDs high to avoid collision
 
@@ -181,6 +182,7 @@ export function createDungeonInstance(ownerId: string, difficulty: number = 1): 
       const spd = rollStat(template.attackSpeed);
       registerEntity(npcId, template.weaponType, dmg, spd, hp, hp);
       instance.spawnedNpcs.push(npcId);
+      npcToInstance.set(npcId, instanceId);
 
       // Broadcast spawn to the dungeon owner
       connectionManager.sendReliable(ownerId, packEntitySpawn(
@@ -217,6 +219,7 @@ export function createDungeonInstance(ownerId: string, difficulty: number = 1): 
       const spd = rollStat(bossTemplate.attackSpeed) * 0.8;
       registerEntity(bossId, bossTemplate.weaponType, dmg, spd, hp, hp);
       instance.spawnedNpcs.push(bossId);
+      npcToInstance.set(bossId, instanceId);
       instance.bossId = bossId;
 
       connectionManager.sendReliable(ownerId, packEntitySpawn(
@@ -252,8 +255,9 @@ export function destroyDungeonInstance(instanceId: string): void {
   const inst = instances.get(instanceId);
   if (!inst) return;
 
-  // Remove all NPCs
+  // Remove all NPCs + reverse lookup entries
   for (const npcId of inst.spawnedNpcs) {
+    npcToInstance.delete(npcId);
     unregisterEntity(npcId);
     connectionManager.broadcastReliable(packEntityDespawn(npcId));
     entityStore.remove(npcId);
@@ -280,28 +284,28 @@ export function isDungeonWalkable(instanceId: string, x: number, z: number): boo
 
 /** Called when an NPC dies in a dungeon — checks if it's the boss */
 export function onDungeonNpcDeath(npcId: string): void {
-  // Find which instance this NPC belongs to
-  for (const inst of instances.values()) {
-    if (inst.bossId === npcId) {
-      inst.bossDefeated = true;
-      console.log(`[Dungeon] Boss defeated in ${inst.instanceId}!`);
+  // O(1) lookup via reverse map
+  const instId = npcToInstance.get(npcId);
+  if (!instId) return;
+  npcToInstance.delete(npcId);
 
-      // Notify player: exit portal opened
-      connectionManager.sendReliable(inst.ownerId,
-        packReliable(Opcode.DUNGEON_EXIT, {
-          exitX: inst.exitX,
-          exitZ: inst.exitZ,
-          message: "The boss has been defeated! An exit portal has appeared.",
-        }));
-      return;
-    }
-    // Remove dead NPC from tracking
-    const idx = inst.spawnedNpcs.indexOf(npcId);
-    if (idx !== -1) {
-      inst.spawnedNpcs.splice(idx, 1);
-      return;
-    }
+  const inst = instances.get(instId);
+  if (!inst) return;
+
+  if (inst.bossId === npcId) {
+    inst.bossDefeated = true;
+    console.log(`[Dungeon] Boss defeated in ${inst.instanceId}!`);
+    connectionManager.sendReliable(inst.ownerId,
+      packReliable(Opcode.DUNGEON_EXIT, {
+        exitX: inst.exitX,
+        exitZ: inst.exitZ,
+        message: "The boss has been defeated! An exit portal has appeared.",
+      }));
   }
+
+  // Remove from spawned list
+  const idx = inst.spawnedNpcs.indexOf(npcId);
+  if (idx !== -1) inst.spawnedNpcs.splice(idx, 1);
 }
 
 /** Check if a player is at the dungeon exit portal */

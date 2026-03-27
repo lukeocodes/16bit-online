@@ -28,3 +28,11 @@ registry.register(new BearBody());
 registry.register(new KingRabbit());
 registry.register(new SkeletonLord());
 registry.register(new AlphaWolf());
+
+import { GoblinChieftain } from "./GoblinChieftain";
+import { ImpOverlord } from "./ImpOverlord";
+import { ElderBear } from "./ElderBear";
+
+registry.register(new GoblinChieftain());
+registry.register(new ImpOverlord());
+registry.register(new ElderBear());

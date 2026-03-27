@@ -12,7 +12,7 @@ Read this file at the start of each model workbench session. Update after signif
 - **Palette** — `computePalette(skin, hair, eyes, primary, secondary, armorType)` generates full color set from base colors + armor material.
 - **Attachment slots** — `root`, `head-top`, `hand-R`, `hand-L`, `torso`, `torso-back`, `legs`, `feet-L`, `feet-R`
 
-## Current State (2026-03-27, session 10)
+## Current State (2026-03-27, session 11)
 
 ### Workbench UI
 - [x] 3-panel layout: left nav (model browser), center (PixiJS canvas), right (config panel)
@@ -139,6 +139,9 @@ Read this file at the start of each model workbench session. Update after signif
 - [x] King Rabbit — DONE. 1.4x scale, golden-white fur, tiny crown with 3 tines + red gem, gold aura, regal bearing
 - [x] Skeleton Lord — DONE. Larger bones, bone crown (5 tines), purple glowing eyes with halos, dark aura, wider ribs
 - [x] Alpha Wolf — DONE. 1.3x scale, dark grey fur, battle scars (body + face), bared fangs, bright amber glowing eyes, boss aura
+- [x] Goblin Chieftain — DONE. 1.35x width, war-painted face, feathered headdress (3 feathers), bigger tusks, bigger pointed ears
+- [x] Imp Overlord — DONE. 1.3x scale, deeper red, bigger wings, crown of 4 horns, flaming tail tip, fire aura, fire glow around eyes
+- [x] Elder Bear — DONE. 1.35x scale, darker brown, silver-tipped shoulder fur, battle scars (body + face), torn ear, glowing amber eyes
 
 ### Legacy Files
 - ~~`src/CharacterModel.ts`~~ — DELETED
@@ -163,5 +166,7 @@ Priority for each session (tackle 1-2 items per run):
 15. ~~More headgear~~ — DONE (Cloth Hood, Leather Cap, Crown, Horned Helm)
 16. ~~Boss variants~~ — DONE (King Rabbit, Skeleton Lord, Alpha Wolf)
 17. ~~Export/Import JSON~~ — DONE (Copy JSON button + Import from clipboard)
-18. Integration: connect workbench models to game client EntityRenderer
-19. More boss variants (Goblin Chieftain, Imp Overlord, Elder Bear)
+18. ~~Game integration bridge~~ — DONE (GameBridge.ts + manifest.ts + manifest export button)
+19. ~~More boss variants~~ — DONE (Goblin Chieftain, Imp Overlord, Elder Bear)
+20. Wire GameBridge into actual game client EntityRenderer (requires game client changes)
+21. More weapon types (crossbow, flail, halberd, throwing knife)
