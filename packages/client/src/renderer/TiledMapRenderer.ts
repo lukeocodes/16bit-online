@@ -111,6 +111,7 @@ export class TiledMapRenderer {
   public safeZones: SafeZone[] = [];
   public zoneExits: Array<{ name: string; tileX: number; tileZ: number; tileWidth: number; tileHeight: number; exitId: string }> = [];
   public dungeonEntrances: Array<{ name: string; tileX: number; tileZ: number; tileWidth: number; tileHeight: number; difficulty: number; dungeonName: string }> = [];
+  public structures: Array<{ type: string; tileX: number; tileZ: number; width: number; height: number; name: string }> = [];
   public playerSpawn = { x: 32, z: 32 }; // default center
 
   private lastCenterX = -Infinity;
@@ -491,6 +492,15 @@ export class TiledMapRenderer {
           tileWidth: Math.round(obj.width / tileW),
           tileHeight: Math.round(obj.height / tileH),
           exitId: (props.exitId as string) || obj.name,
+        });
+      } else if (obj.type === "structure") {
+        this.structures.push({
+          type: (props.structureType as string) || "wall_stone",
+          tileX,
+          tileZ,
+          width: Math.round(obj.width / tileW),
+          height: Math.round(obj.height / tileH),
+          name: obj.name,
         });
       } else if (obj.type === "dungeon_entrance") {
         this.dungeonEntrances.push({

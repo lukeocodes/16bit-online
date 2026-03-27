@@ -33,7 +33,8 @@ export function createModelNav(
 
     const title = document.createElement("div");
     title.style.cssText = "font-size:14px;font-weight:700;color:#53a8b6;margin-bottom:10px;";
-    title.textContent = "MODELS";
+    const totalCount = registry.list().length;
+    title.innerHTML = `MODELS <span style="font-size:10px;font-weight:400;color:#666;">${totalCount}</span>`;
     container.appendChild(title);
 
     for (const cat of CATEGORY_ORDER) {

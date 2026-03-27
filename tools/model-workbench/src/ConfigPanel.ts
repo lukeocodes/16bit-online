@@ -65,9 +65,14 @@ export function createConfigPanel(
       infoLabel.textContent = "Composite";
     } else if (selectedModel) {
       infoLabel.textContent = selectedModel.name;
+      const catLabels: Record<string, string> = {
+        body: "Body", hair: "Hair", armor: "Armor", weapon: "Weapon",
+        offhand: "Off-hand", headgear: "Headgear", legs: "Legs",
+        feet: "Boots", shoulders: "Shoulders", gauntlets: "Gauntlets", npc: "NPC",
+      };
       const catSpan = document.createElement("span");
-      catSpan.style.cssText = "font-size:10px;color:#666;font-weight:400;margin-left:6px;";
-      catSpan.textContent = selectedModel.category;
+      catSpan.style.cssText = "font-size:10px;color:#666;font-weight:400;margin-left:6px;text-transform:uppercase;";
+      catSpan.textContent = catLabels[selectedModel.category] ?? selectedModel.category;
       infoLabel.appendChild(catSpan);
     }
     container.appendChild(infoLabel);

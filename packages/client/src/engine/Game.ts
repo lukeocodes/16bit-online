@@ -3,6 +3,7 @@ import { IsoCamera } from "../renderer/IsoCamera";
 import { EntityRenderer } from "../renderer/EntityRenderer";
 import { TerrainRenderer } from "../renderer/TerrainRenderer";
 import { TiledMapRenderer } from "../renderer/TiledMapRenderer";
+import { StructureRenderer } from "../renderer/StructureRenderer";
 import { screenToWorld, worldToScreen, TILE_WIDTH_HALF, TILE_HEIGHT_HALF } from "../renderer/IsometricRenderer";
 // EntitySpriteSheet removed — sprite art handled in separate session
 import { ParticleSystem } from "../renderer/ParticleSystem";
@@ -60,6 +61,7 @@ export class Game {
 
   private chunkManager: ChunkManager;
   private tiledMap: TiledMapRenderer | null = null;
+  private structureRenderer: StructureRenderer | null = null;
   private useTiledMap = false;
 
   private audioSystem: AudioSystem;
@@ -359,6 +361,10 @@ export class Game {
         this.followTargetId = null;
         this.selectTarget(null);
         // Load new map
+        if (this.structureRenderer) {
+          this.structureRenderer.dispose();
+          this.structureRenderer = null;
+        }
         if (this.tiledMap) {
           this.tiledMap.dispose();
         }
@@ -432,6 +438,13 @@ export class Game {
           (_x, _z) => 0, // Flat terrain (no elevation yet)
           (x, z) => this.tiledMap!.isWalkable(Math.round(x), Math.round(z)),
         );
+
+        // Load structures from map objects
+        if (this.tiledMap.structures.length > 0) {
+          this.structureRenderer = new StructureRenderer();
+          this.structureRenderer.loadStructures(this.tiledMap.structures);
+          this.pixiApp.worldContainer.addChild(this.structureRenderer.container);
+        }
 
         console.log("[Game] Using Tiled map for terrain");
       } catch (e) {
