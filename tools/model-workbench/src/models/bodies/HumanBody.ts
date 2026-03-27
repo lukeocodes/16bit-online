@@ -85,9 +85,9 @@ export class HumanBody implements Model {
   ): void {
     const { chestL, chestR, waistL, waistR, hipL, hipR, neckBase } = j;
 
-    // Main torso shape
+    // Main torso shape — bare skin
     this.torsoPath(g, j, s);
-    g.fill(p.body);
+    g.fill(p.skin);
 
     // Shadow side
     g.moveTo(neckBase.x * s, neckBase.y * s);
@@ -107,7 +107,7 @@ export class HumanBody implements Model {
     g.lineTo(((hipR.x + hipL.x) / 2) * s, hipR.y * s);
     g.lineTo(((waistR.x + neckBase.x) / 2) * s, neckBase.y * s);
     g.closePath();
-    g.fill({ color: p.bodyDk, alpha: 0.3 });
+    g.fill({ color: darken(p.skin, 0.2), alpha: 0.3 });
 
     // Outline
     this.torsoPath(g, j, s);
