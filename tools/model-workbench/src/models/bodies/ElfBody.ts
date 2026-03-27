@@ -82,10 +82,14 @@ export class ElfBody implements Model {
     return calls;
   }
 
-  getBodyScale() { return { width: this.SLIM, height: 1 }; }
-
   getAttachmentPoints(skeleton: Skeleton): Record<string, AttachmentPoint> {
-    return skeleton.attachments;
+    const S = this.SLIM;
+    return Object.fromEntries(
+      Object.entries(skeleton.attachments).map(([slot, pt]) => [
+        slot,
+        { ...pt, params: { size: S, ratio: { x: S, y: 1 }, offset: { x: 0, y: 0 } } },
+      ])
+    );
   }
 
   // ─── TORSO (narrower, longer) ───────────────────────────────────

@@ -5,19 +5,18 @@ import type {
   DrawCall,
   ModelPalette,
   RenderContext,
+  SlotParams,
 } from "./types";
-import { ISO_OFFSETS } from "./types";
+import { DEFAULT_SLOT_PARAMS } from "./types";
 import { computeHumanoidSkeleton } from "./skeleton";
 import { registry } from "./registry";
 
 /**
- * Build a render context from a skeleton and palette.
+ * Build a base render context (for the body model itself — neutral slot params).
  */
-function buildRenderContext(
+function buildBaseContext(
   skeleton: ReturnType<typeof computeHumanoidSkeleton>,
-  palette: ModelPalette,
-  bodyWidth: number = 1,
-  bodyHeight: number = 1
+  palette: ModelPalette
 ): RenderContext {
   const iso = skeleton.iso;
   const leftIsFar = iso.x >= 0;
@@ -27,14 +26,29 @@ function buildRenderContext(
     farSide: leftIsFar ? "L" : "R",
     nearSide: leftIsFar ? "R" : "L",
     facingCamera: iso.y > 0,
-    bodyWidth,
-    bodyHeight,
+    slotParams: DEFAULT_SLOT_PARAMS,
+  };
+}
+
+/**
+ * Merge body-defined attachment params with any per-slot user overrides.
+ */
+function resolveSlotParams(
+  bodyParams: SlotParams,
+  overrides?: Partial<SlotParams>
+): SlotParams {
+  if (!overrides) return bodyParams;
+  return {
+    size: overrides.size ?? bodyParams.size,
+    ratio: overrides.ratio ?? bodyParams.ratio,
+    offset: overrides.offset ?? bodyParams.offset,
   };
 }
 
 /**
  * Render a composite entity — a base model with attached child models.
- * This is the main entry point that replaces the old renderCharacter().
+ * Each child receives slot params derived from the body's attachment point
+ * definitions, merged with any per-slot overrides in the config.
  */
 export function renderComposite(
   g: Graphics,
@@ -44,25 +58,33 @@ export function renderComposite(
   scale: number
 ): void {
   const skeleton = computeHumanoidSkeleton(dir as Direction, walkPhase, config.build ?? 1, config.height ?? 1);
-
-  // Read body proportions from the base model so equipment scales to match
+  const baseCtx = buildBaseContext(skeleton, config.palette);
   const baseModel = registry.get(config.baseModelId);
-  const bodyScale = baseModel?.getBodyScale?.() ?? { width: 1, height: 1 };
-  const ctx = buildRenderContext(skeleton, config.palette, bodyScale.width, bodyScale.height);
+
+  // Get body's attachment points (with its body-specific params)
+  const bodyAttachments = baseModel?.getAttachmentPoints(skeleton) ?? skeleton.attachments;
 
   const calls: DrawCall[] = [];
 
-  // Base model draw calls
+  // Base body draw calls (neutral slot params)
   if (baseModel) {
-    calls.push(...baseModel.getDrawCalls(ctx));
+    calls.push(...baseModel.getDrawCalls(baseCtx));
   }
 
-  // Attached model draw calls
+  // Attached model draw calls — each gets resolved slot params
   for (const att of config.attachments) {
     const childModel = registry.get(att.modelId);
-    if (childModel) {
-      calls.push(...childModel.getDrawCalls(ctx));
-    }
+    if (!childModel) continue;
+
+    // Look up the body's attachment point for this slot
+    const bodyAP = bodyAttachments[att.slot];
+    const bodyParams = bodyAP?.params ?? DEFAULT_SLOT_PARAMS;
+
+    // Merge with any per-slot overrides from the config
+    const resolvedParams = resolveSlotParams(bodyParams, att.overrides);
+
+    const childCtx: RenderContext = { ...baseCtx, slotParams: resolvedParams };
+    calls.push(...childModel.getDrawCalls(childCtx));
   }
 
   // Sort by depth and execute
@@ -86,7 +108,7 @@ export function renderModel(
   showGhostBody: boolean = false
 ): void {
   const skeleton = computeHumanoidSkeleton(dir as Direction, walkPhase);
-  const ctx = buildRenderContext(skeleton, palette);
+  const ctx = buildBaseContext(skeleton, palette);
 
   const calls: DrawCall[] = [];
 

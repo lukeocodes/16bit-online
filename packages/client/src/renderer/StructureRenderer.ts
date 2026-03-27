@@ -4,13 +4,13 @@
  * Each wall piece occupies exactly ONE tile position. No stacking.
  *
  * Wall types (one per tile):
- *   "wall_n"      — wall on the north/left face of the tile (NW edge of diamond)
- *   "wall_e"      — wall on the east/right face of the tile (NE edge of diamond)
+ *   "wall_left"      — wall on the north/left face of the tile (NW edge of diamond)
+ *   "wall_right"      — wall on the east/right face of the tile (NE edge of diamond)
  *   "wall_corner" — corner piece: both faces visible from this tile
- *   "wall_n_door" — north wall with door opening
- *   "wall_e_door" — east wall with door opening
- *   "wall_n_win"  — north wall with window
- *   "wall_e_win"  — east wall with window
+ *   "wall_left_door" — north wall with door opening
+ *   "wall_right_door" — east wall with door opening
+ *   "wall_left_win"  — north wall with window
+ *   "wall_right_win"  — east wall with window
  *
  * Materials: "stone" | "wood" | "plaster"
  */
@@ -24,7 +24,8 @@ const WALL_DEPTH = 3;       // Visual thickness of the top face
 export interface WallPiece {
   tileX: number;
   tileZ: number;
-  type: "wall_n" | "wall_e" | "wall_corner" | "wall_n_door" | "wall_e_door" | "wall_n_win" | "wall_e_win";
+  /** wall_left = \ edge panel; wall_right = / edge panel */
+  type: "wall_left" | "wall_right" | "wall_corner" | "wall_left_door" | "wall_right_door" | "wall_left_win" | "wall_right_win";
   material: "stone" | "wood" | "plaster";
 }
 
@@ -72,22 +73,22 @@ function buildPiece(wall: WallPiece): Container {
   const pal = PALETTES[wall.material] ?? PALETTES.stone;
   const t = wall.type;
 
-  if (t === "wall_n" || t === "wall_n_door" || t === "wall_n_win") {
-    faceN(c, pal, t);
-  } else if (t === "wall_e" || t === "wall_e_door" || t === "wall_e_win") {
-    faceE(c, pal, t);
+  if (t === "wall_left" || t === "wall_left_door" || t === "wall_left_win") {
+    faceLeft(c, pal, t);
+  } else if (t === "wall_right" || t === "wall_right_door" || t === "wall_right_win") {
+    faceRight(c, pal, t);
   } else if (t === "wall_corner") {
-    faceN(c, pal, "wall_n");
-    faceE(c, pal, "wall_e");
+    faceLeft(c, pal, "wall_left");
+    faceRight(c, pal, "wall_right");
   }
   return c;
 }
 
 /**
- * North (left) face — rises from the NW edge of the tile diamond.
- * Covers left half of the tile.
+ * Left face (\) — rises from the left edge of the diamond.
+ * The panel runs from the left-corner to the top-corner.
  */
-function faceN(c: Container, pal: typeof PALETTES.stone, type: string) {
+function faceLeft(c: Container, pal: typeof PALETTES.stone, type: string) {
   const g = new Graphics();
   const hw = TILE_WIDTH_HALF;   // 32
   const hh = TILE_HEIGHT_HALF;  // 16
@@ -119,10 +120,10 @@ function faceN(c: Container, pal: typeof PALETTES.stone, type: string) {
   g.stroke({ width: 1, color: pal.trim, alpha: 0.6 });
 
   // Brick/plank detail
-  addDetail(g, pal, "n");
+  addDetail(g, pal, "left");
 
   // Opening
-  if (type === "wall_n_door") {
+  if (type === "wall_left_door") {
     // Door: bottom of wall, 60% width, 75% height
     const dw = hw * 0.5, dh = WALL_H * 0.75;
     g.poly([
@@ -132,7 +133,7 @@ function faceN(c: Container, pal: typeof PALETTES.stone, type: string) {
       { x: -hw * 0.7,       y: -dh },
     ]);
     g.fill(0x1a1008);
-  } else if (type === "wall_n_win") {
+  } else if (type === "wall_left_win") {
     // Window: mid-height, 40% width
     const wx = -hw * 0.65, wy = -WALL_H * 0.35;
     g.poly([
@@ -149,9 +150,10 @@ function faceN(c: Container, pal: typeof PALETTES.stone, type: string) {
 
 /**
  * East (right) face — rises from the NE edge of the tile diamond.
- * Covers right half of the tile.
+ * Right face (/) — rises from the right edge of the diamond.
+ * The panel runs from the top-corner to the right-corner.
  */
-function faceE(c: Container, pal: typeof PALETTES.stone, type: string) {
+function faceRight(c: Container, pal: typeof PALETTES.stone, type: string) {
   const g = new Graphics();
   const hw = TILE_WIDTH_HALF;
   const hh = TILE_HEIGHT_HALF;
@@ -182,9 +184,9 @@ function faceE(c: Container, pal: typeof PALETTES.stone, type: string) {
   g.lineTo(0, -hh);
   g.stroke({ width: 1, color: pal.trim, alpha: 0.6 });
 
-  addDetail(g, pal, "e");
+  addDetail(g, pal, "right");
 
-  if (type === "wall_e_door") {
+  if (type === "wall_right_door") {
     const dw = hw * 0.5, dh = WALL_H * 0.75;
     g.poly([
       { x: hw * 0.3,       y: -hh * 0.3 + hh * 0.35 },
@@ -193,7 +195,7 @@ function faceE(c: Container, pal: typeof PALETTES.stone, type: string) {
       { x: hw * 0.3,       y: -hh * 0.3 + hh * 0.35 - dh },
     ]);
     g.fill(0x1a1008);
-  } else if (type === "wall_e_win") {
+  } else if (type === "wall_right_win") {
     const wx = hw * 0.3, wy = -WALL_H * 0.35;
     g.poly([
       { x: wx,             y: wy + hh * 0.25 },
@@ -207,13 +209,13 @@ function faceE(c: Container, pal: typeof PALETTES.stone, type: string) {
   c.addChild(g);
 }
 
-function addDetail(g: Graphics, pal: typeof PALETTES.stone, side: "n" | "e") {
+function addDetail(g: Graphics, pal: typeof PALETTES.stone, side: "left" | "right") {
   const hw = TILE_WIDTH_HALF, hh = TILE_HEIGHT_HALF;
   if (pal === PALETTES.stone) {
     // Horizontal mortar lines
     for (let i = 1; i <= 3; i++) {
       const y = -(WALL_H * i) / 4;
-      if (side === "n") {
+      if (side === "left") {
         g.moveTo(-hw, y); g.lineTo(0, y - hh);
       } else {
         g.moveTo(0, y - hh); g.lineTo(hw, y);
@@ -223,7 +225,7 @@ function addDetail(g: Graphics, pal: typeof PALETTES.stone, side: "n" | "e") {
   } else if (pal === PALETTES.wood) {
     // Vertical planks
     for (let i = 1; i <= 3; i++) {
-      if (side === "n") {
+      if (side === "left") {
         const x = -hw + (hw * i) / 4;
         const dx = (hh * i) / 4;
         g.moveTo(x, 0); g.lineTo(x, -WALL_H);
@@ -265,14 +267,14 @@ export function makeHouse(
   // +X goes screen lower-right, so this row faces the NE edge → wall_e
   for (let x = x0; x <= x1; x++) {
     const isDoor = doorWall === "n" && x === x0 + doorTile;
-    pieces.push({ tileX: x, tileZ: z0 - 1, material: mat, type: isDoor ? "wall_e_door" : "wall_e" });
+    pieces.push({ tileX: x, tileZ: z0 - 1, material: mat, type: isDoor ? "wall_right_door" : "wall_right" });
   }
 
   // South wall row: constant Z (z0+d), runs along X axis → wall_e
   for (let x = x0; x <= x1; x++) {
     const isDoor = doorWall === "s" && x === x0 + doorTile;
     const isWin = !isDoor && x % 2 === 1;
-    pieces.push({ tileX: x, tileZ: z0 + d, material: mat, type: isDoor ? "wall_e_door" : isWin ? "wall_e_win" : "wall_e" });
+    pieces.push({ tileX: x, tileZ: z0 + d, material: mat, type: isDoor ? "wall_right_door" : isWin ? "wall_right_win" : "wall_right" });
   }
 
   // West wall column: constant X (x0-1), runs along Z axis.
@@ -280,14 +282,14 @@ export function makeHouse(
   for (let z = z0; z <= z1; z++) {
     const isDoor = doorWall === "w" && z === z0 + Math.floor(d / 2);
     const isWin = !isDoor && z % 2 === 0;
-    pieces.push({ tileX: x0 - 1, tileZ: z, material: mat, type: isDoor ? "wall_n_door" : isWin ? "wall_n_win" : "wall_n" });
+    pieces.push({ tileX: x0 - 1, tileZ: z, material: mat, type: isDoor ? "wall_left_door" : isWin ? "wall_left_win" : "wall_left" });
   }
 
   // East wall column: constant X (x0+w), runs along Z axis → wall_n
   for (let z = z0; z <= z1; z++) {
     const isDoor = doorWall === "e" && z === z0 + Math.floor(d / 2);
     const isWin = !isDoor && z % 2 === 0;
-    pieces.push({ tileX: x0 + w, tileZ: z, material: mat, type: isDoor ? "wall_n_door" : isWin ? "wall_n_win" : "wall_n" });
+    pieces.push({ tileX: x0 + w, tileZ: z, material: mat, type: isDoor ? "wall_left_door" : isWin ? "wall_left_win" : "wall_left" });
   }
 
   // Four corners — each gets its own tile with a corner piece

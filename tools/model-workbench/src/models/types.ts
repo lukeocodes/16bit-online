@@ -27,12 +27,28 @@ export const ISO_OFFSETS: V[] = [
 
 // ─── Skeleton ───────────────────────────────────────────────────────
 
+/**
+ * Attachment parameters — define how a model placed at this connection point
+ * should be scaled, stretched, and positioned. Body models set these as
+ * defaults; composites can override them per-slot.
+ */
+export interface SlotParams {
+  /** Uniform scale multiplier (1 = native size). Dwarf head-top = 1.25, Elf = 0.85. */
+  size: number;
+  /** Axis-independent stretch. { x:1.25, y:1 } = 25% wider only. */
+  ratio: V;
+  /** Relative position offset in model-space units for fine-tuning placement. */
+  offset: V;
+}
+
 export interface AttachmentPoint {
   position: V;
   /** Angle in radians for attached model orientation */
   angle: number;
   /** Perspective width factor at this point */
   wf: number;
+  /** Default slot rendering parameters — equipment reads these to scale correctly */
+  params: SlotParams;
 }
 
 export interface Skeleton {
@@ -77,11 +93,21 @@ export interface RenderContext {
   farSide: "L" | "R";
   nearSide: "L" | "R";
   facingCamera: boolean;
-  /** Body width scale — equipment should multiply widths by this (e.g. Dwarf=1.25, Elf=0.85) */
-  bodyWidth: number;
-  /** Body height scale — equipment should multiply heights by this */
-  bodyHeight: number;
+  /**
+   * Resolved slot parameters for this model instance.
+   * Set by the composite renderer from the body's attachment point defaults,
+   * merged with any per-slot overrides in CompositeConfig.
+   * Equipment models use this for all scaling — never hardcode dimensions.
+   */
+  slotParams: SlotParams;
 }
+
+/** Convenience: neutral slot params (no scaling, no offset) */
+export const DEFAULT_SLOT_PARAMS: SlotParams = {
+  size: 1,
+  ratio: { x: 1, y: 1 },
+  offset: { x: 0, y: 0 },
+};
 
 // ─── Model ──────────────────────────────────────────────────────────
 
@@ -116,8 +142,6 @@ export interface Model {
   readonly name: string;
   readonly category: ModelCategory;
   readonly slot: AttachmentSlot;
-  /** Body proportions — only body models need to implement this */
-  getBodyScale?(): { width: number; height: number };
   getDrawCalls(ctx: RenderContext): DrawCall[];
   getAttachmentPoints(skeleton: Skeleton): Record<string, AttachmentPoint>;
 }
@@ -127,6 +151,8 @@ export interface Model {
 export interface CompositeSlot {
   slot: AttachmentSlot;
   modelId: string;
+  /** Per-slot overrides — merged on top of the body's attachment point defaults */
+  overrides?: Partial<SlotParams>;
 }
 
 export interface CompositeConfig {

@@ -81,10 +81,15 @@ export class DwarfBody implements Model {
     return calls;
   }
 
-  getBodyScale() { return { width: this.WIDE, height: 1 }; }
-
   getAttachmentPoints(skeleton: Skeleton): Record<string, AttachmentPoint> {
-    return skeleton.attachments;
+    // Stamp all attachment points with dwarf's proportions so equipment scales correctly
+    const W = this.WIDE;
+    return Object.fromEntries(
+      Object.entries(skeleton.attachments).map(([slot, pt]) => [
+        slot,
+        { ...pt, params: { size: W, ratio: { x: W, y: 1 }, offset: { x: 0, y: 0 } } },
+      ])
+    );
   }
 
   // ─── TORSO (barrel chest, wide) ─────────────────────────────────
