@@ -310,7 +310,7 @@ export class TiledMapRenderer {
         if (!sprite) {
           sprite = new Sprite(texture);
           // Anchor at center-top of the diamond portion
-          sprite.anchor.set(0.5, 32 / 48); // 32px is diamond center from top of 48px tile
+          sprite.anchor.set(0.5, 16 / 48); // 16px is diamond centre from top: diamond=0..32, sides=32..48
           this.container.addChild(sprite);
           this.tileSprites.set(key, sprite);
         } else if (sprite.texture !== texture) {
