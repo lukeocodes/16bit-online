@@ -105,7 +105,7 @@ export class WorkbenchStructureRenderer {
 
   loadWalls(pieces: WallPiece[]): void {
     for (const piece of pieces) {
-      const models = modelsForPiece(piece.type);
+      const models = modelsForPiece(piece);
       if (models.length === 0) continue;
 
       const elevation = piece.elevation ?? 0;
