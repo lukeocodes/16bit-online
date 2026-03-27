@@ -4,11 +4,11 @@ Read this file at the start of each conversation to understand where the project
 
 ## Current State (2026-03-27)
 
-**Status:** Feature-complete alpha. Full game loop: login → character select → 5 connected zones → combat (5 abilities) → loot → inventory/equipment → stat bonuses → procedural dungeons with bosses → structure rendering. All committed. Extensive perf optimization (binary protocol, delta broadcasts, zero-alloc iteration, zone-filtered spawns).
+**Status:** Feature-complete alpha + building system + 2-story buildings + stairs + grid alignment. All committed.
 
-**Renderer:** PixiJS v8 2D isometric (migrated from Babylon.js 3D). Migration complete and functional.
+**Renderer:** PixiJS v8 2D isometric. All grids now aligned: `worldToScreen` maps integer tile coords to tile centres (+TILE_HEIGHT_HALF to sy), tile sprite anchor fixed to 16/48 (diamond at top of 48px sprite).
 
-**World:** 256x256 hand-crafted Tiled map (starter.json) with 12 tile types, 12 spawn points, 1 safe zone. Falls back to procedural 900x900 terrain if Tiled map missing.
+**World:** 256x256 hand-crafted Tiled map (starter.json). Town House is a 2-story building with stairs. Map decorations removed (NPC spawns and buildings kept).
 
 **NPCs in world:** Rabbits (outside town), Goblin Grunts (further out), Skeleton Warriors/Archers (far southeast). Each has unique sprite shape.
 
@@ -133,12 +133,16 @@ Priority order (game designer perspective):
 10. ~~Dungeon instances~~ — DONE (8060fb8). Full loop: entrance on Crossroads → server gen → client renders → boss defeat → exit portal.
 11. **NPC aggro** — DONE (22c6b46). Hostile NPCs detect players within 8 tiles and auto-engage.
 12. ~~Quest system~~ — DONE (326f56d). 5 kill quests, quest UI (J key), XP rewards on turn-in, auto-accept on login. Full quest loop complete.
+13. ~~3D walls~~ — DONE (d04d42b+). Full redesign: outer face + inner face + top face with correct depth direction per wall orientation (flip system). Corner posts with L-shaped top cap. Windows transparent (4-section geometry). Doors transparent (frame only). WALL_H=78 (1.5x taller floors).
+14. ~~Stairs + second story~~ — DONE (5074d92+). makeHouse(floors=2) adds second floor walls, floor panels, stair_left piece. Player elevation updates as they cross stair tiles. Upper stories fade to 10% opacity when player is inside.
+15. ~~Grid alignment~~ — DONE (086067e+). worldToScreen now maps integer tile coords to tile centres (+TILE_HEIGHT_HALF to sy). Tile sprite anchor fixed 32/48→16/48. All grids (tiles, walls, player, cursor, items) aligned.
+16. ~~Map decorations removed~~ — DONE (87695d0). NPC spawns and buildings kept.
 
 ## Known Issues
-- Hover cursor position uses synthetic pointermove which doesn't work with Playwright (works with real mouse)
 - Audio tests have 21 pre-existing failures (Tone.js mocking)
 - Spawn point debug circles visible in dev mode (intentional)
-- Dungeon NPCs share spatial grid with overworld (minor — wastes CPU on awake checks if positions overlap)
+- Dungeon NPCs share spatial grid with overworld (minor)
+- Stair elevation formula gives 0.5×FLOOR_ELEVATION at stair tile centre (correct — halfway up)
 
 ## Performance Optimizations Applied
 - Binary protocol for DAMAGE/STATE/DEATH (90% bandwidth reduction)
