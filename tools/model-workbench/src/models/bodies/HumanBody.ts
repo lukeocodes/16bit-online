@@ -71,6 +71,8 @@ export class HumanBody implements Model {
     return calls;
   }
 
+  getBodyScale() { return { width: 1, height: 1 }; }
+
   getAttachmentPoints(skeleton: Skeleton): Record<string, AttachmentPoint> {
     return skeleton.attachments;
   }

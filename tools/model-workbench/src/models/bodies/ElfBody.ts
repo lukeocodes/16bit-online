@@ -82,6 +82,8 @@ export class ElfBody implements Model {
     return calls;
   }
 
+  getBodyScale() { return { width: this.SLIM, height: 1 }; }
+
   getAttachmentPoints(skeleton: Skeleton): Record<string, AttachmentPoint> {
     return skeleton.attachments;
   }

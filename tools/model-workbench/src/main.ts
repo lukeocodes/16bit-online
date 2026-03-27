@@ -190,8 +190,8 @@ async function main() {
   // ─── Render helpers ─────────────
 
   const CHECK_SIZE = 8;
-  const CHECK_LIGHT = 0x2a2a3e;
-  const CHECK_DARK = 0x222236;
+  const CHECK_LIGHT = 0xffffff;
+  const CHECK_DARK = 0xcccccc;
 
   function drawCheckerboard(g: Graphics, x: number, y: number, w: number, h: number): void {
     // Clip area fill first
@@ -266,8 +266,7 @@ async function main() {
         const cx = gridStartX + col * cellW;
         const cy = gridStartY + row * cellH;
         const isActive = dir === state.direction;
-        bgGfx.rect(cx + 2, cy + 2, cellW - 4, cellH - 4);
-        bgGfx.fill({ color: isActive ? 0x1a2a4e : 0x0d1b2a, alpha: isActive ? 0.8 : 0.4 });
+        drawCheckerboard(bgGfx, cx + 2, cy + 2, cellW - 4, cellH - 4);
         if (isActive) {
           bgGfx.rect(cx + 2, cy + 2, cellW - 4, cellH - 4);
           bgGfx.stroke({ width: 1, color: 0x53a8b6, alpha: 0.6 });
@@ -277,8 +276,7 @@ async function main() {
 
     for (let i = 0; i < WALK_FRAMES; i++) {
       const sx = PAD + i * (stripCellW + 4);
-      bgGfx.rect(sx, stripY, stripCellW, stripCellH + 4);
-      bgGfx.fill({ color: 0x0d1b2a, alpha: 0.4 });
+      drawCheckerboard(bgGfx, sx, stripY, stripCellW, stripCellH + 4);
     }
 
     // ─── Main preview ───────────

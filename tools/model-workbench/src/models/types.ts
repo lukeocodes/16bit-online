@@ -77,6 +77,10 @@ export interface RenderContext {
   farSide: "L" | "R";
   nearSide: "L" | "R";
   facingCamera: boolean;
+  /** Body width scale — equipment should multiply widths by this (e.g. Dwarf=1.25, Elf=0.85) */
+  bodyWidth: number;
+  /** Body height scale — equipment should multiply heights by this */
+  bodyHeight: number;
 }
 
 // ─── Model ──────────────────────────────────────────────────────────
@@ -112,6 +116,8 @@ export interface Model {
   readonly name: string;
   readonly category: ModelCategory;
   readonly slot: AttachmentSlot;
+  /** Body proportions — only body models need to implement this */
+  getBodyScale?(): { width: number; height: number };
   getDrawCalls(ctx: RenderContext): DrawCall[];
   getAttachmentPoints(skeleton: Skeleton): Record<string, AttachmentPoint>;
 }

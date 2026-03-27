@@ -129,7 +129,7 @@ Priority order (game designer perspective):
 6. ~~Performance pass (high pt2)~~ — DONE (7c9f527). Binary protocol for DAMAGE/STATE/DEATH (90% bandwidth reduction). Zone sharding deferred to architecture phase.
 7. ~~Equipment/inventory/loot~~ — DONE (f272ca1). Full loop: kill→loot→inventory (I key)→equip/unequip→use potions→stat bonuses in combat. Equipment damage/armor applied to melee + abilities.
 8. ~~More zones~~ — DONE (02e9ba9). All 5 zones live: Human Meadows, Elf Grove, Orc Wastes, Crossroads, Skeleton Wastes. Full zone network with exits connecting all zones.
-9. ~~Structure pieces~~ — DONE (1fe9cbe). 8 structure types (walls, houses, tower, well, market, gate). Parsed from Tiled objects, rendered as PixiJS composites. 8 structures placed in starter town.
+9. ~~Structure pieces~~ — DONE (33522a4). UO-style wall-piece system: individual wall segments (1 tile wide, thin, 1 story tall). N/E facing, stone/wood/plaster materials, wall/window/door variants. Buildings composed from many wall pieces. 5 buildings in starter town.
 10. ~~Dungeon instances~~ — DONE (8060fb8). Full loop: entrance on Crossroads → server gen → client renders → boss defeat → exit portal.
 11. **NPC aggro** — DONE (22c6b46). Hostile NPCs detect players within 8 tiles and auto-engage.
 12. ~~Quest system~~ — DONE (326f56d). 5 kill quests, quest UI (J key), XP rewards on turn-in, auto-accept on login. Full quest loop complete.

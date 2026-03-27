@@ -448,7 +448,7 @@ export class Game {
         // Load structures from map objects
         if (this.tiledMap.wallPieces.length > 0) {
           this.structureRenderer = new StructureRenderer();
-          this.structureRenderer.loadWalls(this.tiledMap.wallPieces as any);
+          this.structureRenderer.loadWalls(this.tiledMap.wallPieces);
           this.pixiApp.worldContainer.addChild(this.structureRenderer.container);
         }
 

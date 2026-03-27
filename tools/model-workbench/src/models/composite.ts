@@ -15,7 +15,9 @@ import { registry } from "./registry";
  */
 function buildRenderContext(
   skeleton: ReturnType<typeof computeHumanoidSkeleton>,
-  palette: ModelPalette
+  palette: ModelPalette,
+  bodyWidth: number = 1,
+  bodyHeight: number = 1
 ): RenderContext {
   const iso = skeleton.iso;
   const leftIsFar = iso.x >= 0;
@@ -25,6 +27,8 @@ function buildRenderContext(
     farSide: leftIsFar ? "L" : "R",
     nearSide: leftIsFar ? "R" : "L",
     facingCamera: iso.y > 0,
+    bodyWidth,
+    bodyHeight,
   };
 }
 
@@ -40,12 +44,15 @@ export function renderComposite(
   scale: number
 ): void {
   const skeleton = computeHumanoidSkeleton(dir as Direction, walkPhase, config.build ?? 1, config.height ?? 1);
-  const ctx = buildRenderContext(skeleton, config.palette);
+
+  // Read body proportions from the base model so equipment scales to match
+  const baseModel = registry.get(config.baseModelId);
+  const bodyScale = baseModel?.getBodyScale?.() ?? { width: 1, height: 1 };
+  const ctx = buildRenderContext(skeleton, config.palette, bodyScale.width, bodyScale.height);
 
   const calls: DrawCall[] = [];
 
   // Base model draw calls
-  const baseModel = registry.get(config.baseModelId);
   if (baseModel) {
     calls.push(...baseModel.getDrawCalls(ctx));
   }
