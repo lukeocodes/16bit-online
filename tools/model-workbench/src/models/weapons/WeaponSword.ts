@@ -19,7 +19,7 @@ export class WeaponSword implements Model {
       depth: facingCamera ? 57 : 23,
       draw: (g: Graphics, s: number) => {
         const hand = wrist;
-        const angle = armAngle;
+        const angle = armAngle + (facingCamera ? Math.PI / 2 : -Math.PI / 2);
         const len = 18;
         const ca = Math.cos(angle);
         const sa = Math.sin(angle);
