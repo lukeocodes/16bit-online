@@ -26,7 +26,7 @@ export class HairBraided implements Model {
     const hair = palette.hair;
     const hairDk = darken(hair, 0.15);
     const hairLt = lighten(hair, 0.1);
-    const r = 7;
+    const r = 7 * (ctx.bodyWidth ?? 1);
     const bob = skeleton.bob;
 
     const calls: DrawCall[] = [];

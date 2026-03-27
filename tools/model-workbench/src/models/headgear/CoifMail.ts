@@ -14,10 +14,10 @@ export class CoifMail implements Model {
   readonly slot = "head-top" as const;
 
   getDrawCalls(ctx: RenderContext): DrawCall[] {
-    const { skeleton, palette } = ctx;
+    const { skeleton, palette, bodyWidth } = ctx;
     const head = skeleton.joints.head;
     const wf = skeleton.wf;
-    const r = 7;
+    const r = 7 * (bodyWidth ?? 1);
 
     return [
       {

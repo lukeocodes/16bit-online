@@ -81,6 +81,8 @@ export class DwarfBody implements Model {
     return calls;
   }
 
+  getBodyScale() { return { width: this.WIDE, height: 1 }; }
+
   getAttachmentPoints(skeleton: Skeleton): Record<string, AttachmentPoint> {
     return skeleton.attachments;
   }

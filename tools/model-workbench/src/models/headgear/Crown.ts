@@ -22,7 +22,7 @@ export class Crown implements Model {
     const head = skeleton.joints.head;
     const wf = skeleton.wf;
     const iso = skeleton.iso;
-    const r = 7;
+    const r = 7 * (ctx.bodyWidth ?? 1);
 
     return [
       {

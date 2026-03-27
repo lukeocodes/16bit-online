@@ -261,31 +261,33 @@ export function makeHouse(
   const x1 = x0 + w - 1;  // last interior column
   const z1 = z0 + d - 1;  // last interior row
 
-  // North wall row: z0-1, x from x0 to x0+w-1
+  // North wall row: constant Z (z0-1), runs along X axis.
+  // +X goes screen lower-right, so this row faces the NE edge → wall_e
   for (let x = x0; x <= x1; x++) {
     const isDoor = doorWall === "n" && x === x0 + doorTile;
-    pieces.push({ tileX: x, tileZ: z0 - 1, material: mat, type: isDoor ? "wall_n_door" : "wall_n" });
+    pieces.push({ tileX: x, tileZ: z0 - 1, material: mat, type: isDoor ? "wall_e_door" : "wall_e" });
   }
 
-  // South wall row: z0+d, x from x0 to x0+w-1
+  // South wall row: constant Z (z0+d), runs along X axis → wall_e
   for (let x = x0; x <= x1; x++) {
     const isDoor = doorWall === "s" && x === x0 + doorTile;
     const isWin = !isDoor && x % 2 === 1;
-    pieces.push({ tileX: x, tileZ: z0 + d, material: mat, type: isDoor ? "wall_n_door" : isWin ? "wall_n_win" : "wall_n" });
+    pieces.push({ tileX: x, tileZ: z0 + d, material: mat, type: isDoor ? "wall_e_door" : isWin ? "wall_e_win" : "wall_e" });
   }
 
-  // West wall column: x0-1, z from z0 to z0+d-1
+  // West wall column: constant X (x0-1), runs along Z axis.
+  // +Z goes screen lower-left, so this column faces the NW edge → wall_n
   for (let z = z0; z <= z1; z++) {
     const isDoor = doorWall === "w" && z === z0 + Math.floor(d / 2);
     const isWin = !isDoor && z % 2 === 0;
-    pieces.push({ tileX: x0 - 1, tileZ: z, material: mat, type: isDoor ? "wall_e_door" : isWin ? "wall_e_win" : "wall_e" });
+    pieces.push({ tileX: x0 - 1, tileZ: z, material: mat, type: isDoor ? "wall_n_door" : isWin ? "wall_n_win" : "wall_n" });
   }
 
-  // East wall column: x0+w, z from z0 to z0+d-1
+  // East wall column: constant X (x0+w), runs along Z axis → wall_n
   for (let z = z0; z <= z1; z++) {
     const isDoor = doorWall === "e" && z === z0 + Math.floor(d / 2);
     const isWin = !isDoor && z % 2 === 0;
-    pieces.push({ tileX: x0 + w, tileZ: z, material: mat, type: isDoor ? "wall_e_door" : isWin ? "wall_e_win" : "wall_e" });
+    pieces.push({ tileX: x0 + w, tileZ: z, material: mat, type: isDoor ? "wall_n_door" : isWin ? "wall_n_win" : "wall_n" });
   }
 
   // Four corners — each gets its own tile with a corner piece
