@@ -74,6 +74,11 @@ class EntityStore {
     return Array.from(this.entities.values());
   }
 
+  /** Zero-alloc iterator over all entities */
+  *iterAll(): IterableIterator<ServerEntity> {
+    yield* this.entities.values();
+  }
+
   getByType(type: ServerEntity["entityType"]): ServerEntity[] {
     return this.getAll().filter(e => e.entityType === type);
   }

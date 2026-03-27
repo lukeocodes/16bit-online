@@ -12,7 +12,7 @@ Read this file at the start of each model workbench session. Update after signif
 - **Palette** — `computePalette(skin, hair, eyes, primary, secondary, armorType)` generates full color set from base colors + armor material.
 - **Attachment slots** — `root`, `head-top`, `hand-R`, `hand-L`, `torso`, `torso-back`, `legs`, `feet-L`, `feet-R`
 
-## Current State (2026-03-27, session 11)
+## Current State (2026-03-27, session 12)
 
 ### Workbench UI
 - [x] 3-panel layout: left nav (model browser), center (PixiJS canvas), right (config panel)
@@ -88,6 +88,10 @@ Read this file at the start of each model workbench session. Update after signif
 - [x] Oak Staff
 - [x] Crystal Wand
 - [x] Steel Dagger
+- [x] Crossbow — stock + prod arms + string + loaded bolt + trigger mechanism
+- [x] Iron Flail — handle + chain (5 links, walk-sway) + spiked ball (8 radial spikes)
+- [x] Halberd — long shaft + axe blade + back hook + top spike + langet straps + butt spike
+- [x] Throwing Knife — slim tapered blade + small crossguard + wrapped grip + ring pommel
 
 #### Off-hand
 - [x] Kite Shield
@@ -169,4 +173,5 @@ Priority for each session (tackle 1-2 items per run):
 18. ~~Game integration bridge~~ — DONE (GameBridge.ts + manifest.ts + manifest export button)
 19. ~~More boss variants~~ — DONE (Goblin Chieftain, Imp Overlord, Elder Bear)
 20. Wire GameBridge into actual game client EntityRenderer (requires game client changes)
-21. More weapon types (crossbow, flail, halberd, throwing knife)
+21. ~~More weapon types~~ — DONE (crossbow, flail, halberd, throwing knife)
+22. ~~UI polish~~ — DONE (fixed NPC label formatting, added model count to nav header)

@@ -44,9 +44,10 @@ class ConnectionManager {
   }
 
   broadcastReliable(data: string, exclude?: string) {
+    const buf = Buffer.from(data); // Allocate once, share across all sends
     for (const conn of this.connections.values()) {
       if (conn.entityId !== exclude && conn.reliableChannel?.readyState === "open") {
-        conn.reliableChannel.send(Buffer.from(data));
+        conn.reliableChannel.send(buf);
       }
     }
   }

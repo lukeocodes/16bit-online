@@ -427,10 +427,12 @@ export async function rtcRoutes(app: FastifyInstance) {
       reliableChannel.stateChanged.subscribe((state) => {
         console.log(`[WebRTC] reliable channel: ${state} for ${entityId}`);
         if (state === "open") {
-          const allEntities = entityStore.getAll();
-          console.log(`[WebRTC] Sending ${allEntities.length - 1} entities to ${entityId}`);
-          for (const other of allEntities) {
+          const self = entityStore.get(entityId);
+          const selfMapId = self?.mapId ?? 1;
+          let sentCount = 0;
+          for (const other of entityStore.iterAll()) {
             if (other.entityId === entityId) continue;
+            if (other.mapId !== selfMapId) continue; // Only same-zone entities
             const combat = getCombatState(other.entityId);
             const npc = getNpcTemplate(other.entityId);
             reliableChannel.send(Buffer.from(packEntitySpawn(
@@ -439,7 +441,9 @@ export async function rtcRoutes(app: FastifyInstance) {
               npc?.bodyColor ?? "#4466aa", npc?.skinColor ?? "#e8c4a0",
               npc?.weaponType ?? "melee",
             )));
+            sentCount++;
           }
+          console.log(`[WebRTC] Sent ${sentCount} entities (zone mapId=${selfMapId}) to ${entityId}`);
           // Send spawn points (for dev mode visualization)
           for (const sp of getAllSpawnPoints()) {
             reliableChannel.send(Buffer.from(packSpawnPoint(
