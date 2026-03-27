@@ -27,6 +27,8 @@ import { worldToScreen, TILE_WIDTH_HALF, TILE_HEIGHT_HALF } from "./IsometricRen
 const WALL_H    = 52;
 const WALL_DEPTH = 4;
 
+export const FLOOR_ELEVATION = WALL_H / 16; // = 3.25 — world units per storey
+
 // Base depth vectors (flip to reverse interior direction)
 const L_DX =  WALL_DEPTH, L_DY = WALL_DEPTH / 2;  // left-wall depth (+x world)
 const R_DX = -WALL_DEPTH, R_DY = WALL_DEPTH / 2;  // right-wall depth (-x world; for north wall flip gives +z→south)
@@ -39,8 +41,11 @@ export interface WallPiece {
   tileZ: number;
   type: "wall_left" | "wall_right" | "wall_corner"
       | "wall_left_door"  | "wall_right_door"
-      | "wall_left_win"   | "wall_right_win";
+      | "wall_left_win"   | "wall_right_win"
+      | "stair_left" | "stair_right" | "floor";
   material: "stone" | "wood" | "plaster";
+  /** Floor index: 0 = ground floor, 1 = second floor */
+  elevation?: number;
   /** Reverse the depth direction (east walls and south walls need this) */
   flip?:  boolean;
   /** For wall_corner: flip depth of left face (east-side corners) */
@@ -72,9 +77,10 @@ export class StructureRenderer {
     for (const w of walls) {
       const piece = buildPiece(w);
       if (!piece) continue;
-      const { sx, sy } = worldToScreen(w.tileX, w.tileZ, 0);
+      const elev = (w.elevation ?? 0) * FLOOR_ELEVATION;
+      const { sx, sy } = worldToScreen(w.tileX, w.tileZ, elev);
       piece.position.set(sx, sy);
-      piece.zIndex = (w.tileX + w.tileZ) * 10 + 3;
+      piece.zIndex = (w.tileX + w.tileZ) * 10 + (w.elevation ?? 0) * 1000 + 3;
       this.container.addChild(piece);
       this.pieces.push(piece);
     }
@@ -100,6 +106,9 @@ function buildPiece(w: WallPiece): Container {
       drawRight(c, pal, w.type, !!w.flip); break;
     case "wall_corner":
       drawCorner(c, pal, !!w.flipL, !!w.flipR); break;
+    case "stair_left":  drawStair(c, pal, "stair_left");  break;
+    case "stair_right": drawStair(c, pal, "stair_right"); break;
+    case "floor":       drawFloor(c, pal); break;
   }
   return c;
 }
@@ -271,6 +280,66 @@ function detail(g: Graphics, pal: Pal, side: "left" | "right") {
   }
 }
 
+// ─── Stairs ───────────────────────────────────────────────────────────────────
+
+function drawStair(c: Container, pal: Pal, type: "stair_left" | "stair_right") {
+  const g = new Graphics();
+  const N = 4;
+  const stepH = WALL_H / N; // 13px per step
+
+  for (let i = 0; i < N; i++) {
+    const t0 = i / N, t1 = (i + 1) / N;
+    const h0 = i * stepH, h1 = (i + 1) * stepH;
+
+    if (type === "stair_left") {
+      // Steps along NW diagonal, ascending from right/bottom to left/top
+      const x0 = -hw + hw * t0, y0 = -hh * t0;
+      const x1 = -hw + hw * t1, y1 = -hh * t1;
+
+      // Riser (front face of this step)
+      g.poly([{ x: x0, y: y0 - h0 }, { x: x1, y: y1 - h0 }, { x: x1, y: y1 - h1 }, { x: x0, y: y0 - h1 }]);
+      g.fill(pal.face);
+
+      // Tread (top horizontal surface at h1)
+      g.poly([{ x: x0, y: y0 - h1 }, { x: x1, y: y1 - h1 }, { x: x1 + L_DX, y: y1 - h1 + L_DY }, { x: x0 + L_DX, y: y0 - h1 + L_DY }]);
+      g.fill(pal.top);
+
+      // Outline
+      g.moveTo(x0, y0 - h0); g.lineTo(x1, y1 - h0); g.lineTo(x1, y1 - h1); g.lineTo(x0, y0 - h1); g.lineTo(x0, y0 - h0);
+      g.stroke({ width: 0.5, color: pal.trim, alpha: 0.7 });
+    } else {
+      // stair_right: steps along NE diagonal, ascending from left/bottom to right/top
+      const x0 = hw * t0, y0 = -hh * t0;
+      const x1 = hw * t1, y1 = -hh * t1;
+
+      // Riser (front face of this step)
+      g.poly([{ x: x0, y: y0 - h0 }, { x: x1, y: y1 - h0 }, { x: x1, y: y1 - h1 }, { x: x0, y: y0 - h1 }]);
+      g.fill(pal.side);
+
+      // Tread (top horizontal surface at h1)
+      g.poly([{ x: x0, y: y0 - h1 }, { x: x1, y: y1 - h1 }, { x: x1 + R_DX, y: y1 - h1 + R_DY }, { x: x0 + R_DX, y: y0 - h1 + R_DY }]);
+      g.fill(pal.top);
+
+      // Outline
+      g.moveTo(x0, y0 - h0); g.lineTo(x1, y1 - h0); g.lineTo(x1, y1 - h1); g.lineTo(x0, y0 - h1); g.lineTo(x0, y0 - h0);
+      g.stroke({ width: 0.5, color: pal.trim, alpha: 0.7 });
+    }
+  }
+  c.addChild(g);
+}
+
+// ─── Floor panel ──────────────────────────────────────────────────────────────
+
+function drawFloor(c: Container, pal: Pal) {
+  const g = new Graphics();
+  // Full tile diamond top surface
+  g.poly([{ x: -hw, y: 0 }, { x: 0, y: -hh }, { x: hw, y: 0 }, { x: 0, y: hh }]);
+  g.fill(pal.top);
+  g.moveTo(-hw, 0); g.lineTo(0, -hh); g.lineTo(hw, 0); g.lineTo(0, hh); g.lineTo(-hw, 0);
+  g.stroke({ width: 0.5, color: pal.trim, alpha: 0.3 });
+  c.addChild(g);
+}
+
 // ─── Building factory ─────────────────────────────────────────────────────────
 
 export function makeHouse(
@@ -279,6 +348,7 @@ export function makeHouse(
   mat: WallPiece["material"] = "stone",
   doorWall: "n" | "e" | "s" | "w" = "s",
   doorTile = Math.floor(w / 2),
+  floors: 1 | 2 = 1,
 ): WallPiece[] {
   const pieces: WallPiece[] = [];
   const x1 = x0 + w - 1;
@@ -320,6 +390,45 @@ export function makeHouse(
   pieces.push({ tileX: x0+w, tileZ: z0-1, material: mat, type: "wall_corner", flipL: true,  flipR: false }); // NE
   pieces.push({ tileX: x0-1, tileZ: z0+d, material: mat, type: "wall_corner", flipL: false, flipR: true  }); // SW
   pieces.push({ tileX: x0+w, tileZ: z0+d, material: mat, type: "wall_corner", flipL: true,  flipR: true  }); // SE
+
+  if (floors === 2) {
+    // Second-floor walls (no door, with windows, elevation=1)
+    // North wall
+    for (let x = x0; x <= x1; x++) {
+      const isWin = x % 2 === 1;
+      pieces.push({ tileX: x, tileZ: z0-1, material: mat, type: isWin ? "wall_right_win" : "wall_right", elevation: 1 });
+    }
+    // South wall
+    for (let x = x0; x <= x1; x++) {
+      const isWin = x % 2 === 1;
+      pieces.push({ tileX: x, tileZ: z0+d, material: mat, type: isWin ? "wall_right_win" : "wall_right", elevation: 1, flip: true });
+    }
+    // West wall
+    for (let z = z0; z <= z1; z++) {
+      const isWin = z % 2 === 0;
+      pieces.push({ tileX: x0-1, tileZ: z, material: mat, type: isWin ? "wall_left_win" : "wall_left", elevation: 1 });
+    }
+    // East wall
+    for (let z = z0; z <= z1; z++) {
+      const isWin = z % 2 === 0;
+      pieces.push({ tileX: x0+w, tileZ: z, material: mat, type: isWin ? "wall_left_win" : "wall_left", elevation: 1, flip: true });
+    }
+    // Second-floor corners
+    pieces.push({ tileX: x0-1, tileZ: z0-1, material: mat, type: "wall_corner", elevation: 1, flipL: false, flipR: false });
+    pieces.push({ tileX: x0+w, tileZ: z0-1, material: mat, type: "wall_corner", elevation: 1, flipL: true,  flipR: false });
+    pieces.push({ tileX: x0-1, tileZ: z0+d, material: mat, type: "wall_corner", elevation: 1, flipL: false, flipR: true  });
+    pieces.push({ tileX: x0+w, tileZ: z0+d, material: mat, type: "wall_corner", elevation: 1, flipL: true,  flipR: true  });
+
+    // Second-floor floor panels for every interior tile
+    for (let x = x0; x <= x1; x++) {
+      for (let z = z0; z <= z1; z++) {
+        pieces.push({ tileX: x, tileZ: z, material: mat, type: "floor", elevation: 1 });
+      }
+    }
+
+    // Stair at NW interior corner (x0, z0), ascending in +z direction
+    pieces.push({ tileX: x0, tileZ: z0, material: mat, type: "stair_left", elevation: 0 });
+  }
 
   return pieces;
 }

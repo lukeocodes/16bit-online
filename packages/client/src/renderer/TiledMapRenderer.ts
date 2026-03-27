@@ -114,6 +114,7 @@ export class TiledMapRenderer {
   public dungeonEntrances: Array<{ name: string; tileX: number; tileZ: number; tileWidth: number; tileHeight: number; difficulty: number; dungeonName: string }> = [];
   public wallPieces: WallPiece[] = [];
   private blockedByWall = new Set<string>(); // "x,z" tiles blocked by wall pieces
+  public stairTiles = new Map<string, { type: "stair_left" | "stair_right"; tileX: number; tileZ: number }>();
   public playerSpawn = { x: 32, z: 32 }; // default center
 
   private lastCenterX = -Infinity;
@@ -507,16 +508,29 @@ export class TiledMapRenderer {
         const type = (props.type as WallPiece["type"]) || "wall_left";
         const piece: WallPiece = { tileX, tileZ, type, material: (props.material as WallPiece["material"]) || "stone" };
         this.wallPieces.push(piece);
-        if (!type.includes("door")) this.blockedByWall.add(`${tileX},${tileZ}`);
+        if (!type.includes("door") && type !== "stair_left" && type !== "stair_right" && type !== "floor") {
+          this.blockedByWall.add(`${tileX},${tileZ}`);
+        }
+        if (type === "stair_left" || type === "stair_right") {
+          this.stairTiles.set(`${tileX},${tileZ}`, { type, tileX, tileZ });
+        }
       } else if (obj.type === "building") {
         const bw = (props.width as number) || 4;
         const bd = (props.depth as number) || 4;
         const mat = ((props.material as string) || "stone") as WallPiece["material"];
         const door = ((props.door as string) || "s") as "n" | "e" | "s" | "w";
-        const pieces = makeHouse(tileX, tileZ, bw, bd, mat, door);
+        const floors = (props.floors as number) || 1;
+        const pieces = makeHouse(tileX, tileZ, bw, bd, mat, door, undefined, floors as 1 | 2);
         this.wallPieces.push(...pieces);
         for (const p of pieces) {
-          if (!p.type.includes("door")) this.blockedByWall.add(`${p.tileX},${p.tileZ}`);
+          // Don't block stair tiles, floor tiles, or doors at any elevation
+          if (!p.type.includes("door") && p.type !== "stair_left" && p.type !== "stair_right" && p.type !== "floor") {
+            // Only block ground-floor walls in the movement system
+            if ((p.elevation ?? 0) === 0) this.blockedByWall.add(`${p.tileX},${p.tileZ}`);
+          }
+          if (p.type === "stair_left" || p.type === "stair_right") {
+            this.stairTiles.set(`${p.tileX},${p.tileZ}`, { type: p.type, tileX: p.tileX, tileZ: p.tileZ });
+          }
         }
       } else if (obj.type === "dungeon_entrance") {
         this.dungeonEntrances.push({

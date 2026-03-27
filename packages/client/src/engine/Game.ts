@@ -3,7 +3,7 @@ import { IsoCamera } from "../renderer/IsoCamera";
 import { EntityRenderer } from "../renderer/EntityRenderer";
 import { TerrainRenderer } from "../renderer/TerrainRenderer";
 import { TiledMapRenderer } from "../renderer/TiledMapRenderer";
-import { StructureRenderer } from "../renderer/StructureRenderer";
+import { StructureRenderer, FLOOR_ELEVATION } from "../renderer/StructureRenderer";
 import { screenToWorld, worldToScreen, TILE_WIDTH_HALF, TILE_HEIGHT_HALF } from "../renderer/IsometricRenderer";
 // EntitySpriteSheet removed — sprite art handled in separate session
 import { ParticleSystem } from "../renderer/ParticleSystem";
@@ -533,6 +533,7 @@ export class Game {
           this.camera.setTarget(pos.x, pos.y, pos.z);
           if (this.useTiledMap && this.tiledMap) {
             this.tiledMap.update(pos.x, pos.z);
+            this.updatePlayerFloorElevation(pos);
           } else {
             this.chunkManager.updatePlayerPosition(pos.x, pos.z);
             this.terrainRenderer.update(pos.x, pos.z);
@@ -1139,6 +1140,37 @@ export class Game {
 
   setCharacterName(name: string) {
     this.characterName = name;
+  }
+
+  private updatePlayerFloorElevation(pos: { x: number; y: number; z: number }): void {
+    const stairTiles = this.tiledMap?.stairTiles;
+    if (!stairTiles) return;
+
+    // Check if player is on a stair tile
+    for (const [, stair] of stairTiles) {
+      const dx = Math.abs(pos.x - stair.tileX);
+      const dz = Math.abs(pos.z - stair.tileZ);
+      if (dx < 0.6 && dz < 0.6) {
+        let newY: number;
+        if (stair.type === "stair_left") {
+          // Ascending as z increases
+          newY = (pos.z - (stair.tileZ - 0.5)) * FLOOR_ELEVATION;
+        } else {
+          // stair_right: ascending as x increases
+          newY = (pos.x - (stair.tileX - 0.5)) * FLOOR_ELEVATION;
+        }
+        pos.y = Math.max(0, Math.min(FLOOR_ELEVATION, newY));
+        return;
+      }
+    }
+
+    // Not on a stair — snap to nearest floor with hysteresis
+    if (pos.y > FLOOR_ELEVATION * 0.8) {
+      pos.y = FLOOR_ELEVATION;
+    } else if (pos.y < FLOOR_ELEVATION * 0.2) {
+      pos.y = 0;
+    }
+    // If in between (on stairs recently), leave pos.y as-is
   }
 
   private createLocalPlayer(characterId: string) {
