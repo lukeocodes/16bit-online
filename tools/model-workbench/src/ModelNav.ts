@@ -1,12 +1,14 @@
 import type { WorkbenchState, WorkbenchAPI } from "./WorkbenchAPI";
 import { registry } from "./models/registry";
 
-const CATEGORY_ORDER = ["body", "hair", "headgear", "armor", "legs", "feet", "weapon", "offhand", "npc"];
+const CATEGORY_ORDER = ["body", "hair", "headgear", "shoulders", "armor", "gauntlets", "legs", "feet", "weapon", "offhand", "npc"];
 const CATEGORY_LABELS: Record<string, string> = {
   body: "Bodies",
   hair: "Hair",
   headgear: "Headgear",
+  shoulders: "Shoulders",
   armor: "Armor",
+  gauntlets: "Gauntlets",
   legs: "Leg Armor",
   feet: "Boots",
   weapon: "Weapons",

@@ -309,7 +309,8 @@ export class TiledMapRenderer {
     }
     for (const [key, deco] of this.decoSprites) {
       if (!visibleKeys.has(key)) {
-        deco.visible = false;
+        deco.destroy();
+        this.decoSprites.delete(key);
       }
     }
   }

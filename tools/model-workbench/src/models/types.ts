@@ -90,6 +90,8 @@ export type ModelCategory =
   | "headgear"
   | "legs"
   | "feet"
+  | "shoulders"
+  | "gauntlets"
   | "npc";
 
 export type AttachmentSlot =
@@ -99,6 +101,8 @@ export type AttachmentSlot =
   | "head-top"
   | "torso"
   | "torso-back"
+  | "shoulders"
+  | "gauntlets"
   | "legs"
   | "feet-L"
   | "feet-R";

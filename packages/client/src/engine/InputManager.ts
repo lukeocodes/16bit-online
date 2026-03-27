@@ -33,6 +33,7 @@ export class InputManager {
   private onToggleAutoAttack: (() => void) | null = null;
   private onTabTarget: (() => void) | null = null;
   private onAbilityUse: ((slot: number) => void) | null = null;
+  private onToggleInventory: (() => void) | null = null;
   private mouseX = 0;
   private mouseY = 0;
 
@@ -99,6 +100,10 @@ export class InputManager {
     this.onAbilityUse = handler;
   }
 
+  setOnToggleInventory(handler: () => void) {
+    this.onToggleInventory = handler;
+  }
+
   getMousePosition(): { x: number; y: number } {
     return { x: this.mouseX, y: this.mouseY };
   }
@@ -124,6 +129,12 @@ export class InputManager {
     if (pressed && e.code >= "Digit2" && e.code <= "Digit6") {
       const slot = parseInt(e.code.charAt(5)) - 1; // 2→1, 3→2, etc.
       if (this.onAbilityUse) this.onAbilityUse(slot);
+      return;
+    }
+
+    // I key toggles inventory
+    if (e.code === "KeyI" && pressed) {
+      if (this.onToggleInventory) this.onToggleInventory();
       return;
     }
 

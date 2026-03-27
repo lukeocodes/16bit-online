@@ -99,6 +99,22 @@ export function computeHumanoidSkeleton(
       angle: Math.PI,
       wf,
     },
+    shoulders: {
+      position: {
+        x: (joints.shoulderL.x + joints.shoulderR.x) / 2,
+        y: (joints.shoulderL.y + joints.shoulderR.y) / 2,
+      },
+      angle: 0,
+      wf,
+    },
+    gauntlets: {
+      position: {
+        x: (joints.elbowL.x + joints.elbowR.x) / 2,
+        y: (joints.elbowL.y + joints.elbowR.y) / 2,
+      },
+      angle: 0,
+      wf,
+    },
     legs: {
       position: {
         x: (joints.hipL.x + joints.hipR.x) / 2,

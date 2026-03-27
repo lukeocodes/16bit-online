@@ -114,6 +114,8 @@ export function rollAndGiveLoot(killerEntityId: string, npcEntityId: string): vo
   if (lootItems.length > 0) {
     connectionManager.sendReliable(killerEntityId,
       packReliable(Opcode.LOOT_DROP, { items: lootItems }));
+    // Also send full inventory sync so UI panel updates
+    sendInventory(killerEntityId);
   }
 }
 

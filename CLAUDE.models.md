@@ -12,7 +12,7 @@ Read this file at the start of each model workbench session. Update after signif
 - **Palette** — `computePalette(skin, hair, eyes, primary, secondary, armorType)` generates full color set from base colors + armor material.
 - **Attachment slots** — `root`, `head-top`, `hand-R`, `hand-L`, `torso`, `torso-back`, `legs`, `feet-L`, `feet-R`
 
-## Current State (2026-03-27, session 2)
+## Current State (2026-03-27, session 3)
 
 ### Workbench UI
 - [x] 3-panel layout: left nav (model browser), center (PixiJS canvas), right (config panel)
@@ -45,11 +45,23 @@ Read this file at the start of each model workbench session. Update after signif
 - [x] Plate helmet
 - [x] Mail coif
 
-#### Armor (torso only)
+#### Armor — Torso
 - [x] Cloth robe
 - [x] Leather vest
 - [x] Mail hauberk
 - [x] Plate cuirass
+
+#### Armor — Legs
+- [x] Cloth Trousers — loose flowing, hem at ankle, waist sash
+- [x] Leather Leggings — fitted with knee pads, rivets, stitching detail
+- [x] Mail Chausses — chain ring pattern, metal knee cop, mail skirt waist
+- [x] Plate Greaves — full plate cuisses + greaves, articulated knee cop, tasset plates, shin ridge
+
+#### Armor — Boots
+- [x] Cloth Wraps — ankle wraps, cross-bands
+- [x] Leather Boots — mid-calf shaft, buckle strap, fold top, thick sole
+- [x] Mail Sabatons — chain ring pattern, metal top rim, shorter shaft
+- [x] Plate Sabatons — armored shin guard, articulated toe plates, top flare, thick sole
 
 #### Weapons
 - [x] Iron Sword
@@ -81,8 +93,8 @@ Read this file at the start of each model workbench session. Update after signif
 - [ ] Bald (placeholder/none)
 
 #### Armor pieces beyond torso (MEDIUM)
-- [ ] Leg armor (cloth/leather/mail/plate)
-- [ ] Boot armor (cloth/leather/mail/plate)
+- [x] Leg armor (cloth/leather/mail/plate) — DONE
+- [x] Boot armor (cloth/leather/mail/plate) — DONE
 - [ ] Gauntlet armor (cloth/leather/mail/plate)
 - [ ] Shoulder armor (cloth/leather/mail/plate)
 
@@ -106,17 +118,18 @@ Read this file at the start of each model workbench session. Update after signif
 - [ ] Bear — large four-legged
 - [ ] Boss variants (King Rabbit, Skeleton Lord, etc.)
 
-### Legacy Files (can be deleted)
-- `src/CharacterModel.ts` — old monolithic character renderer, replaced by model registry
-- `src/Controls.ts` — old control panel, replaced by ConfigPanel.ts
+### Legacy Files
+- ~~`src/CharacterModel.ts`~~ — DELETED
+- ~~`src/Controls.ts`~~ — DELETED
 
 ## What to Work on Next
 Priority for each session (tackle 1-2 items per run):
 1. ~~Elf + Dwarf body models~~ — DONE
 2. ~~More hair styles (5 total)~~ — DONE
 3. ~~NPC body models (skeleton, goblin, rabbit)~~ — DONE
-4. Armor leg/boot pieces (enables full armor sets)
-5. More NPC models (imp, ogre, wraith, wolf, bear)
-6. Additional offhand items (tower shield, buckler, tome, torch)
-7. Armor race variants (dragon, skeleton, ogre, elven)
-8. Clean up legacy files (CharacterModel.ts, Controls.ts)
+4. ~~Armor leg/boot pieces~~ — DONE (8 models: 4 legs + 4 boots)
+5. ~~Clean up legacy files~~ — DONE (CharacterModel.ts, Controls.ts deleted)
+6. Gauntlet + shoulder armor (completes full armor sets)
+7. More NPC models (imp, ogre, wraith, wolf, bear)
+8. Additional offhand items (tower shield, buckler, tome, torch)
+9. Armor race variants (dragon, skeleton, ogre, elven)

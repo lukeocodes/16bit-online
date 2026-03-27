@@ -8,10 +8,12 @@ import type { Direction } from "./models/types";
 /** Maps attachment slots to compatible model categories */
 const SLOT_CATEGORIES: Record<string, string[]> = {
   "head-top": ["hair", "headgear"],
+  shoulders: ["shoulders"],
   "hand-R": ["weapon"],
   "hand-L": ["offhand"],
   torso: ["armor"],
   "torso-back": [],
+  gauntlets: ["gauntlets"],
   legs: ["legs"],
   "feet-L": ["feet"],
   "feet-R": [],
@@ -19,10 +21,12 @@ const SLOT_CATEGORIES: Record<string, string[]> = {
 
 const SLOT_LABELS: Record<string, string> = {
   "head-top": "Head",
+  shoulders: "Shoulders",
   "hand-R": "Weapon",
   "hand-L": "Off-hand",
   torso: "Armor",
   "torso-back": "Back",
+  gauntlets: "Gauntlets",
   legs: "Legs",
   "feet-L": "Boots",
   "feet-R": "Boots",

@@ -265,9 +265,7 @@ export class Game {
     });
 
     this.stateSync.setOnInventorySync((items) => {
-      // Store inventory for UI (TODO: inventory panel)
-      (this as any)._inventory = items;
-      console.log(`[Game] Inventory synced: ${items.length} items`);
+      if (this.hud) this.hud.inventory.updateItems(items);
     });
 
     this.stateSync.setOnChat((senderId, senderName, text) => {
@@ -351,6 +349,7 @@ export class Game {
     this.input.setOnToggleAutoAttack(() => this.handleToggleAutoAttack());
     this.input.setOnTabTarget(() => this.cycleTarget());
     this.input.setOnAbilityUse((slot) => this.handleAbilityUse(slot));
+    this.input.setOnToggleInventory(() => this.hud?.inventory.toggle());
 
     // Scroll wheel zoom
     this.canvas.addEventListener("wheel", (e) => {
