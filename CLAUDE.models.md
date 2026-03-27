@@ -12,7 +12,7 @@ Read this file at the start of each model workbench session. Update after signif
 - **Palette** — `computePalette(skin, hair, eyes, primary, secondary, armorType)` generates full color set from base colors + armor material.
 - **Attachment slots** — `root`, `head-top`, `hand-R`, `hand-L`, `torso`, `torso-back`, `legs`, `feet-L`, `feet-R`
 
-## Current State (2026-03-27, session 6)
+## Current State (2026-03-27, session 7)
 
 ### Workbench UI
 - [x] 3-panel layout: left nav (model browser), center (PixiJS canvas), right (config panel)
@@ -129,9 +129,9 @@ Read this file at the start of each model workbench session. Update after signif
 #### NPC/Monster models (MEDIUM)
 - [x] Imp — DONE. Dark red body, bat wings with flap animation, curved horns, glowing yellow slit-pupil eyes, arrow-tipped tail with sway, fangs. Can hold weapons.
 - [x] Ogre — DONE. Massive grey-green body (1.5x width), barrel torso, tree-trunk limbs, heavy brow, tusks, warts, beady eyes. Can hold weapons.
-- [ ] Wraith — ethereal, translucent
+- [x] Wraith — DONE. Ethereal hooded figure, translucent dark robe fading into tattered wisps, glowing cyan eyes with halo, trailing shadow tendrils, hovering float animation, spectral arms, ground mist. Can hold weapons.
 - [x] Wolf — DONE. Four-legged grey predator, snout, pointed ears, amber eyes, bushy tail with sway, shoulder hump, trotting gait. No weapon slots.
-- [ ] Bear — large four-legged
+- [x] Bear — DONE. Large brown four-legged, shoulder hump, lighter muzzle, rounded ears, black nose, dark eyes, thick clawed legs, stubby tail, lumbering gait with body roll. No weapon slots.
 - [ ] Boss variants (King Rabbit, Skeleton Lord, etc.)
 
 ### Legacy Files
@@ -150,5 +150,6 @@ Priority for each session (tackle 1-2 items per run):
 8. ~~Auto-equip matching armor set~~ — DONE (clicking armor type equips full set: head, shoulders, torso, gauntlets, legs, boots)
 9. ~~Additional offhand items~~ — DONE (tower shield, buckler, tome, torch)
 10. ~~Ogre NPC~~ — DONE
-11. Remaining NPC models (wraith, bear, boss variants)
-12. Armor race variants (dragon, skeleton, ogre, elven)
+11. ~~Wraith + Bear NPCs~~ — DONE
+12. Boss variants (King Rabbit, Skeleton Lord, etc.)
+13. Armor race variants (dragon, skeleton, ogre, elven)

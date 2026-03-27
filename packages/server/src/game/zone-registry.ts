@@ -94,17 +94,17 @@ registerZone({
   },
 });
 
-// Crossroads — all races converge here at level 5
-// registerZone({
-//   id: "crossroads",
-//   name: "The Crossroads",
-//   mapFile: "crossroads.json",
-//   levelRange: [5, 10],
-//   musicTag: "exploring",
-//   exits: {
-//     "exit-to-human": { targetZone: "human-meadows", spawnX: 236, spawnZ: 128 },
-//     "exit-to-elf": { targetZone: "elf-grove", spawnX: 128, spawnZ: 236 },
-//     "exit-to-orc": { targetZone: "orc-wastes", spawnX: 20, spawnZ: 128 },
-//     "exit-to-depths": { targetZone: "shadow-depths", spawnX: 128, spawnZ: 20 },
-//   },
-// });
+// Crossroads — all races converge here at level 5-10
+registerZone({
+  id: "crossroads",
+  name: "The Crossroads",
+  mapFile: "crossroads.json",
+  levelRange: [5, 10],
+  musicTag: "exploring",
+  exits: {
+    "exit-to-human": { targetZone: "human-meadows", spawnX: 240, spawnZ: 128 },
+    "exit-to-elf": { targetZone: "elf-grove", spawnX: 128, spawnZ: 240 },
+    "exit-to-orc": { targetZone: "orc-wastes", spawnX: 20, spawnZ: 128 },
+    "exit-to-wastes": { targetZone: "skeleton-wastes", spawnX: 128, spawnZ: 20 },
+  },
+});
