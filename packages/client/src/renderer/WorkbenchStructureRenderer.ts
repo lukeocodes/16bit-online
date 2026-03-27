@@ -8,6 +8,8 @@ import { worldToScreen, TILE_WIDTH_HALF, TILE_HEIGHT_HALF } from "./IsometricRen
 /**
  * WorkbenchStructureRenderer — replaces StructureRenderer with workbench wall sprites.
  *
+ * Canonical orientation: W=North, S=South, A=West, D=East.
+ *
  * Scale correction: workbench wall models use T=22, H2=11 as their tile dimensions.
  * The game tile is TILE_WIDTH_HALF=32, TILE_HEIGHT_HALF=16. We scale models by
  * TILE_SCALE = 32/22 so wall faces align exactly with tile diamond edges.
@@ -48,19 +50,18 @@ const MATERIAL_PRIMARY: Record<string, number> = {
 /**
  * Map a WallPiece to one or two workbench model IDs.
  *
- * Each building face has its own dedicated workbench model — no flip/transform needed.
- * flip/flipL/flipR just selects which named model to use.
+ * Canonical orientation: W=North, S=South, A=West, D=East.
  *
- *   wall_left  no flip = west  wall → wall-w
- *   wall_left  flip    = east  wall → wall-e
- *   wall_right no flip = north wall → wall-n
- *   wall_right flip    = south wall → wall-s
+ *   wall_left  no flip = west  wall (A-side) → wall-n
+ *   wall_left  flip    = east  wall (D-side) → wall-s
+ *   wall_right no flip = north wall (W-side) → wall-e
+ *   wall_right flip    = south wall (S-side) → wall-w
  *
  * Corners pair the two adjacent faces:
- *   NW (flipL=F, flipR=F): west  + north → wall-w + wall-n
- *   NE (flipL=T, flipR=F): east  + north → wall-e + wall-n
- *   SW (flipL=F, flipR=T): west  + south → wall-w + wall-s
- *   SE (flipL=T, flipR=T): east  + south → wall-e + wall-s
+ *   NW (flipL=F, flipR=F): west  + north → wall-n + wall-e
+ *   NE (flipL=T, flipR=F): east  + north → wall-s + wall-e
+ *   SW (flipL=F, flipR=T): west  + south → wall-n + wall-w
+ *   SE (flipL=T, flipR=T): east  + south → wall-s + wall-w
  */
 function modelsForPiece(piece: WallPiece): string[] {
   const { type, flip, flipL, flipR } = piece;
@@ -68,14 +69,14 @@ function modelsForPiece(piece: WallPiece): string[] {
     case "wall_left":
     case "wall_left_door":
     case "wall_left_win":
-      return flip ? ["wall-e"] : ["wall-w"];
+      return flip ? ["wall-s"] : ["wall-n"];
     case "wall_right":
     case "wall_right_door":
     case "wall_right_win":
-      return flip ? ["wall-s"] : ["wall-n"];
+      return flip ? ["wall-w"] : ["wall-e"];
     case "wall_corner": {
-      const leftFace  = flipL ? "wall-e" : "wall-w";
-      const rightFace = flipR ? "wall-s" : "wall-n";
+      const leftFace  = flipL ? "wall-s" : "wall-n";
+      const rightFace = flipR ? "wall-w" : "wall-e";
       return [leftFace, rightFace];
     }
     case "floor":

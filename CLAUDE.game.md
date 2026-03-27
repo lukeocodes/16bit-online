@@ -43,7 +43,7 @@ Read this file at the start of each conversation to understand where the project
 - Right-click empty ground also pathfinds (same as left-click)
 - Green diamond marker shows pathfinding destination
 - WASD cancels pathfinding and follow
-- **Isometric WASD** — W=up-left, D=up-right, S=down-right, A=down-left (screen-relative, not world-axis)
+- **Isometric WASD** — W=North, S=South, A=West, D=East (canonical compass; on screen W appears upper-left, D lower-right)
 - Smooth camera follow with dt-scaled exponential decay (`IsoCamera.ts`)
 - Input processing at render rate (60fps) vs network at tick rate (20Hz)
 - Diagonal movement normalization (1/sqrt(2) speed fix)

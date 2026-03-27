@@ -2,7 +2,8 @@
  * Structure Renderer — 3D wall pieces and corner posts.
  *
  * COORDINATE SYSTEM:
- *   Tile anchor at (0,0). NW face runs from (-hw,0)→(0,-hh). NE face from (0,-hh)→(hw,0).
+ *   Canonical: W=North, S=South, A=West, D=East.
+ *   Tile anchor at (0,0). Left face runs from (-hw,0)→(0,-hh). Right face from (0,-hh)→(hw,0).
  *   "Depth" = how far the inner face sits behind the outer face (in screen px).
  *
  * DEPTH DIRECTIONS (screen space, per wall orientation):
