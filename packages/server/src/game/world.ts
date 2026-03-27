@@ -12,6 +12,9 @@ import { xpForKill, processXpGain, xpToNextLevel, totalXpForLevel } from "./expe
 import { rollAndGiveLoot } from "./inventory.js";
 import { onDungeonNpcDeath } from "./dungeon.js";
 import { config } from "../config.js";
+import { db } from "../db/postgres.js";
+import { characters } from "../db/schema.js";
+import { eq } from "drizzle-orm";
 
 /**
  * Handle a kill event — awards XP, broadcasts death, schedules respawn.
@@ -36,6 +39,7 @@ export function handleKill(killerId: string, deadEntityId: string) {
       const result = processXpGain(prog.xp, xpGained, prog.level);
       prog.xp = result.newXp;
       prog.level = result.newLevel;
+      prog.dirty = true;
 
       const xpNeeded = xpToNextLevel(prog.level);
       const xpIntoLevel = prog.xp - totalXpForLevel(prog.level);
@@ -93,20 +97,23 @@ const STATE_BROADCAST_INTERVAL = 500;
 let timer: ReturnType<typeof setInterval> | null = null;
 let stateBroadcastAccum = 0;
 let tickCounter = 0;
+const PROGRESS_SAVE_INTERVAL = 600; // 30s at 20Hz
+let progressSaveCounter = 0;
 
 // Track per-player enemy-nearby state (playerId -> wasNearby)
 const enemyNearbyState = new Map<string, boolean>();
 
-// In-memory player XP/level state (synced to DB on disconnect)
+// In-memory player XP/level state (synced to DB on disconnect + every 30s)
 interface PlayerProgress {
   xp: number;
   level: number;
   characterId: string;
+  dirty: boolean; // true if changed since last DB save
 }
 const playerProgress = new Map<string, PlayerProgress>();
 
 export function initPlayerProgress(entityId: string, characterId: string, xp: number, level: number) {
-  playerProgress.set(entityId, { xp, level, characterId });
+  playerProgress.set(entityId, { xp, level, characterId, dirty: false });
 }
 
 export function getPlayerProgress(entityId: string): PlayerProgress | undefined {
@@ -195,6 +202,22 @@ function gameTick() {
 
   // Position broadcast
   broadcastPositions();
+
+  // Periodic progress save to DB (every 30s)
+  progressSaveCounter++;
+  if (progressSaveCounter >= PROGRESS_SAVE_INTERVAL) {
+    progressSaveCounter = 0;
+    for (const [entityId, prog] of playerProgress) {
+      if (!prog.dirty) continue;
+      prog.dirty = false;
+      const entity = entityStore.get(entityId);
+      if (!entity) continue;
+      db.update(characters)
+        .set({ xp: prog.xp, level: prog.level, posX: entity.x, posY: entity.y, posZ: entity.z })
+        .where(eq(characters.id, prog.characterId))
+        .catch(err => console.error(`[DB] Periodic save failed for ${entityId}:`, err));
+    }
+  }
 }
 
 function checkEnemyProximity() {

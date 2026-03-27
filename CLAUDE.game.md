@@ -4,7 +4,7 @@ Read this file at the start of each conversation to understand where the project
 
 ## Current State (2026-03-27)
 
-**Status:** Playable alpha with polish. Full game loop works: login -> character select -> world -> combat -> XP -> leveling. Click-to-move, NPC-specific sprites, terrain decorations, walk animations. ~60+ files uncommitted on top of phase 3 completion.
+**Status:** Feature-complete alpha. Full game loop: login → character select → 5 connected zones → combat (5 abilities) → loot → inventory/equipment → stat bonuses → procedural dungeons with bosses → structure rendering. All committed. Extensive perf optimization (binary protocol, delta broadcasts, zero-alloc iteration, zone-filtered spawns).
 
 **Renderer:** PixiJS v8 2D isometric (migrated from Babylon.js 3D). Migration complete and functional.
 
