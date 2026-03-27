@@ -322,24 +322,6 @@ export class TiledMapRenderer {
         sprite.zIndex = (tx + tz) * 10;
         sprite.visible = true;
 
-        // Decorations — place on certain tile types with seeded probability
-        if (!outOfBounds && !this.decoSprites.has(key)) {
-          const tileName = this.tileNames.get(gid);
-          const hash = ((tx * 73856093) ^ (tz * 19349663)) >>> 0;
-          const prob = (hash % 1000) / 1000;
-          const deco = this.createDecoration(tileName, prob, hash);
-          if (deco) {
-            // Offset within tile for variety
-            const offX = ((hash >> 8) % 20) - 10;
-            const offY = ((hash >> 16) % 10) - 5;
-            deco.position.set(sx + offX, sy + offY - 8);
-            deco.zIndex = (tx + tz) * 10 + 5; // Above tile, below entities
-            this.container.addChild(deco);
-            this.decoSprites.set(key, deco);
-          }
-        }
-        const deco = this.decoSprites.get(key);
-        if (deco) deco.visible = true;
       }
     }
 
