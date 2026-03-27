@@ -127,4 +127,8 @@ export interface CompositeConfig {
   baseModelId: string;
   attachments: CompositeSlot[];
   palette: ModelPalette;
+  /** Body width multiplier (0.7 = slim, 1.0 = normal, 1.3 = heavy) */
+  build: number;
+  /** Body height multiplier (0.85 = short, 1.0 = normal, 1.15 = tall) */
+  height: number;
 }

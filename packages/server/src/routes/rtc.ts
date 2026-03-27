@@ -16,7 +16,8 @@ import { getServerNoisePerm, getCachedWorldMapGzip, getWorldMap } from "../world
 import { getOrGenerateChunkHeights } from "../world/chunk-cache.js";
 import { generateTileHeight, CONTINENTAL_SCALE } from "../world/terrain-noise.js";
 import { isInTiledMap } from "../world/tiled-map.js";
-import { initPlayerProgress, removePlayerProgress, handleKill } from "../game/world.js";
+import { initPlayerProgress, removePlayerProgress, handleKill, getPlayerProgress } from "../game/world.js";
+import { createDungeonInstance, getDungeonMapData, getPlayerDungeon, cleanupPlayerDungeon } from "../game/dungeon.js";
 import { loadInventory, saveInventory, sendInventory, equipItem, unequipItem, useItem, getEquippedBonuses } from "../game/inventory.js";
 import { db } from "../db/postgres.js";
 import { characters } from "../db/schema.js";
@@ -324,6 +325,52 @@ export async function rtcRoutes(app: FastifyInstance) {
                 packBinaryState(entityId, selfCombat.hp, selfCombat.maxHp), entityId);
             }
           }
+        } else if (parsed.op === Opcode.DUNGEON_ENTER) {
+          // Create a dungeon instance for this player
+          const playerProgress = getPlayerProgress(entityId);
+          const difficulty = Math.min(3, Math.floor((playerProgress?.level ?? 1) / 3) + 1);
+          const instance = createDungeonInstance(entityId, difficulty);
+          const mapData = getDungeonMapData(instance.instanceId);
+          if (!mapData) return;
+
+          // Move entity to dungeon
+          entity.mapId = instance.mapId;
+          entity.x = mapData.spawnX;
+          entity.z = mapData.spawnZ;
+
+          // Send dungeon map to client
+          if (reliableChannel.readyState === "open") {
+            reliableChannel.send(packReliable(Opcode.DUNGEON_MAP, {
+              instanceId: instance.instanceId,
+              width: mapData.width,
+              height: mapData.height,
+              ground: mapData.ground,
+              collision: mapData.collision,
+              spawnX: mapData.spawnX,
+              spawnZ: mapData.spawnZ,
+            }));
+          }
+          console.log(`[Dungeon] Player ${entity.name} entered dungeon (difficulty ${difficulty})`);
+        } else if (parsed.op === Opcode.DUNGEON_EXIT) {
+          // Return player to their previous zone
+          const dungeon = getPlayerDungeon(entityId);
+          if (dungeon) {
+            cleanupPlayerDungeon(entityId);
+            // Return to crossroads
+            entity.mapId = 1;
+            entity.x = 128;
+            entity.z = 128;
+            if (reliableChannel.readyState === "open") {
+              reliableChannel.send(packReliable(Opcode.ZONE_CHANGE, {
+                zoneId: "human-meadows",
+                zoneName: "Starter Meadows",
+                mapFile: "starter.json",
+                spawnX: 128, spawnZ: 128,
+                levelRange: [1, 5],
+                musicTag: "town",
+              }));
+            }
+          }
         } else if (parsed.op === Opcode.ZONE_CHANGE_REQUEST && parsed.exitId) {
           // Zone transition: validate exit, move entity, notify client
           const currentZone = getZone(entity.mapId === 1 ? "human-meadows" : `zone-${entity.mapId}`);
@@ -424,6 +471,9 @@ export async function rtcRoutes(app: FastifyInstance) {
 
           saveInventory(entityId)
             .catch((err) => console.error(`[Inventory] Failed to save for ${entityId}:`, err));
+
+          // Clean up any dungeon instance
+          cleanupPlayerDungeon(entityId);
 
           // Remove from connection manager (no longer receiving data)
           connectionManager.remove(entityId);

@@ -12,7 +12,7 @@ Read this file at the start of each model workbench session. Update after signif
 - **Palette** — `computePalette(skin, hair, eyes, primary, secondary, armorType)` generates full color set from base colors + armor material.
 - **Attachment slots** — `root`, `head-top`, `hand-R`, `hand-L`, `torso`, `torso-back`, `legs`, `feet-L`, `feet-R`
 
-## Current State (2026-03-27, session 7)
+## Current State (2026-03-27, session 8)
 
 ### Workbench UI
 - [x] 3-panel layout: left nav (model browser), center (PixiJS canvas), right (config panel)
@@ -106,7 +106,7 @@ Read this file at the start of each model workbench session. Update after signif
 - [x] Ponytail — DONE
 - [x] Braided — DONE
 - [x] Mohawk — DONE
-- [ ] Bald (placeholder/none)
+- [x] Bald — DONE. Subtle scalp sheen highlight
 
 #### Armor pieces beyond torso (MEDIUM)
 - [x] Leg armor (cloth/leather/mail/plate) — DONE
@@ -115,10 +115,10 @@ Read this file at the start of each model workbench session. Update after signif
 - [x] Shoulder armor (cloth/leather/mail/plate) — DONE
 
 #### Armor race/theme variants (LOW)
-- [ ] Dragon armor set
-- [ ] Skeleton armor set
-- [ ] Ogre skin armor set
-- [ ] Elven armor set
+- [x] Dragon armor (Dragonscale Plate) — DONE. Dark crimson, scale pattern, fiery orange dragon crest, gold trim, fire gem buckle
+- [x] Skeleton armor (Bone Armor) — DONE. Bone-white, rib-plate ridges, spine ridge, skull emblem with eye sockets, grey metal belt
+- [x] Ogre skin armor (Ogre Hide Vest) — DONE. Greenish-brown hide, irregular patches, crude cross-stitching, bone toggles, fur trim neckline, rope belt with bone charm
+- [x] Elven armor (Elven Leafweave) — DONE. Forest green, gold filigree vine pattern, leaf ornaments, central leaf emblem, silver sash, elegant V-neckline
 
 #### Additional weapons/offhand (LOW)
 - [x] Tower shield — DONE
@@ -151,5 +151,8 @@ Priority for each session (tackle 1-2 items per run):
 9. ~~Additional offhand items~~ — DONE (tower shield, buckler, tome, torch)
 10. ~~Ogre NPC~~ — DONE
 11. ~~Wraith + Bear NPCs~~ — DONE
-12. Boss variants (King Rabbit, Skeleton Lord, etc.)
-13. Armor race variants (dragon, skeleton, ogre, elven)
+12. ~~Armor race variants~~ — DONE (Dragonscale Plate, Bone Armor, Ogre Hide Vest, Elven Leafweave)
+13. ~~Bald hair~~ — DONE
+14. Boss variants (King Rabbit, Skeleton Lord, etc.)
+15. Body customisation sliders (width, height adjustments per race)
+16. More headgear variants (cloth hood, leather cap, crown, horned helm)

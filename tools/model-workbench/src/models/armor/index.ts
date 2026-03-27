@@ -40,3 +40,14 @@ registry.register(new GauntletsCloth());
 registry.register(new GauntletsLeather());
 registry.register(new GauntletsMail());
 registry.register(new GauntletsPlate());
+
+// Race/theme armor variants
+import { ArmorDragon } from "./ArmorDragon";
+import { ArmorElven } from "./ArmorElven";
+import { ArmorSkeleton } from "./ArmorSkeleton";
+import { ArmorOgreskin } from "./ArmorOgreskin";
+
+registry.register(new ArmorDragon());
+registry.register(new ArmorElven());
+registry.register(new ArmorSkeleton());
+registry.register(new ArmorOgreskin());

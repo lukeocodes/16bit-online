@@ -7,12 +7,18 @@ import { ISO_OFFSETS } from "./types";
  */
 export function computeHumanoidSkeleton(
   dir: Direction,
-  walkPhase: number
+  walkPhase: number,
+  buildScale: number = 1,
+  heightScale: number = 1
 ): Skeleton {
   const iso = ISO_OFFSETS[dir] ?? ISO_OFFSETS[0];
   const w = walkPhase !== 0;
   const swing = w ? Math.sin(walkPhase) : 0;
   const bob = w ? -Math.abs(Math.sin(walkPhase * 2)) * 1.6 : 0;
+
+  // Build/height affect the base position helper
+  const bw = buildScale;  // width multiplier
+  const bh = heightScale; // height multiplier
 
   const wf = 1 - Math.abs(iso.x) * 0.35;
   const lx = iso.x * 2.5;
@@ -31,8 +37,8 @@ export function computeHumanoidSkeleton(
   const elbowBendR = w ? Math.max(0, swing) * 2.5 : 0;
 
   const p = (bx: number, by: number, offX = 0, offY = 0): V => ({
-    x: bx * wf + lx + offX,
-    y: by + bob + ly * 0.3 + offY,
+    x: bx * wf * bw + lx + offX,
+    y: by * bh + bob + ly * 0.3 + offY,
   });
 
   // All joint positions

@@ -128,7 +128,7 @@ Priority order (game designer perspective):
 5. ~~Performance pass (high pt1)~~ — DONE (e7e4bd1). HP bar dirty flags, respawn queue (no more setTimeout swarm).
 6. ~~Performance pass (high pt2)~~ — DONE (7c9f527). Binary protocol for DAMAGE/STATE/DEATH (90% bandwidth reduction). Zone sharding deferred to architecture phase.
 7. ~~Equipment/inventory/loot~~ — DONE (f272ca1). Full loop: kill→loot→inventory (I key)→equip/unequip→use potions→stat bonuses in combat. Equipment damage/armor applied to melee + abilities.
-8. ~~More zones (starter)~~ — DONE (e2a6772, a525ac7). Elf Grove + Orc Wastes created. All 3 race starter zones exist. Still needs: Crossroads convergence zone (level 5-10).
+8. ~~More zones~~ — DONE (02e9ba9). All 5 zones live: Human Meadows, Elf Grove, Orc Wastes, Crossroads, Skeleton Wastes. Full zone network with exits connecting all zones.
 8. **Structure pieces (walls/buildings)** — Composite containers for buildings.
 9. **Dungeon instances** — Procedural dungeons as instanced zones with boss encounters.
 

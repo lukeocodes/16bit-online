@@ -39,7 +39,7 @@ export function renderComposite(
   walkPhase: number,
   scale: number
 ): void {
-  const skeleton = computeHumanoidSkeleton(dir as Direction, walkPhase);
+  const skeleton = computeHumanoidSkeleton(dir as Direction, walkPhase, config.build ?? 1, config.height ?? 1);
   const ctx = buildRenderContext(skeleton, config.palette);
 
   const calls: DrawCall[] = [];
