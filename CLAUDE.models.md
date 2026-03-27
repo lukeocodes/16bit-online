@@ -31,9 +31,15 @@ Read this file at the start of each model workbench session. Update after signif
 
 #### Bodies
 - [x] Human Body — full humanoid with torso, pelvis, glutes, legs, feet, arms, head, eyes, ears, mouth, eyebrows. Walk cycle with arm swing, leg stride, bob.
+- [x] Elf Body — slimmer (0.85x width), pointed ears with inner detail, almond eyes, angular jaw, longer neck, delicate limbs
+- [x] Dwarf Body — wider (1.25x width), barrel chest, thick limbs, prominent brow ridge, broad nose, round ears, bigger head, knobbly knees
 
 #### Hair
 - [x] Short hair
+- [x] Long hair — flowing back section reaching mid-back, curtain bangs, sways with walk bob
+- [x] Ponytail — tied back with sway physics, swept bangs, tie band detail
+- [x] Mohawk — tall ridge fin, shaved sides (fuzz), profile shows front-to-back ridge
+- [x] Braided — two braids over shoulders with cross-hatch detail, center part, tie ends
 
 #### Headgear
 - [x] Plate helmet
@@ -61,17 +67,17 @@ Read this file at the start of each model workbench session. Update after signif
 ### Missing (priority order)
 
 #### Bodies (HIGH)
-- [ ] Elf Body — taller, slimmer, pointed ears, angular features
-- [ ] Dwarf Body — shorter, wider, stocky, barrel chest
+- [x] Elf Body — DONE
+- [x] Dwarf Body — DONE
 - [ ] Skeleton NPC — bone-colored, visible ribs, skull head
 - [ ] Goblin NPC — wide body, green skin, pointed ears, red eyes
 - [ ] Rabbit NPC — oval body, tall ears, small
 
 #### Hair (MEDIUM)
-- [ ] Long hair
-- [ ] Ponytail
-- [ ] Braided
-- [ ] Mohawk
+- [x] Long hair — DONE
+- [x] Ponytail — DONE
+- [x] Braided — DONE
+- [x] Mohawk — DONE
 - [ ] Bald (placeholder/none)
 
 #### Armor pieces beyond torso (MEDIUM)

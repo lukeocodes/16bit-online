@@ -50,6 +50,23 @@ class ConnectionManager {
       }
     }
   }
+
+  /** Broadcast pre-packed binary buffer on reliable channel (avoids Buffer.from overhead) */
+  broadcastBinary(data: Buffer, exclude?: string) {
+    for (const conn of this.connections.values()) {
+      if (conn.entityId !== exclude && conn.reliableChannel?.readyState === "open") {
+        conn.reliableChannel.send(data);
+      }
+    }
+  }
+
+  /** Send pre-packed binary buffer to a specific player on reliable channel */
+  sendBinary(entityId: string, data: Buffer) {
+    const conn = this.connections.get(entityId);
+    if (conn?.reliableChannel?.readyState === "open") {
+      conn.reliableChannel.send(data);
+    }
+  }
 }
 
 export const connectionManager = new ConnectionManager();

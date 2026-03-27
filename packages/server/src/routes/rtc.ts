@@ -11,7 +11,7 @@ import { isInSafeZone } from "../game/zones.js";
 import { getZone } from "../game/zone-registry.js";
 import { isWalkable } from "../world/terrain.js";
 import { startLingering, cancelLingering, isLingering } from "../game/linger.js";
-import { Opcode, packEntitySpawn, packEntityDespawn, packReliable, packSpawnPoint, packChunkData, packDamageEvent, packEntityDeath, packEntityState } from "../game/protocol.js";
+import { Opcode, packEntitySpawn, packEntityDespawn, packReliable, packSpawnPoint, packChunkData, packDamageEvent, packEntityDeath, packEntityState, packBinaryDamage, packBinaryState } from "../game/protocol.js";
 import { getServerNoisePerm, getCachedWorldMapGzip, getWorldMap } from "../world/queries.js";
 import { getOrGenerateChunkHeights } from "../world/chunk-cache.js";
 import { generateTileHeight, CONTINENTAL_SCALE } from "../world/terrain-noise.js";
@@ -230,9 +230,10 @@ export async function rtcRoutes(app: FastifyInstance) {
             selfCombat.hp = Math.min(selfCombat.maxHp, selfCombat.hp + healAmount);
             console.log(`[Ability] ${entity.name} used Heal: +${healAmount} HP (${selfCombat.hp}/${selfCombat.maxHp})`);
             if (reliableChannel.readyState === "open") {
-              reliableChannel.send(packEntityState(entityId, selfCombat.hp, selfCombat.maxHp));
+              const stateBuf = packBinaryState(entityId, selfCombat.hp, selfCombat.maxHp);
+              reliableChannel.send(stateBuf);
               reliableChannel.send(packReliable(Opcode.ABILITY_COOLDOWN, { abilityId, remaining: cdSec }));
-              connectionManager.broadcastReliable(packEntityState(entityId, selfCombat.hp, selfCombat.maxHp), entityId);
+              connectionManager.broadcastBinary(stateBuf, entityId);
             }
           } else if (abilityId === "fire" || abilityId === "ice" || abilityId === "shock") {
             // Offensive abilities — require a combat target in range
@@ -278,8 +279,8 @@ export async function rtcRoutes(app: FastifyInstance) {
 
             console.log(`[Ability] ${entity.name} used ${abilityId} on ${target.name}: ${damage} dmg (${targetCombat.hp}/${targetCombat.maxHp})`);
 
-            // Broadcast damage
-            connectionManager.broadcastReliable(packDamageEvent(entityId, targetId, damage, weaponType));
+            // Broadcast damage (binary)
+            connectionManager.broadcastBinary(packBinaryDamage(entityId, targetId, damage, weaponType));
             if (reliableChannel.readyState === "open") {
               reliableChannel.send(packReliable(Opcode.ABILITY_COOLDOWN, { abilityId, remaining: cdSec }));
             }

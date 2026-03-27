@@ -142,6 +142,41 @@ export class StateSync {
     }
   }
 
+  private static WEAPON_TYPES = ["melee", "ranged", "magic", "fire", "ice", "shock"];
+
+  /** Handle binary combat messages (opcodes 50, 51, 52) */
+  handleBinaryReliable(data: ArrayBuffer): void {
+    const view = new DataView(data);
+    const op = view.getUint8(0);
+
+    if (op === Opcode.DAMAGE_EVENT && data.byteLength >= 12) {
+      const attackerHash = view.getUint32(1, true);
+      const targetHash = view.getUint32(5, true);
+      const damage = view.getUint16(9, true);
+      const weaponIdx = view.getUint8(11);
+      const attackerId = this.numericIdMap.get(attackerHash) ?? "";
+      const targetId = this.numericIdMap.get(targetHash) ?? "";
+      const weaponType = StateSync.WEAPON_TYPES[weaponIdx] ?? "melee";
+      if (this.onDamage && targetId) {
+        this.onDamage(attackerId, targetId, damage, weaponType);
+      }
+    } else if (op === Opcode.ENTITY_DEATH && data.byteLength >= 5) {
+      const entityHash = view.getUint32(1, true);
+      const entityId = this.numericIdMap.get(entityHash) ?? "";
+      if (this.onDeath && entityId) {
+        this.onDeath(entityId);
+      }
+    } else if (op === Opcode.ENTITY_STATE && data.byteLength >= 9) {
+      const entityHash = view.getUint32(1, true);
+      const hp = view.getUint16(5, true);
+      const maxHp = view.getUint16(7, true);
+      const entityId = this.numericIdMap.get(entityHash) ?? "";
+      if (entityId) {
+        this.updateEntityState({ entityId, hp, maxHp });
+      }
+    }
+  }
+
   handleReliableMessage(message: string) {
     const data = unpackReliable(message);
 

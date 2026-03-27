@@ -16,6 +16,7 @@ export class NetworkManager {
   private onPositionMessage: BinaryMessageHandler | null = null;
   private onReliableMessage: TextMessageHandler | null = null;
   private onChunkData: ((data: ArrayBuffer) => void) | null = null;
+  private onBinaryReliable: ((data: ArrayBuffer) => void) | null = null;
   private onDisconnect: ((reason: string) => void) | null = null;
   private worldReadyResolve: (() => void) | null = null;
   public spawnPosition: { x: number; y: number; z: number; mapId: number } = { x: 0, y: 0, z: 0, mapId: 1 };
@@ -26,6 +27,7 @@ export class NetworkManager {
   setOnPositionMessage(handler: BinaryMessageHandler) { this.onPositionMessage = handler; }
   setOnReliableMessage(handler: TextMessageHandler) { this.onReliableMessage = handler; }
   setOnChunkData(handler: (data: ArrayBuffer) => void) { this.onChunkData = handler; }
+  setOnBinaryReliable(handler: (data: ArrayBuffer) => void) { this.onBinaryReliable = handler; }
   setOnDisconnect(handler: (reason: string) => void) { this.onDisconnect = handler; }
 
   async connect(token: string, characterId: string): Promise<void> {
@@ -77,11 +79,16 @@ export class NetworkManager {
           this.reliableChannel = channel;
           channel.binaryType = "arraybuffer";
           channel.onmessage = (e) => {
-            // Binary CHUNK_DATA messages (opcode 11) arrive as ArrayBuffer
+            // Binary messages — route by opcode byte
             if (e.data instanceof ArrayBuffer && e.data.byteLength >= 5) {
               const firstByte = new Uint8Array(e.data)[0];
-              if (firstByte === 11) { // Opcode.CHUNK_DATA
+              if (firstByte === 11) { // CHUNK_DATA
                 if (this.onChunkData) this.onChunkData(e.data);
+                return;
+              }
+              // Binary combat messages (50=DAMAGE, 51=DEATH, 52=STATE)
+              if (firstByte === 50 || firstByte === 51 || firstByte === 52) {
+                if (this.onBinaryReliable) this.onBinaryReliable(e.data);
                 return;
               }
             }

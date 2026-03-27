@@ -6,6 +6,7 @@ import {
   packPosition, packDamageEvent, packEntityDeath,
   packEntityDespawn, packEntityState, packCombatState,
   packEnemyNearby, packXpGain, packLevelUp, packPlayerRespawn,
+  packBinaryDamage, packBinaryDeath, packBinaryState,
 } from "./protocol.js";
 import { xpForKill, processXpGain, xpToNextLevel, totalXpForLevel } from "./experience.js";
 import { config } from "../config.js";
@@ -15,7 +16,7 @@ import { config } from "../config.js";
  * Called from both combatTick and ability handlers.
  */
 export function handleKill(killerId: string, deadEntityId: string) {
-  connectionManager.broadcastReliable(packEntityDeath(deadEntityId));
+  connectionManager.broadcastBinary(packBinaryDeath(deadEntityId));
   connectionManager.broadcastReliable(packEntityDespawn(deadEntityId));
 
   const killerEntity = entityStore.get(killerId);
@@ -70,7 +71,7 @@ export function handleKill(killerId: string, deadEntityId: string) {
       combat.targetId = null;
       combat.combatTimer = 0;
       connectionManager.sendReliable(playerId, packPlayerRespawn(playerId, entity.x, 0, entity.z, combat.hp, combat.maxHp));
-      connectionManager.broadcastReliable(packEntityState(playerId, combat.hp, combat.maxHp), playerId);
+      connectionManager.broadcastBinary(packBinaryState(playerId, combat.hp, combat.maxHp), playerId);
       console.log(`[Respawn] Player ${playerId} respawned at town`);
     }, 3000);
   }
@@ -168,8 +169,7 @@ function gameTick() {
   const { damage, deaths } = combatTick(dt);
 
   for (const event of damage) {
-    const msg = packDamageEvent(event.attackerId, event.targetId, event.damage, event.weaponType);
-    connectionManager.broadcastReliable(msg);
+    connectionManager.broadcastBinary(packBinaryDamage(event.attackerId, event.targetId, event.damage, event.weaponType));
   }
 
   for (const event of deaths) {
@@ -272,8 +272,8 @@ function broadcastState() {
       const ownKey = conn.entityId + ":" + conn.entityId;
       const ownLast = lastBroadcastState.get(ownKey);
       if (!ownLast || ownLast.hp !== ownCombat.hp || ownLast.maxHp !== ownCombat.maxHp) {
-        connectionManager.sendReliable(conn.entityId,
-          packEntityState(conn.entityId, ownCombat.hp, ownCombat.maxHp));
+        connectionManager.sendBinary(conn.entityId,
+          packBinaryState(conn.entityId, ownCombat.hp, ownCombat.maxHp));
         lastBroadcastState.set(ownKey, { hp: ownCombat.hp, maxHp: ownCombat.maxHp });
       }
     }
@@ -287,8 +287,8 @@ function broadcastState() {
         const stateKey = conn.entityId + ":" + other.entityId;
         const last = lastBroadcastState.get(stateKey);
         if (!last || last.hp !== combat.hp || last.maxHp !== combat.maxHp) {
-          connectionManager.sendReliable(conn.entityId,
-            packEntityState(other.entityId, combat.hp, combat.maxHp));
+          connectionManager.sendBinary(conn.entityId,
+            packBinaryState(other.entityId, combat.hp, combat.maxHp));
           lastBroadcastState.set(stateKey, { hp: combat.hp, maxHp: combat.maxHp });
         }
       }

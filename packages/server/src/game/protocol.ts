@@ -111,6 +111,48 @@ export function unpackPosition(buf: Buffer): { entityId: number; x: number; y: n
   };
 }
 
+// --- Binary combat messages (high-frequency, replaces JSON for perf) ---
+
+const WEAPON_TYPE_MAP: Record<string, number> = { melee: 0, ranged: 1, magic: 2, fire: 3, ice: 4, shock: 5 };
+const WEAPON_TYPE_REV = ["melee", "ranged", "magic", "fire", "ice", "shock"];
+
+export function hashEntityId(str: string): number {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    hash = ((hash << 5) - hash + str.charCodeAt(i)) | 0;
+  }
+  return hash >>> 0;
+}
+
+/** Binary DAMAGE_EVENT: 12 bytes [op:u8][attackerHash:u32][targetHash:u32][damage:u16][weaponType:u8] */
+export function packBinaryDamage(attackerId: string, targetId: string, damage: number, weaponType: string): Buffer {
+  const buf = Buffer.alloc(12);
+  buf.writeUInt8(Opcode.DAMAGE_EVENT, 0);
+  buf.writeUInt32LE(hashEntityId(attackerId), 1);
+  buf.writeUInt32LE(hashEntityId(targetId), 5);
+  buf.writeUInt16LE(Math.min(65535, damage), 9);
+  buf.writeUInt8(WEAPON_TYPE_MAP[weaponType] ?? 0, 11);
+  return buf;
+}
+
+/** Binary ENTITY_STATE: 9 bytes [op:u8][entityHash:u32][hp:u16][maxHp:u16] */
+export function packBinaryState(entityId: string, hp: number, maxHp: number): Buffer {
+  const buf = Buffer.alloc(9);
+  buf.writeUInt8(Opcode.ENTITY_STATE, 0);
+  buf.writeUInt32LE(hashEntityId(entityId), 1);
+  buf.writeUInt16LE(Math.min(65535, hp), 5);
+  buf.writeUInt16LE(Math.min(65535, maxHp), 7);
+  return buf;
+}
+
+/** Binary ENTITY_DEATH: 5 bytes [op:u8][entityHash:u32] */
+export function packBinaryDeath(entityId: string): Buffer {
+  const buf = Buffer.alloc(5);
+  buf.writeUInt8(Opcode.ENTITY_DEATH, 0);
+  buf.writeUInt32LE(hashEntityId(entityId), 1);
+  return buf;
+}
+
 /**
  * Pack chunk height data into a binary buffer for DataChannel delivery.
  * Format: [opcode:u8 = CHUNK_DATA] [chunkX:i16LE] [chunkZ:i16LE] [heightData: Float16 bytes]

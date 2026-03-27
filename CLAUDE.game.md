@@ -125,7 +125,8 @@ Priority order (game designer perspective):
 2. **Entity art** — Being handled in a separate session. NOT using sprite sheets. `EntitySpriteSheet.ts` disabled. Entities use PixiJS Graphics mode (body+head+eyes).
 3. ~~More abilities~~ — DONE. All 5 work: Defend/Heal/Fire/Ice/Shock with cooldowns, element-colored damage, HUD overlays.
 4. ~~Performance pass (critical)~~ — DONE (793f3a7, ae6ff33). Entity cleanup leak, delta broadcasts, awake set cache, particle swap-and-pop, spawn/death RAF→game loop, lerp speed tuning, tick rate alignment.
-5. **Performance pass (high)** — HP bar dirty flags, binary protocol for combat messages, respawn timer priority queue, zone sharding architecture.
+5. ~~Performance pass (high pt1)~~ — DONE (e7e4bd1). HP bar dirty flags, respawn queue (no more setTimeout swarm).
+6. **Performance pass (high pt2)** — Binary protocol for combat messages, zone sharding architecture.
 6. **Equipment/inventory/loot** — Item registry created (`items.ts`), loot tables per NPC. Needs: DB inventory table, drop-on-kill, client inventory UI, equip protocol.
 7. **More zones** — Elf and Orc starter zones (256x256 each), Crossroads convergence zone.
 8. **Structure pieces (walls/buildings)** — Composite containers for buildings.

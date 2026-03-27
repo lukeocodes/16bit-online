@@ -556,6 +556,7 @@ export class Game {
     this.network = new NetworkManager();
     this.network.setOnPositionMessage((data) => this.stateSync.handlePositionMessage(data));
     this.network.setOnReliableMessage((msg) => this.stateSync.handleReliableMessage(msg));
+    this.network.setOnBinaryReliable((data) => this.stateSync.handleBinaryReliable(data));
     this.network.setOnChunkData((data) => this.stateSync.handleChunkData(data));
     this.network.setOnDisconnect((reason) => {
       if (this.onDisconnect) this.onDisconnect(reason);
