@@ -1,7 +1,7 @@
 import type { WorkbenchState, WorkbenchAPI } from "./WorkbenchAPI";
 import { registry } from "./models/registry";
 
-const CATEGORY_ORDER = ["body", "hair", "headgear", "shoulders", "armor", "gauntlets", "legs", "feet", "weapon", "offhand", "npc"];
+const CATEGORY_ORDER = ["body", "hair", "headgear", "shoulders", "armor", "gauntlets", "legs", "feet", "weapon", "offhand", "npc", "construction"];
 const CATEGORY_LABELS: Record<string, string> = {
   body: "Bodies",
   hair: "Hair",
@@ -14,6 +14,7 @@ const CATEGORY_LABELS: Record<string, string> = {
   weapon: "Weapons",
   offhand: "Off-hand",
   npc: "NPCs",
+  construction: "Construction",
 };
 
 /**
@@ -51,9 +52,9 @@ export function createModelNav(
         btn.textContent = model.name;
         btn.dataset.modelId = model.id;
 
-        // All "root" slot models (playable races + NPCs) use composite view
-        // so their weapon/offhand/headgear attachment slots are shown
-        const isRootModel = model.slot === "root";
+        // Body/NPC root models use composite view so equipment slots are shown.
+        // Construction items are root but have no slots — always individual view.
+        const isRootModel = model.slot === "root" && model.category !== "construction";
 
         const isActive =
           (state.viewMode === "individual" && state.selectedModelId === model.id) ||
@@ -63,7 +64,11 @@ export function createModelNav(
 
         btn.addEventListener("click", () => {
           if (isRootModel) {
-            // Root models (bodies + NPCs) show composite view so slots are visible
+            // Root models (bodies + NPCs) show composite view so slots are visible.
+            // Switching to a different body clears all linked attachments.
+            if (state.compositeConfig.baseModelId !== model.id) {
+              state.compositeConfig.attachments = [];
+            }
             api.setView("composite");
             state.compositeConfig.baseModelId = model.id;
           } else {

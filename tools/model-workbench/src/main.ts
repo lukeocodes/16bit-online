@@ -3,6 +3,7 @@ import { DIRECTION_NAMES, DIRECTION_COUNT, FRAME_W, FRAME_H } from "./models/typ
 import type { CompositeConfig, AttachmentSlot, ModelPalette } from "./models/types";
 import { computePalette } from "./models/palette";
 import { renderComposite, renderModel } from "./models/composite";
+import { registry } from "./models/registry";
 import { createModelNav } from "./ModelNav";
 import { createConfigPanel } from "./ConfigPanel";
 import {
@@ -18,6 +19,7 @@ import "./models/offhand/index";
 import "./models/armor/index";
 import "./models/headgear/index";
 import "./models/hair/index";
+import "./models/structures/index";
 
 // ─── Layout constants ───────────────────────────────────────────────
 
@@ -171,6 +173,7 @@ async function main() {
   app.stage.eventMode = "static";
   app.stage.hitArea = app.screen;
   app.stage.on("pointerdown", (e) => {
+    if (isStatic()) return;
     const mx = e.global.x;
     const my = e.global.y;
     for (let row = 0; row < 3; row++) {
@@ -233,16 +236,30 @@ async function main() {
 
   // ─── Render loop ────────────────
 
+  function isStatic(): boolean {
+    if (state.viewMode === "individual" && state.selectedModelId) {
+      return registry.get(state.selectedModelId)?.isAnimated === false;
+    }
+    return false;
+  }
+
   app.ticker.add((ticker) => {
-    if (state.playing) {
+    const staticModel = isStatic();
+
+    if (state.playing && !staticModel) {
       state.walkPhase += ticker.deltaTime * 0.08 * state.animSpeed;
     }
 
     // Layout
     const mainW = FRAME_W * MAIN_SCALE;
     const mainH = FRAME_H * MAIN_SCALE;
-    const mainX = PAD + mainW / 2;
-    const mainY = PAD + 20 + mainH - 10;
+    // Static models: centre in the canvas; animated: top-left aligned
+    const mainX = staticModel
+      ? app.renderer.width / 2
+      : PAD + mainW / 2;
+    const mainY = staticModel
+      ? app.renderer.height / 2 + mainH / 2
+      : PAD + 20 + mainH - 10;
 
     cellW = FRAME_W * GRID_SCALE + 12;
     cellH = FRAME_H * GRID_SCALE + 24;
@@ -259,62 +276,74 @@ async function main() {
 
     drawCheckerboard(bgGfx, mainX - mainW / 2 - 4, mainY - mainH - 4, mainW + 8, mainH + 12);
 
-    for (let row = 0; row < 3; row++) {
-      for (let col = 0; col < 3; col++) {
-        const dir = DIR_GRID[row][col];
-        if (dir < 0) continue;
-        const cx = gridStartX + col * cellW;
-        const cy = gridStartY + row * cellH;
-        const isActive = dir === state.direction;
-        drawCheckerboard(bgGfx, cx + 2, cy + 2, cellW - 4, cellH - 4);
-        if (isActive) {
-          bgGfx.rect(cx + 2, cy + 2, cellW - 4, cellH - 4);
-          bgGfx.stroke({ width: 1, color: 0x53a8b6, alpha: 0.6 });
+    if (!staticModel) {
+      for (let row = 0; row < 3; row++) {
+        for (let col = 0; col < 3; col++) {
+          const dir = DIR_GRID[row][col];
+          if (dir < 0) continue;
+          const cx = gridStartX + col * cellW;
+          const cy = gridStartY + row * cellH;
+          const isActive = dir === state.direction;
+          drawCheckerboard(bgGfx, cx + 2, cy + 2, cellW - 4, cellH - 4);
+          if (isActive) {
+            bgGfx.rect(cx + 2, cy + 2, cellW - 4, cellH - 4);
+            bgGfx.stroke({ width: 1, color: 0x53a8b6, alpha: 0.6 });
+          }
         }
       }
-    }
-
-    for (let i = 0; i < WALK_FRAMES; i++) {
-      const sx = PAD + i * (stripCellW + 4);
-      drawCheckerboard(bgGfx, sx, stripY, stripCellW, stripCellH + 4);
+      for (let i = 0; i < WALK_FRAMES; i++) {
+        const sx = PAD + i * (stripCellW + 4);
+        drawCheckerboard(bgGfx, sx, stripY, stripCellW, stripCellH + 4);
+      }
     }
 
     // ─── Main preview ───────────
 
     mainContainer.position.set(mainX, mainY);
     mainGfx.clear();
-    renderFrame(mainGfx, state.direction, state.walkPhase, MAIN_SCALE);
+    // Static models always render from direction 0 (S) — direction state is for animated models only
+    renderFrame(mainGfx, staticModel ? 0 : state.direction, staticModel ? 0 : state.walkPhase, MAIN_SCALE);
 
-    // ─── Direction grid ─────────
+    // ─── Direction grid (hidden for static models) ───────────────────────────
 
+    gridHeader.visible = !staticModel;
     for (let row = 0; row < 3; row++) {
       for (let col = 0; col < 3; col++) {
         const dir = DIR_GRID[row][col];
         if (dir < 0) continue;
-        const cx = gridStartX + col * cellW + cellW / 2;
-        const cy = gridStartY + row * cellH + cellH - 16;
-
-        gridContainers[dir].position.set(cx, cy);
-        gridGraphics[dir].clear();
-        renderFrame(gridGraphics[dir], dir, state.walkPhase, GRID_SCALE);
-
-        const label = dirLabels[dir];
-        label.style = dir === state.direction ? labelStyleActive : labelStyle;
-        label.position.set(cx - label.width / 2, cy + 4);
+        const visible = !staticModel;
+        gridContainers[dir].visible = visible;
+        dirLabels[dir].visible = visible;
+        if (visible) {
+          const cx = gridStartX + col * cellW + cellW / 2;
+          const cy = gridStartY + row * cellH + cellH - 16;
+          gridContainers[dir].position.set(cx, cy);
+          gridGraphics[dir].clear();
+          renderFrame(gridGraphics[dir], dir, state.walkPhase, GRID_SCALE);
+          const label = dirLabels[dir];
+          label.style = dir === state.direction ? labelStyleActive : labelStyle;
+          label.position.set(cx - label.width / 2, cy + 4);
+        }
       }
     }
 
     // ─── Walk strip ─────────────
 
     for (let i = 0; i < WALK_FRAMES; i++) {
-      const phase = (i / WALK_FRAMES) * Math.PI * 2;
-      const sx = PAD + i * (stripCellW + 4) + stripCellW / 2;
-      const sy = stripY + stripCellH;
-      stripContainers[i].position.set(sx, sy);
-      stripGraphics[i].clear();
-      renderFrame(stripGraphics[i], state.direction, phase, STRIP_SCALE);
-      frameLabels[i].position.set(sx - 3, sy + 6);
+      const visible = !staticModel;
+      stripContainers[i].visible = visible;
+      frameLabels[i].visible = visible;
+      if (visible) {
+        const phase = (i / WALK_FRAMES) * Math.PI * 2;
+        const sx = PAD + i * (stripCellW + 4) + stripCellW / 2;
+        const sy = stripY + stripCellH;
+        stripContainers[i].position.set(sx, sy);
+        stripGraphics[i].clear();
+        renderFrame(stripGraphics[i], state.direction, phase, STRIP_SCALE);
+        frameLabels[i].position.set(sx - 3, sy + 6);
+      }
     }
+    stripHeader.visible = !staticModel;
 
     // ─── Headers ────────────────
 
@@ -323,8 +352,7 @@ async function main() {
       : (state.selectedModelId ?? "");
     mainHeader.text = `${viewLabel}: ${DIRECTION_NAMES[state.direction]} (${state.direction})`;
     mainHeader.position.set(mainX - mainW / 2 - 4, PAD);
-    gridHeader.position.set(gridStartX, PAD);
-    stripHeader.position.set(PAD, stripY - 16);
+    if (!staticModel) gridHeader.position.set(gridStartX, PAD);
   });
 }
 

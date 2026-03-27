@@ -122,7 +122,8 @@ export type ModelCategory =
   | "feet"
   | "shoulders"
   | "gauntlets"
-  | "npc";
+  | "npc"
+  | "construction";
 
 export type AttachmentSlot =
   | "root"
@@ -142,6 +143,8 @@ export interface Model {
   readonly name: string;
   readonly category: ModelCategory;
   readonly slot: AttachmentSlot;
+  /** False for props/structures that are never animated. Defaults to true. */
+  readonly isAnimated?: boolean;
   getDrawCalls(ctx: RenderContext): DrawCall[];
   getAttachmentPoints(skeleton: Skeleton): Record<string, AttachmentPoint>;
 }
