@@ -6,7 +6,9 @@
  */
 
 import { connectionManager } from "../ws/connections.js";
-import { Opcode, packReliable } from "./protocol.js";
+import { Opcode, packReliable, packXpGain } from "./protocol.js";
+import { getPlayerProgress } from "./world.js";
+import { processXpGain, xpToNextLevel, totalXpForLevel } from "./experience.js";
 
 export interface QuestTemplate {
   id: string;
@@ -143,7 +145,33 @@ export function turnInQuest(entityId: string, questId: string): QuestTemplate["r
 
   qp.turnedIn = true;
   sendQuestUpdate(entityId);
-  return QUESTS[questId]?.rewards ?? null;
+
+  const rewards = QUESTS[questId]?.rewards;
+  if (!rewards) return null;
+
+  // Apply XP reward
+  if (rewards.xp > 0) {
+    const prog = getPlayerProgress(entityId);
+    if (prog) {
+      const result = processXpGain(prog.xp, rewards.xp, prog.level);
+      prog.xp = result.newXp;
+      prog.level = result.newLevel;
+      (prog as any).dirty = true;
+
+      const xpNeeded = xpToNextLevel(prog.level);
+      const xpIntoLevel = prog.xp - totalXpForLevel(prog.level);
+      connectionManager.sendReliable(entityId,
+        packXpGain(entityId, rewards.xp, xpIntoLevel, xpNeeded, prog.level));
+    }
+  }
+
+  // Notify player
+  connectionManager.sendReliable(entityId,
+    packReliable(Opcode.SYSTEM_MESSAGE, {
+      message: `Quest reward: +${rewards.xp} XP${rewards.items?.length ? " + items" : ""}`,
+    }));
+
+  return rewards;
 }
 
 /** Get available quests for a zone (not yet accepted by this player) */

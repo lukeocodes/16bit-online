@@ -19,7 +19,7 @@ import { isInTiledMap } from "../world/tiled-map.js";
 import { initPlayerProgress, removePlayerProgress, handleKill, getPlayerProgress } from "../game/world.js";
 import { createDungeonInstance, getDungeonMapData, getPlayerDungeon, cleanupPlayerDungeon } from "../game/dungeon.js";
 import { loadInventory, saveInventory, sendInventory, equipItem, unequipItem, useItem, getEquippedBonuses } from "../game/inventory.js";
-import { initPlayerQuests, removePlayerQuests, acceptQuest, turnInQuest } from "../game/quests.js";
+import { initPlayerQuests, removePlayerQuests, acceptQuest, turnInQuest, getAvailableQuests } from "../game/quests.js";
 import { db } from "../db/postgres.js";
 import { characters } from "../db/schema.js";
 import { eq } from "drizzle-orm";
@@ -463,6 +463,15 @@ export async function rtcRoutes(app: FastifyInstance) {
 
           // Send inventory after world is ready
           sendInventory(entityId);
+
+          // Auto-accept available quests for all zones at player's level
+          const prog = getPlayerProgress(entityId);
+          const level = prog?.level ?? 1;
+          for (const zoneId of ["human-meadows", "elf-grove", "orc-wastes", "crossroads", "skeleton-wastes"]) {
+            for (const quest of getAvailableQuests(entityId, zoneId, level)) {
+              acceptQuest(entityId, quest.id);
+            }
+          }
         }
       });
 
