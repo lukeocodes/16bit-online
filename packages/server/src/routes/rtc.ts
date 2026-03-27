@@ -19,6 +19,7 @@ import { isInTiledMap } from "../world/tiled-map.js";
 import { initPlayerProgress, removePlayerProgress, handleKill, getPlayerProgress } from "../game/world.js";
 import { createDungeonInstance, getDungeonMapData, getPlayerDungeon, cleanupPlayerDungeon } from "../game/dungeon.js";
 import { loadInventory, saveInventory, sendInventory, equipItem, unequipItem, useItem, getEquippedBonuses } from "../game/inventory.js";
+import { initPlayerQuests, removePlayerQuests, acceptQuest, turnInQuest } from "../game/quests.js";
 import { db } from "../db/postgres.js";
 import { characters } from "../db/schema.js";
 import { eq } from "drizzle-orm";
@@ -85,8 +86,9 @@ export async function rtcRoutes(app: FastifyInstance) {
         registerEntity(entityId, "melee", 5, 2.0, 50, 50);
       }
 
-      // Initialize XP/level tracking + inventory
+      // Initialize XP/level tracking + inventory + quests
       initPlayerProgress(entityId, characterId, charRow?.xp ?? 0, charRow?.level ?? 1);
+      initPlayerQuests(entityId);
       loadInventory(entityId, characterId).catch(err =>
         console.error(`[Inventory] Failed to load for ${entityId}:`, err));
 
@@ -325,6 +327,13 @@ export async function rtcRoutes(app: FastifyInstance) {
                 packBinaryState(entityId, selfCombat.hp, selfCombat.maxHp), entityId);
             }
           }
+        } else if (parsed.op === 34 /* QUEST_ACCEPT */ && parsed.questId) {
+          acceptQuest(entityId, parsed.questId);
+        } else if (parsed.op === 36 /* QUEST_TURNIN */ && parsed.questId) {
+          const rewards = turnInQuest(entityId, parsed.questId);
+          if (rewards) {
+            console.log(`[Quest] ${entity.name} turned in quest ${parsed.questId}, reward: ${rewards.xp} XP`);
+          }
         } else if (parsed.op === Opcode.DUNGEON_ENTER) {
           // Create a dungeon instance for this player
           const playerProgress = getPlayerProgress(entityId);
@@ -476,8 +485,9 @@ export async function rtcRoutes(app: FastifyInstance) {
           saveInventory(entityId)
             .catch((err) => console.error(`[Inventory] Failed to save for ${entityId}:`, err));
 
-          // Clean up any dungeon instance
+          // Clean up dungeon + quests
           cleanupPlayerDungeon(entityId);
+          removePlayerQuests(entityId);
 
           // Remove from connection manager (no longer receiving data)
           connectionManager.remove(entityId);

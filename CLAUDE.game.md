@@ -130,7 +130,9 @@ Priority order (game designer perspective):
 7. ~~Equipment/inventory/loot~~ — DONE (f272ca1). Full loop: kill→loot→inventory (I key)→equip/unequip→use potions→stat bonuses in combat. Equipment damage/armor applied to melee + abilities.
 8. ~~More zones~~ — DONE (02e9ba9). All 5 zones live: Human Meadows, Elf Grove, Orc Wastes, Crossroads, Skeleton Wastes. Full zone network with exits connecting all zones.
 9. ~~Structure pieces~~ — DONE (1fe9cbe). 8 structure types (walls, houses, tower, well, market, gate). Parsed from Tiled objects, rendered as PixiJS composites. 8 structures placed in starter town.
-10. ~~Dungeon instances~~ — DONE (8060fb8). Full loop: entrance on Crossroads map → server gen (64x64, 8 rooms) → client renders → fight through → boss defeat → exit portal → return to overworld. Boss death notification + victory message.
+10. ~~Dungeon instances~~ — DONE (8060fb8). Full loop: entrance on Crossroads → server gen → client renders → boss defeat → exit portal.
+11. **NPC aggro** — DONE (22c6b46). Hostile NPCs detect players within 8 tiles and auto-engage.
+12. **Quest system** — DONE (160c232). 5 kill quests across zones. Accept/progress/turn-in with XP+item rewards. Still needs: client quest UI panel, quest giver NPCs.
 
 ## Known Issues
 - Hover cursor position uses synthetic pointermove which doesn't work with Playwright (works with real mouse)

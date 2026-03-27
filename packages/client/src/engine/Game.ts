@@ -271,6 +271,10 @@ export class Game {
       if (this.hud) this.hud.inventory.updateItems(items);
     });
 
+    this.stateSync.setOnQuestUpdate((quests) => {
+      if (this.hud) this.hud.questPanel.updateQuests(quests);
+    });
+
     this.stateSync.setOnChat((senderId, senderName, text) => {
       if (this.hud) {
         this.hud.chatBox.addMessage(senderName, text);
@@ -407,6 +411,7 @@ export class Game {
     this.input.setOnTabTarget(() => this.cycleTarget());
     this.input.setOnAbilityUse((slot) => this.handleAbilityUse(slot));
     this.input.setOnToggleInventory(() => this.hud?.inventory.toggle());
+    this.input.setOnToggleQuests(() => this.hud?.questPanel.toggle());
 
     // Scroll wheel zoom
     this.canvas.addEventListener("wheel", (e) => {
@@ -715,6 +720,13 @@ export class Game {
     this.hud = hud;
     hud.setOnAutoAttackToggle(() => this.handleToggleAutoAttack());
     hud.setOnAbilityUse((slot) => this.handleAbilityUse(slot));
+
+    // Wire quest turn-in
+    hud.questPanel.setOnTurnIn((questId) => {
+      if (this.network?.isConnected()) {
+        this.network.sendReliable(packReliable(Opcode.QUEST_TURNIN, { questId }));
+      }
+    });
 
     // Wire inventory actions
     hud.inventory.setOnEquip((id) => {

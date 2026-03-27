@@ -4,6 +4,7 @@ import { WorldMap } from "../components/WorldMap";
 import { SettingsMenu } from "../components/SettingsMenu";
 import { ChatBox } from "../components/ChatBox";
 import { InventoryPanel } from "../components/InventoryPanel";
+import { QuestPanel } from "../components/QuestPanel";
 
 export interface TargetInfo {
   name: string;
@@ -26,6 +27,7 @@ export class GameHUD implements Screen {
   public settingsMenu: SettingsMenu;
   public chatBox: ChatBox;
   public inventory: InventoryPanel;
+  public questPanel: QuestPanel;
 
   private onAutoAttackToggle: (() => void) | null = null;
   private onAbilityUse: ((slot: number) => void) | null = null;
@@ -37,6 +39,7 @@ export class GameHUD implements Screen {
     this.settingsMenu = new SettingsMenu();
     this.chatBox = new ChatBox();
     this.inventory = new InventoryPanel();
+    this.questPanel = new QuestPanel();
   }
 
   setOnAutoAttackToggle(handler: () => void) {
@@ -82,6 +85,7 @@ export class GameHUD implements Screen {
     this.container.appendChild(this.worldMap.render());
     this.container.appendChild(this.settingsMenu.render());
     this.container.appendChild(this.inventory.getElement());
+    this.container.appendChild(this.questPanel.getElement());
 
     return this.container;
   }

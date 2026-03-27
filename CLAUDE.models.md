@@ -180,4 +180,4 @@ Priority for each session (tackle 1-2 items per run):
 
 ## Status: COMPLETE
 
-All goals from the original spec have been implemented and exceeded. The workbench is production-ready with 71 models (4 races, 14 NPCs, 32 armor pieces, 12 weapons, 5 offhands, 6 hair, 6 headgear), full game integration adapter, JSON export/import, and comprehensive documentation.
+All goals from the original spec have been implemented and exceeded. The workbench is production-ready with 72 models (4 races, 15 NPCs, 32 armor pieces, 12 weapons, 5 offhands, 6 hair, 6 headgear), full game integration adapter, JSON export/import, and comprehensive documentation. Every creature type mentioned in the spec (skeletons, goblins, gnomes, ogres, wraiths, witches) is now implemented.

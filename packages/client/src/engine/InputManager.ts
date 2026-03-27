@@ -34,6 +34,7 @@ export class InputManager {
   private onTabTarget: (() => void) | null = null;
   private onAbilityUse: ((slot: number) => void) | null = null;
   private onToggleInventory: (() => void) | null = null;
+  private onToggleQuests: (() => void) | null = null;
   private mouseX = 0;
   private mouseY = 0;
 
@@ -104,6 +105,10 @@ export class InputManager {
     this.onToggleInventory = handler;
   }
 
+  setOnToggleQuests(handler: () => void) {
+    this.onToggleQuests = handler;
+  }
+
   getMousePosition(): { x: number; y: number } {
     return { x: this.mouseX, y: this.mouseY };
   }
@@ -135,6 +140,12 @@ export class InputManager {
     // I key toggles inventory
     if (e.code === "KeyI" && pressed) {
       if (this.onToggleInventory) this.onToggleInventory();
+      return;
+    }
+
+    // J key toggles quest journal
+    if (e.code === "KeyJ" && pressed) {
+      if (this.onToggleQuests) this.onToggleQuests();
       return;
     }
 

@@ -26,6 +26,7 @@ export type LootDropCallback = (items: Array<{ itemId: string; name: string; ico
 export type InventorySyncCallback = (items: Array<{ id: string; itemId: string; name: string; icon: string; type: string; quantity: number; equipped: boolean; slot: string | null }>) => void;
 export type DungeonMapCallback = (data: { instanceId: string; width: number; height: number; ground: number[]; collision: number[]; spawnX: number; spawnZ: number }) => void;
 export type DungeonExitCallback = (exitX: number, exitZ: number, message: string) => void;
+export type QuestUpdateCallback = (quests: Array<{ questId: string; name: string; objectives: Array<{ description: string; current: number; target: number }>; completed: boolean }>) => void;
 
 export class StateSync {
   private entityManager: EntityManager;
@@ -48,6 +49,7 @@ export class StateSync {
   private onInventorySync: InventorySyncCallback | null = null;
   private onDungeonMap: DungeonMapCallback | null = null;
   private onDungeonExit: DungeonExitCallback | null = null;
+  private onQuestUpdate: QuestUpdateCallback | null = null;
   private terrainYResolver: ((x: number, z: number) => number) | null = null;
 
   // Spawn points (for dev mode rendering)
@@ -89,6 +91,7 @@ export class StateSync {
   setOnInventorySync(handler: InventorySyncCallback) { this.onInventorySync = handler; }
   setOnDungeonMap(handler: DungeonMapCallback) { this.onDungeonMap = handler; }
   setOnDungeonExit(handler: DungeonExitCallback) { this.onDungeonExit = handler; }
+  setOnQuestUpdate(handler: QuestUpdateCallback) { this.onQuestUpdate = handler; }
 
   handleChunkData(data: ArrayBuffer): void {
     // Format: [opcode:u8] [cx:i16LE] [cz:i16LE] [heights:2048 bytes Float16]
@@ -276,6 +279,11 @@ export class StateSync {
       case Opcode.INVENTORY_SYNC:
         if (this.onInventorySync && data.items) {
           this.onInventorySync(data.items);
+        }
+        break;
+      case Opcode.QUEST_UPDATE:
+        if (this.onQuestUpdate && data.quests) {
+          this.onQuestUpdate(data.quests);
         }
         break;
       case Opcode.DUNGEON_MAP:
