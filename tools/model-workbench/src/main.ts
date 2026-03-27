@@ -68,6 +68,8 @@ async function main() {
         { slot: "hand-L" as AttachmentSlot, modelId: "shield-kite" },
       ],
       palette: defaultPalette,
+      build: 1.0,
+      height: 1.0,
     },
   };
 

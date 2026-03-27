@@ -92,11 +92,21 @@ export function createConfigPanel(
       container.appendChild(div);
     }
 
+    // ─── Body shape (composite view only) ───
+    if (isComposite) {
+      buildBodySliders();
+    }
+
     // ─── Colors ───
     buildColorPickers();
 
     // ─── Animation ───
     buildAnimationControls();
+
+    // ─── Export ───
+    if (isComposite) {
+      buildExportButton();
+    }
   }
 
   function buildSlotDropdowns() {
@@ -186,6 +196,24 @@ export function createConfigPanel(
     }
   }
 
+  function buildBodySliders() {
+    const divider = document.createElement("div");
+    divider.className = "section-divider";
+    container.appendChild(divider);
+
+    appendHeading("Body Shape");
+
+    // Build (width) slider
+    createSlider("Build", state.compositeConfig.build ?? 1, 0.7, 1.3, 0.05, (v) => {
+      state.compositeConfig.build = v;
+    });
+
+    // Height slider
+    createSlider("Height", state.compositeConfig.height ?? 1, 0.85, 1.15, 0.05, (v) => {
+      state.compositeConfig.height = v;
+    });
+  }
+
   function buildColorPickers() {
     const divider = document.createElement("div");
     divider.className = "section-divider";
@@ -236,6 +264,31 @@ export function createConfigPanel(
   }
 
   // ─── Helpers ───
+
+  function createSlider(label: string, initial: number, min: number, max: number, step: number, onChange: (v: number) => void) {
+    const div = document.createElement("div");
+    div.className = "control-group";
+    const lbl = document.createElement("label");
+    lbl.textContent = label;
+    const valSpan = document.createElement("span");
+    valSpan.style.cssText = "min-width:30px;text-align:right;font-size:11px;color:#888;";
+    valSpan.textContent = initial.toFixed(2);
+    const input = document.createElement("input");
+    input.type = "range";
+    input.min = String(min);
+    input.max = String(max);
+    input.step = String(step);
+    input.value = String(initial);
+    input.addEventListener("input", () => {
+      const v = parseFloat(input.value);
+      valSpan.textContent = v.toFixed(2);
+      onChange(v);
+    });
+    div.appendChild(lbl);
+    div.appendChild(input);
+    div.appendChild(valSpan);
+    container.appendChild(div);
+  }
 
   function appendHeading(text: string) {
     const h2 = document.createElement("h2");

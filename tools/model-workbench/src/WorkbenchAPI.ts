@@ -29,6 +29,8 @@ export interface WorkbenchAPI {
   setSlot(slot: string, modelId: string | null): void;
   setColor(key: string, hex: string): void;
   setArmor(type: string): void;
+  setBuild(build: number): void;
+  setHeight(height: number): void;
 
   // Queries
   getState(): WorkbenchState;
@@ -109,8 +111,16 @@ export function createWorkbenchAPI(state: WorkbenchState): WorkbenchAPI {
     },
 
     setArmor(type) {
-      // Re-compute palette with new armor type
-      // This is a convenience — the palette computation happens in main.ts
+      notify();
+    },
+
+    setBuild(build) {
+      state.compositeConfig.build = Math.max(0.7, Math.min(1.3, build));
+      notify();
+    },
+
+    setHeight(height) {
+      state.compositeConfig.height = Math.max(0.85, Math.min(1.15, height));
       notify();
     },
 

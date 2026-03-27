@@ -204,6 +204,27 @@ export class TiledMapRenderer {
     );
   }
 
+  /**
+   * Load a dungeon from raw data (no fetch needed — map data comes from server).
+   * Reuses the tileset already loaded from a previous loadMap() call.
+   */
+  loadFromData(width: number, height: number, ground: number[], collision: number[]): void {
+    // Clear existing tile sprites
+    for (const [, sprite] of this.tileSprites) sprite.destroy();
+    this.tileSprites.clear();
+    for (const [, deco] of this.decoSprites) deco.destroy();
+    this.decoSprites.clear();
+
+    this.mapWidth = width;
+    this.mapHeight = height;
+    this.groundData = ground;
+    this.collisionData = collision;
+    this.spawnPoints = [];
+    this.safeZones = [];
+    this.zoneExits = [];
+    console.log(`[TiledMap] Loaded dungeon: ${width}x${height}`);
+  }
+
   /** Get the raw ground tile data array (for minimap rendering) */
   getGroundData(): number[] { return this.groundData; }
 

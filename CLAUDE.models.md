@@ -12,7 +12,7 @@ Read this file at the start of each model workbench session. Update after signif
 - **Palette** — `computePalette(skin, hair, eyes, primary, secondary, armorType)` generates full color set from base colors + armor material.
 - **Attachment slots** — `root`, `head-top`, `hand-R`, `hand-L`, `torso`, `torso-back`, `legs`, `feet-L`, `feet-R`
 
-## Current State (2026-03-27, session 8)
+## Current State (2026-03-27, session 9)
 
 ### Workbench UI
 - [x] 3-panel layout: left nav (model browser), center (PixiJS canvas), right (config panel)
@@ -44,6 +44,10 @@ Read this file at the start of each model workbench session. Update after signif
 #### Headgear
 - [x] Plate helmet
 - [x] Mail coif
+- [x] Cloth Hood — pointed hood with face opening shadow, back drape over shoulders
+- [x] Leather Cap — rounded dome with brim band, earflaps, top button
+- [x] Crown — gold band with 5 pointed tines, gemstones (red/blue), ball tips
+- [x] Horned Helm — metal dome with nose guard, eye slit, curved horns with ridges, rivets
 
 #### Armor — Torso
 - [x] Cloth robe
@@ -153,6 +157,7 @@ Priority for each session (tackle 1-2 items per run):
 11. ~~Wraith + Bear NPCs~~ — DONE
 12. ~~Armor race variants~~ — DONE (Dragonscale Plate, Bone Armor, Ogre Hide Vest, Elven Leafweave)
 13. ~~Bald hair~~ — DONE
-14. Boss variants (King Rabbit, Skeleton Lord, etc.)
-15. Body customisation sliders (width, height adjustments per race)
-16. More headgear variants (cloth hood, leather cap, crown, horned helm)
+14. ~~Body customisation sliders~~ — DONE (Build 0.7-1.3 width, Height 0.85-1.15 scale, live preview)
+15. ~~More headgear~~ — DONE (Cloth Hood, Leather Cap, Crown, Horned Helm)
+16. Boss variants (King Rabbit, Skeleton Lord, etc.)
+17. Export model configs to JSON (for integration with game client)

@@ -288,6 +288,45 @@ export class Game {
       }
     });
 
+    this.stateSync.setOnDungeonMap((data) => {
+      console.log(`[Game] Entering dungeon: ${data.width}x${data.height}`);
+      if (this.hud) this.hud.chatBox.addSystemMessage("Entering dungeon...");
+      this.showLoadingOverlay("Dungeon");
+
+      // Clear remote entities
+      for (const entity of this.entityManager.getAllEntities()) {
+        if (entity.id !== this.localEntityId) {
+          this.entityRenderer.removeEntityMesh(entity.id);
+          this.entityManager.removeEntity(entity.id);
+        }
+      }
+      this.movePath = [];
+      this.moveGoal = null;
+      this.followTargetId = null;
+      this.selectTarget(null);
+
+      // Load dungeon map data into existing TiledMapRenderer
+      if (this.tiledMap) {
+        this.tiledMap.loadFromData(data.width, data.height, data.ground, data.collision);
+        this.movementSystem.setTerrainResolvers(
+          (_x, _z) => 0,
+          (x, z) => this.tiledMap!.isWalkable(Math.round(x), Math.round(z)),
+        );
+      }
+
+      // Reposition player
+      if (this.localEntityId) {
+        const pos = this.entityManager.getComponent<PositionComponent>(this.localEntityId, "position");
+        const mov = this.entityManager.getComponent<MovementComponent>(this.localEntityId, "movement");
+        if (pos) { pos.x = data.spawnX; pos.y = 0; pos.z = data.spawnZ; }
+        if (mov) { mov.tileX = data.spawnX; mov.tileZ = data.spawnZ; mov.moving = false; }
+        this.camera.snapToTarget();
+      }
+
+      if (this.hud) this.hud.showZoneNotification("Dungeon");
+      this.hideLoadingOverlay();
+    });
+
     this.stateSync.setOnZoneChange(async (zoneId, zoneName, mapFile, spawnX, spawnZ, _levelRange, _musicTag) => {
       console.log(`[Game] Zone change: ${zoneName} (${mapFile})`);
       if (this.hud) {

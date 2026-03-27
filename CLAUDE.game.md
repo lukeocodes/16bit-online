@@ -129,8 +129,8 @@ Priority order (game designer perspective):
 6. ~~Performance pass (high pt2)~~ — DONE (7c9f527). Binary protocol for DAMAGE/STATE/DEATH (90% bandwidth reduction). Zone sharding deferred to architecture phase.
 7. ~~Equipment/inventory/loot~~ — DONE (f272ca1). Full loop: kill→loot→inventory (I key)→equip/unequip→use potions→stat bonuses in combat. Equipment damage/armor applied to melee + abilities.
 8. ~~More zones~~ — DONE (02e9ba9). All 5 zones live: Human Meadows, Elf Grove, Orc Wastes, Crossroads, Skeleton Wastes. Full zone network with exits connecting all zones.
-8. **Structure pieces (walls/buildings)** — Composite containers for buildings.
-9. **Dungeon instances** — Procedural dungeons as instanced zones with boss encounters.
+9. **Structure pieces (walls/buildings)** — Composite containers for buildings.
+10. ~~Dungeon instances~~ — DONE (c76e2ba). Server-side procedural gen (64x64, 8 rooms, corridors, boss). Per-player instances with difficulty scaling. Still needs: client-side dungeon renderer, dungeon entrance objects on Tiled maps.
 
 ## Known Issues
 - Hover cursor position uses synthetic pointermove which doesn't work with Playwright (works with real mouse)
