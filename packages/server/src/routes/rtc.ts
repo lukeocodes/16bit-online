@@ -306,9 +306,28 @@ export async function rtcRoutes(app: FastifyInstance) {
             }
           }
         } else if (parsed.op === 20 /* CHAT_MESSAGE */ && typeof parsed.text === "string") {
-          // Chat: sanitize, truncate, broadcast to all players
           const text = parsed.text.trim().slice(0, 200);
           if (text.length === 0) return;
+
+          if (text.startsWith("/")) {
+            // Server-side command
+            const parts = text.split(/[\s,]+/);
+            const cmd = parts[0].toLowerCase();
+            const reply = (msg: string) => connectionManager.sendReliable(entityId, JSON.stringify({ op: 21 /* SYSTEM_MESSAGE */, message: msg }));
+
+            if (cmd === "/go") {
+              const x = parseFloat(parts[1]);
+              const z = parseFloat(parts[2]);
+              if (isNaN(x) || isNaN(z)) { reply("Usage: /go x,z"); return; }
+              entity.x = x; entity.z = z;
+              reply(`Teleported to (${Math.round(x)}, ${Math.round(z)})`);
+            } else {
+              reply(`Unknown command: ${cmd}`);
+            }
+            return;
+          }
+
+          // Regular chat — broadcast to all players
           const senderName = entity.name || "Unknown";
           const chatMsg = JSON.stringify({ op: 20, senderId: entityId, senderName, text });
           connectionManager.broadcastReliable(chatMsg);

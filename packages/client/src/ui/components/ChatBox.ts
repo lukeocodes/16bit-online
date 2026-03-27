@@ -91,11 +91,16 @@ export class ChatBox {
 
     this.container.appendChild(this.inputEl);
 
-    // Global Enter key to focus chat
+    // Global Enter or / key to focus chat
     this.enterHandler = (e: KeyboardEvent) => {
-      if (e.key === "Enter" && !this.isFocused && this.inputEl) {
+      if (this.isFocused || !this.inputEl) return;
+      if (e.key === "Enter") {
         e.preventDefault();
         this.inputEl.focus();
+      } else if (e.key === "/") {
+        e.preventDefault();
+        this.inputEl.focus();
+        this.inputEl.value = "/";
       }
     };
     window.addEventListener("keydown", this.enterHandler);
@@ -104,6 +109,13 @@ export class ChatBox {
     this.addSystemMessage("Welcome! Press Enter to chat.");
 
     return this.container;
+  }
+
+  /** Focus the input and pre-fill text (e.g. to open with "/" already typed). */
+  focusWithText(text: string) {
+    if (!this.inputEl) return;
+    this.inputEl.focus();
+    this.inputEl.value = text;
   }
 
   addMessage(senderName: string, text: string) {

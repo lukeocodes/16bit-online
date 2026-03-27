@@ -771,7 +771,7 @@ export class Game {
       }
     });
 
-    // Wire chat send
+    // Wire chat send — all text (including / commands) goes to the server
     hud.chatBox.setOnSend((text) => {
       if (this.network?.isConnected()) {
         this.network.sendReliable(packReliable(20 /* CHAT_MESSAGE */, { text }));
