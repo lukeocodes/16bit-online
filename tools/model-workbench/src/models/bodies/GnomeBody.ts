@@ -82,7 +82,7 @@ export class GnomeBody implements Model {
     g.quadraticCurveTo((chestL.x - 0.3) * s, ((chestL.y + waistL.y) / 2) * s, chestL.x * s, chestL.y * s);
     g.quadraticCurveTo(chestL.x * s, (chestL.y - 0.5) * s, neckBase.x * s, neckBase.y * s);
     g.closePath();
-    g.fill(p.body);
+    g.fill(p.skin);
     // Re-trace for outline
     g.moveTo(neckBase.x * s, neckBase.y * s);
     g.quadraticCurveTo(chestR.x * s, (chestR.y - 0.5) * s, chestR.x * s, chestR.y * s);
@@ -93,7 +93,7 @@ export class GnomeBody implements Model {
     g.quadraticCurveTo((chestL.x - 0.3) * s, ((chestL.y + waistL.y) / 2) * s, chestL.x * s, chestL.y * s);
     g.quadraticCurveTo(chestL.x * s, (chestL.y - 0.5) * s, neckBase.x * s, neckBase.y * s);
     g.closePath();
-    g.stroke({ width: s * 0.5, color: p.outline, alpha: 0.4 });
+    g.stroke({ width: s * 0.5, color: darken(p.skin, 0.3), alpha: 0.4 });
 
     const nw = 2 * (Math.abs(chestR.x - chestL.x) / 14);
     g.roundRect((neckBase.x - nw / 2) * s, (neckBase.y - 2) * s, nw * s, 3 * s, 1 * s);

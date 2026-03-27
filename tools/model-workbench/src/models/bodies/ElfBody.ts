@@ -104,9 +104,9 @@ export class ElfBody implements Model {
     const hipR = this.slim(j.hipR);
     const neckBase = j.neckBase;
 
-    // Main torso
+    // Main torso — bare skin
     this.torsoPath(g, j, s);
-    g.fill(p.body);
+    g.fill(p.skin);
 
     // Shadow side
     g.moveTo(neckBase.x * s, neckBase.y * s);
@@ -126,11 +126,11 @@ export class ElfBody implements Model {
     g.lineTo(((hipR.x + hipL.x) / 2) * s, hipR.y * s);
     g.lineTo(((waistR.x + neckBase.x) / 2) * s, neckBase.y * s);
     g.closePath();
-    g.fill({ color: p.bodyDk, alpha: 0.3 });
+    g.fill({ color: darken(p.skin, 0.2), alpha: 0.3 });
 
     // Outline
     this.torsoPath(g, j, s);
-    g.stroke({ width: s * 0.6, color: p.outline, alpha: 0.4 });
+    g.stroke({ width: s * 0.5, color: darken(p.skin, 0.3), alpha: 0.4 });
 
     // Neck (longer, thinner)
     const nw = 2.2 * (Math.abs(chestR.x - chestL.x) / 14);
