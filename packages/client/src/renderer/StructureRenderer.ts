@@ -1,16 +1,18 @@
 /**
- * Structure Renderer — UO-style wall pieces, one per tile.
+ * Structure Renderer — 3D wall pieces and corner posts.
  *
- * Each wall piece occupies exactly ONE tile position. No stacking.
+ * Each piece is a proper 3D rectangular prism:
+ *   - Wall:  outer face + inner face + top face. Depth = WALL_DEPTH.
+ *   - Post:  left face + right face + top cap.  Width = POST_W.
  *
- * Wall types (one per tile):
- *   "wall_left"      — wall on the north/left face of the tile (NW edge of diamond)
- *   "wall_right"      — wall on the east/right face of the tile (NE edge of diamond)
- *   "wall_corner" — corner post: narrow column at the corner, both faces visible
- *   "wall_left_door" — north wall with door opening (frame only, no fill)
- *   "wall_right_door" — east wall with door opening (frame only, no fill)
- *   "wall_left_win"  — north wall with window (see-through hole)
- *   "wall_right_win"  — east wall with window (see-through hole)
+ * Wall types:
+ *   "wall_left"       — NW-facing wall panel (\ edge of tile)
+ *   "wall_right"      — NE-facing wall panel (/ edge of tile)
+ *   "wall_corner"     — square corner post
+ *   "wall_left_door"  — NW wall with door opening (frame only)
+ *   "wall_right_door" — NE wall with door opening (frame only)
+ *   "wall_left_win"   — NW wall with window hole
+ *   "wall_right_win"  — NE wall with window hole
  *
  * Materials: "stone" | "wood" | "plaster"
  */
@@ -18,21 +20,30 @@
 import { Container, Graphics } from "pixi.js";
 import { worldToScreen, TILE_WIDTH_HALF, TILE_HEIGHT_HALF } from "./IsometricRenderer";
 
-const WALL_H = 52;          // One story — taller than player sprite (~40px)
-const WALL_DEPTH = 3;       // Visual thickness of the top face
+const WALL_H    = 52;  // height of one storey
+const WALL_DEPTH = 4;  // 3D thickness of wall (top face depth in screen px)
+const POST_W    = 14;  // corner post half-width
+const POST_H    = 7;   // corner post iso height (POST_W * TILE_HEIGHT_HALF / TILE_WIDTH_HALF)
+
+// Depth direction vectors (how far the inner face is offset from the outer face)
+// wall_left  (NW face): depth goes toward +x world → screen (+1, +0.5) per unit
+// wall_right (NE face): depth goes toward -x world → screen (-1, +0.5) per unit
+const L_DX = WALL_DEPTH,  L_DY = WALL_DEPTH / 2;   // left  wall depth shift
+const R_DX = -WALL_DEPTH, R_DY = WALL_DEPTH / 2;   // right wall depth shift
 
 export interface WallPiece {
   tileX: number;
   tileZ: number;
-  /** wall_left = \ edge panel; wall_right = / edge panel */
-  type: "wall_left" | "wall_right" | "wall_corner" | "wall_left_door" | "wall_right_door" | "wall_left_win" | "wall_right_win";
+  type: "wall_left" | "wall_right" | "wall_corner"
+      | "wall_left_door"  | "wall_right_door"
+      | "wall_left_win"   | "wall_right_win";
   material: "stone" | "wood" | "plaster";
 }
 
 const PALETTES = {
-  stone:   { face: 0x8a8a8a, side: 0x666666, top: 0xaaaaaa, trim: 0x444444, mortar: 0x555555 },
-  wood:    { face: 0x7a5c1e, side: 0x5a3c0e, top: 0x9a7c2e, trim: 0x3a2010, mortar: 0x4a3010 },
-  plaster: { face: 0xcfbc96, side: 0xaf9c76, top: 0xdfcc96, trim: 0x7a6848, mortar: 0x8a7848 },
+  stone:   { face: 0x8a8a8a, inner: 0x7a7a7a, side: 0x666666, top: 0xaaaaaa, trim: 0x444444, mortar: 0x555555 },
+  wood:    { face: 0x7a5c1e, inner: 0x6a4c0e, side: 0x5a3c0e, top: 0x9a7c2e, trim: 0x3a2010, mortar: 0x4a3010 },
+  plaster: { face: 0xcfbc96, inner: 0xbfac86, side: 0xaf9c76, top: 0xdfcc96, trim: 0x7a6848, mortar: 0x8a7848 },
 };
 
 export class StructureRenderer {
@@ -69,359 +80,222 @@ export class StructureRenderer {
 }
 
 function buildPiece(wall: WallPiece): Container {
-  const c = new Container();
+  const c   = new Container();
   const pal = PALETTES[wall.material] ?? PALETTES.stone;
-  const t = wall.type;
+  const t   = wall.type;
 
-  if (t === "wall_left" || t === "wall_left_door" || t === "wall_left_win") {
-    faceLeft(c, pal, t);
-  } else if (t === "wall_right" || t === "wall_right_door" || t === "wall_right_win") {
-    faceRight(c, pal, t);
-  } else if (t === "wall_corner") {
-    facePost(c, pal);
-  }
+  if (t === "wall_left" || t === "wall_left_door" || t === "wall_left_win")
+    drawLeft(c, pal, t);
+  else if (t === "wall_right" || t === "wall_right_door" || t === "wall_right_win")
+    drawRight(c, pal, t);
+  else if (t === "wall_corner")
+    drawPost(c, pal);
+
   return c;
 }
 
-/**
- * Left face (\) — rises from the left edge of the diamond.
- * The panel runs from the left-corner to the top-corner.
- */
-function faceLeft(c: Container, pal: typeof PALETTES.stone, type: string) {
-  const g = new Graphics();
+// ─── NW-facing wall piece ────────────────────────────────────────────────────
+
+function drawLeft(c: Container, pal: typeof PALETTES.stone, type: string) {
+  const g  = new Graphics();
   const hw = TILE_WIDTH_HALF;   // 32
   const hh = TILE_HEIGHT_HALF;  // 16
 
   if (type === "wall_left_door") {
-    // Frame only — posts + lintel, no solid fill so opening is transparent
-    const frameW = 3;
+    const fw = 3;
     // Left post
-    g.poly([
-      { x: -hw, y: 0 }, { x: -hw + frameW, y: -frameW * 0.5 },
-      { x: -hw + frameW, y: -WALL_H }, { x: -hw, y: -WALL_H },
-    ]);
+    g.poly([{ x: -hw, y: 0 }, { x: -hw+fw, y: -fw*.5 },
+            { x: -hw+fw, y: -WALL_H }, { x: -hw, y: -WALL_H }]);
     g.fill(pal.face);
-    // Right post (near top-center)
-    g.poly([
-      { x: -frameW * 2, y: -hh + frameW }, { x: 0, y: -hh },
-      { x: 0, y: -WALL_H }, { x: -frameW * 2, y: -WALL_H + frameW },
-    ]);
+    // Right post
+    g.poly([{ x: -fw*2, y: -hh+fw }, { x: 0, y: -hh },
+            { x: 0, y: -WALL_H }, { x: -fw*2, y: -WALL_H+fw }]);
     g.fill(pal.face);
-    // Lintel (top bar)
-    g.poly([
-      { x: -hw, y: -WALL_H }, { x: 0, y: -hh - WALL_H },
-      { x: 0, y: -hh - WALL_H + frameW * 2 }, { x: -hw, y: -WALL_H + frameW * 2 },
-    ]);
+    // Lintel
+    g.poly([{ x: -hw, y: -WALL_H }, { x: 0, y: -hh-WALL_H },
+            { x: 0, y: -hh-WALL_H+fw*2 }, { x: -hw, y: -WALL_H+fw*2 }]);
     g.fill(pal.face);
-    // Top cap
-    g.poly([
-      { x: -hw, y: -WALL_H }, { x: 0, y: -hh - WALL_H },
-      { x: WALL_DEPTH, y: -hh - WALL_H + WALL_DEPTH }, { x: -hw + WALL_DEPTH, y: -WALL_H + WALL_DEPTH },
-    ]);
-    g.fill(pal.top);
+    topCapLeft(g, pal);
     c.addChild(g);
     return;
   }
 
   if (type === "wall_left_win") {
-    // Window: four wall sections around the hole — no solid base fill
-    const winTop = WALL_H * 0.6;
-    const winBot = WALL_H * 0.25;
-    const winL = 0.3;
-    const winR = 0.7;
-    const lerpX = (t: number) => -hw + hw * t;
-    const lerpY = (t: number) => -hh * t;
-    // Bottom section (below window)
-    g.poly([
-      { x: -hw, y: 0 }, { x: 0, y: -hh },
-      { x: 0, y: -hh - winBot }, { x: -hw, y: -winBot },
-    ]);
-    g.fill(pal.face);
-    // Top section (above window)
-    g.poly([
-      { x: -hw, y: -winTop }, { x: 0, y: -hh - winTop },
-      { x: 0, y: -hh - WALL_H }, { x: -hw, y: -WALL_H },
-    ]);
-    g.fill(pal.face);
-    // Left section
-    g.poly([
-      { x: -hw, y: -winBot }, { x: lerpX(winL), y: lerpY(winL) - winBot },
-      { x: lerpX(winL), y: lerpY(winL) - winTop }, { x: -hw, y: -winTop },
-    ]);
-    g.fill(pal.face);
-    // Right section
-    g.poly([
-      { x: lerpX(winR), y: lerpY(winR) - winBot }, { x: 0, y: -hh - winBot },
-      { x: 0, y: -hh - winTop }, { x: lerpX(winR), y: lerpY(winR) - winTop },
-    ]);
-    g.fill(pal.face);
-    // Window frame
-    g.moveTo(lerpX(winL), lerpY(winL) - winBot);
-    g.lineTo(lerpX(winR), lerpY(winR) - winBot);
-    g.lineTo(lerpX(winR), lerpY(winR) - winTop);
-    g.lineTo(lerpX(winL), lerpY(winL) - winTop);
-    g.lineTo(lerpX(winL), lerpY(winL) - winBot);
+    const wT = WALL_H * .6, wB = WALL_H * .25, wL = .3, wR = .7;
+    const lx = (t: number) => -hw + hw * t;
+    const ly = (t: number) => -hh * t;
+    g.poly([{ x: -hw, y: 0 }, { x: 0, y: -hh }, { x: 0, y: -hh-wB }, { x: -hw, y: -wB }]);           g.fill(pal.face);
+    g.poly([{ x: -hw, y: -wT }, { x: 0, y: -hh-wT }, { x: 0, y: -hh-WALL_H }, { x: -hw, y: -WALL_H }]); g.fill(pal.face);
+    g.poly([{ x: -hw, y: -wB }, { x: lx(wL), y: ly(wL)-wB }, { x: lx(wL), y: ly(wL)-wT }, { x: -hw, y: -wT }]); g.fill(pal.face);
+    g.poly([{ x: lx(wR), y: ly(wR)-wB }, { x: 0, y: -hh-wB }, { x: 0, y: -hh-wT }, { x: lx(wR), y: ly(wR)-wT }]); g.fill(pal.face);
+    g.moveTo(lx(wL), ly(wL)-wB); g.lineTo(lx(wR), ly(wR)-wB);
+    g.lineTo(lx(wR), ly(wR)-wT); g.lineTo(lx(wL), ly(wL)-wT); g.lineTo(lx(wL), ly(wL)-wB);
     g.stroke({ width: 1.5, color: pal.trim });
-    // Top cap
-    g.poly([
-      { x: -hw, y: -WALL_H }, { x: 0, y: -hh - WALL_H },
-      { x: WALL_DEPTH, y: -hh - WALL_H + WALL_DEPTH }, { x: -hw + WALL_DEPTH, y: -WALL_H + WALL_DEPTH },
-    ]);
-    g.fill(pal.top);
+    topCapLeft(g, pal);
     addDetail(g, pal, "left");
     c.addChild(g);
     return;
   }
 
-  // Plain solid wall face
-  g.poly([
-    { x: -hw, y: 0 },
-    { x: 0,   y: -hh },
-    { x: 0,   y: -hh - WALL_H },
-    { x: -hw, y: -WALL_H },
-  ]);
+  // ── Solid wall: outer face + top + inner face ──
+  // Outer face
+  g.poly([{ x: -hw, y: 0 }, { x: 0, y: -hh },
+          { x: 0, y: -hh-WALL_H }, { x: -hw, y: -WALL_H }]);
   g.fill(pal.face);
 
-  // Top cap
-  g.poly([
-    { x: -hw, y: -WALL_H },
-    { x: 0,   y: -hh - WALL_H },
-    { x: WALL_DEPTH, y: -hh - WALL_H + WALL_DEPTH },
-    { x: -hw + WALL_DEPTH, y: -WALL_H + WALL_DEPTH },
-  ]);
+  // Top face (depth strip)
+  g.poly([{ x: -hw, y: -WALL_H },          { x: 0, y: -hh-WALL_H },
+          { x: L_DX, y: -hh-WALL_H+L_DY }, { x: -hw+L_DX, y: -WALL_H+L_DY }]);
   g.fill(pal.top);
 
-  g.moveTo(-hw, 0);
-  g.lineTo(0, -hh);
-  g.lineTo(0, -hh - WALL_H);
-  g.lineTo(-hw, -WALL_H);
-  g.lineTo(-hw, 0);
+  // Inner face (inside of building)
+  g.poly([{ x: -hw+L_DX, y:    L_DY }, { x: L_DX, y: -hh+L_DY },
+          { x: L_DX,    y: -hh-WALL_H+L_DY }, { x: -hw+L_DX, y: -WALL_H+L_DY }]);
+  g.fill(pal.inner);
+
+  // Outer edge outline
+  g.moveTo(-hw, 0); g.lineTo(0, -hh); g.lineTo(0, -hh-WALL_H); g.lineTo(-hw, -WALL_H); g.lineTo(-hw, 0);
   g.stroke({ width: 1, color: pal.trim, alpha: 0.6 });
 
   addDetail(g, pal, "left");
   c.addChild(g);
 }
 
-/**
- * East (right) face — rises from the NE edge of the tile diamond.
- * Right face (/) — rises from the right edge of the diamond.
- * The panel runs from the top-corner to the right-corner.
- */
-function faceRight(c: Container, pal: typeof PALETTES.stone, type: string) {
-  const g = new Graphics();
+// ─── NE-facing wall piece ────────────────────────────────────────────────────
+
+function drawRight(c: Container, pal: typeof PALETTES.stone, type: string) {
+  const g  = new Graphics();
   const hw = TILE_WIDTH_HALF;
   const hh = TILE_HEIGHT_HALF;
 
   if (type === "wall_right_door") {
-    // Frame only — posts + lintel, no solid fill so opening is transparent
-    const frameW = 3;
-    // Left post (near top-center)
-    g.poly([
-      { x: 0, y: -hh }, { x: frameW * 2, y: -hh + frameW },
-      { x: frameW * 2, y: -WALL_H + frameW }, { x: 0, y: -WALL_H },
-    ]);
+    const fw = 3;
+    g.poly([{ x: 0, y: -hh }, { x: fw*2, y: -hh+fw },
+            { x: fw*2, y: -WALL_H+fw }, { x: 0, y: -WALL_H }]);
     g.fill(pal.side);
-    // Right post
-    g.poly([
-      { x: hw - frameW, y: -frameW * 0.5 }, { x: hw, y: 0 },
-      { x: hw, y: -WALL_H }, { x: hw - frameW, y: -WALL_H },
-    ]);
+    g.poly([{ x: hw-fw, y: -fw*.5 }, { x: hw, y: 0 },
+            { x: hw, y: -WALL_H }, { x: hw-fw, y: -WALL_H }]);
     g.fill(pal.side);
-    // Lintel
-    g.poly([
-      { x: 0, y: -hh - WALL_H }, { x: hw, y: -WALL_H },
-      { x: hw, y: -WALL_H + frameW * 2 }, { x: 0, y: -hh - WALL_H + frameW * 2 },
-    ]);
+    g.poly([{ x: 0, y: -hh-WALL_H }, { x: hw, y: -WALL_H },
+            { x: hw, y: -WALL_H+fw*2 }, { x: 0, y: -hh-WALL_H+fw*2 }]);
     g.fill(pal.side);
-    // Top cap
-    g.poly([
-      { x: 0, y: -hh - WALL_H }, { x: hw, y: -WALL_H },
-      { x: hw - WALL_DEPTH, y: -WALL_H + WALL_DEPTH }, { x: -WALL_DEPTH, y: -hh - WALL_H + WALL_DEPTH },
-    ]);
-    g.fill(pal.top);
+    topCapRight(g, pal);
     c.addChild(g);
     return;
   }
 
   if (type === "wall_right_win") {
-    // Window: four wall sections around the hole — no solid base fill
-    const winTop = WALL_H * 0.6;
-    const winBot = WALL_H * 0.25;
-    const winL = 0.3;
-    const winR = 0.7;
-    const lerpX = (t: number) => hw * t;
-    const lerpY = (t: number) => -hh * t;
-    // Bottom section
-    g.poly([
-      { x: 0, y: -hh }, { x: hw, y: 0 },
-      { x: hw, y: -winBot }, { x: 0, y: -hh - winBot },
-    ]);
-    g.fill(pal.side);
-    // Top section
-    g.poly([
-      { x: 0, y: -hh - winTop }, { x: hw, y: -winTop },
-      { x: hw, y: -WALL_H }, { x: 0, y: -hh - WALL_H },
-    ]);
-    g.fill(pal.side);
-    // Left section
-    g.poly([
-      { x: 0, y: -hh - winBot }, { x: lerpX(winL), y: lerpY(winL) - winBot },
-      { x: lerpX(winL), y: lerpY(winL) - winTop }, { x: 0, y: -hh - winTop },
-    ]);
-    g.fill(pal.side);
-    // Right section
-    g.poly([
-      { x: lerpX(winR), y: lerpY(winR) - winBot }, { x: hw, y: -winBot },
-      { x: hw, y: -winTop }, { x: lerpX(winR), y: lerpY(winR) - winTop },
-    ]);
-    g.fill(pal.side);
-    // Window frame border
-    g.moveTo(lerpX(winL), lerpY(winL) - winBot);
-    g.lineTo(lerpX(winR), lerpY(winR) - winBot);
-    g.lineTo(lerpX(winR), lerpY(winR) - winTop);
-    g.lineTo(lerpX(winL), lerpY(winL) - winTop);
-    g.lineTo(lerpX(winL), lerpY(winL) - winBot);
+    const wT = WALL_H * .6, wB = WALL_H * .25, wL = .3, wR = .7;
+    const lx = (t: number) => hw * t;
+    const ly = (t: number) => -hh * t;
+    g.poly([{ x: 0, y: -hh }, { x: hw, y: 0 }, { x: hw, y: -wB }, { x: 0, y: -hh-wB }]); g.fill(pal.side);
+    g.poly([{ x: 0, y: -hh-wT }, { x: hw, y: -wT }, { x: hw, y: -WALL_H }, { x: 0, y: -hh-WALL_H }]); g.fill(pal.side);
+    g.poly([{ x: 0, y: -hh-wB }, { x: lx(wL), y: ly(wL)-wB }, { x: lx(wL), y: ly(wL)-wT }, { x: 0, y: -hh-wT }]); g.fill(pal.side);
+    g.poly([{ x: lx(wR), y: ly(wR)-wB }, { x: hw, y: -wB }, { x: hw, y: -wT }, { x: lx(wR), y: ly(wR)-wT }]); g.fill(pal.side);
+    g.moveTo(lx(wL), ly(wL)-wB); g.lineTo(lx(wR), ly(wR)-wB);
+    g.lineTo(lx(wR), ly(wR)-wT); g.lineTo(lx(wL), ly(wL)-wT); g.lineTo(lx(wL), ly(wL)-wB);
     g.stroke({ width: 1.5, color: pal.trim });
-    // Top cap
-    g.poly([
-      { x: 0, y: -hh - WALL_H }, { x: hw, y: -WALL_H },
-      { x: hw - WALL_DEPTH, y: -WALL_H + WALL_DEPTH }, { x: -WALL_DEPTH, y: -hh - WALL_H + WALL_DEPTH },
-    ]);
-    g.fill(pal.top);
+    topCapRight(g, pal);
     addDetail(g, pal, "right");
     c.addChild(g);
     return;
   }
 
-  // Plain solid wall face — slightly darker for depth
-  g.poly([
-    { x: 0,  y: -hh },
-    { x: hw, y: 0 },
-    { x: hw, y: -WALL_H },
-    { x: 0,  y: -hh - WALL_H },
-  ]);
+  // ── Solid wall: outer face + top + inner face ──
+  // Outer face
+  g.poly([{ x: 0, y: -hh }, { x: hw, y: 0 },
+          { x: hw, y: -WALL_H }, { x: 0, y: -hh-WALL_H }]);
   g.fill(pal.side);
 
-  // Top cap
-  g.poly([
-    { x: 0,  y: -hh - WALL_H },
-    { x: hw, y: -WALL_H },
-    { x: hw - WALL_DEPTH, y: -WALL_H + WALL_DEPTH },
-    { x: -WALL_DEPTH, y: -hh - WALL_H + WALL_DEPTH },
-  ]);
+  // Top face (depth strip)
+  g.poly([{ x: 0, y: -hh-WALL_H },          { x: hw, y: -WALL_H },
+          { x: hw+R_DX, y: -WALL_H+R_DY },   { x: R_DX, y: -hh-WALL_H+R_DY }]);
   g.fill(pal.top);
 
-  g.moveTo(0, -hh);
-  g.lineTo(hw, 0);
-  g.lineTo(hw, -WALL_H);
-  g.lineTo(0, -hh - WALL_H);
-  g.lineTo(0, -hh);
+  // Inner face
+  g.poly([{ x: R_DX, y: -hh+R_DY }, { x: hw+R_DX, y: R_DY },
+          { x: hw+R_DX, y: -WALL_H+R_DY }, { x: R_DX, y: -hh-WALL_H+R_DY }]);
+  g.fill(pal.inner);
+
+  // Outer edge outline
+  g.moveTo(0, -hh); g.lineTo(hw, 0); g.lineTo(hw, -WALL_H); g.lineTo(0, -hh-WALL_H); g.lineTo(0, -hh);
   g.stroke({ width: 1, color: pal.trim, alpha: 0.6 });
 
   addDetail(g, pal, "right");
   c.addChild(g);
 }
 
-/**
- * Corner post — full-width faces so walls connect without gaps, rendered as a
- * distinct 3D column via a unified top cap and a center ridge line.
- */
-function facePost(c: Container, pal: typeof PALETTES.stone) {
+// ─── Corner post ─────────────────────────────────────────────────────────────
+
+function drawPost(c: Container, pal: typeof PALETTES.stone) {
   const g = new Graphics();
-  const hw = TILE_WIDTH_HALF;   // 32
-  const hh = TILE_HEIGHT_HALF;  // 16
-  const PW = 10;   // narrow column half-width
-  const PH = 5;    // narrow column iso height (PW * hh/hw)
-  const BASE = 6;  // pedestal height in screen pixels
 
-  // ── Pedestal (full tile width) — fills gap so walls connect cleanly ──
-  // Left pedestal face
-  g.poly([
-    { x: -hw, y: 0 },       { x: 0, y: -hh },
-    { x: 0,   y: -hh-BASE },{ x: -hw, y: -BASE },
-  ]);
+  // Left face (NW)
+  g.poly([{ x: -POST_W, y: 0 }, { x: 0, y: -POST_H },
+          { x: 0, y: -POST_H-WALL_H }, { x: -POST_W, y: -WALL_H }]);
   g.fill(pal.face);
-  // Right pedestal face
-  g.poly([
-    { x: 0, y: -hh }, { x: hw, y: 0 },
-    { x: hw, y: -BASE }, { x: 0, y: -hh-BASE },
-  ]);
+
+  // Right face (NE)
+  g.poly([{ x: 0, y: -POST_H }, { x: POST_W, y: 0 },
+          { x: POST_W, y: -WALL_H }, { x: 0, y: -POST_H-WALL_H }]);
   g.fill(pal.side);
-  // Pedestal top cap
-  g.poly([
-    { x: -hw, y: -BASE }, { x: 0, y: -hh-BASE },
-    { x: hw, y: -BASE }, { x: 0, y: hh-BASE },
-  ]);
+
+  // Top diamond cap
+  g.poly([{ x: -POST_W, y: -WALL_H }, { x: 0, y: -POST_H-WALL_H },
+          { x: POST_W, y: -WALL_H }, { x: 0, y: POST_H-WALL_H }]);
   g.fill(pal.top);
 
-  // ── Narrow column rising above pedestal ──
-  const COL_H = WALL_H - BASE;
-  // Left column face
-  g.poly([
-    { x: -PW, y: -BASE },         { x: 0, y: -PH-BASE },
-    { x: 0,   y: -PH-BASE-COL_H },{ x: -PW, y: -BASE-COL_H },
-  ]);
-  g.fill(pal.face);
-  // Right column face
-  g.poly([
-    { x: 0,  y: -PH-BASE }, { x: PW, y: -BASE },
-    { x: PW, y: -BASE-COL_H }, { x: 0, y: -PH-BASE-COL_H },
-  ]);
-  g.fill(pal.side);
-  // Column top cap
-  g.poly([
-    { x: -PW, y: -WALL_H }, { x: 0, y: -PH-WALL_H },
-    { x: PW, y: -WALL_H },  { x: 0, y: PH-WALL_H },
-  ]);
-  g.fill(pal.top);
-
-  // Column edge outlines
-  g.moveTo(-PW, -BASE); g.lineTo(0, -PH-BASE); g.lineTo(PW, -BASE);
-  g.moveTo(-PW, -WALL_H); g.lineTo(0, -PH-WALL_H); g.lineTo(PW, -WALL_H);
-  g.moveTo(-PW, -BASE); g.lineTo(-PW, -WALL_H);
-  g.moveTo(PW, -BASE); g.lineTo(PW, -WALL_H);
-  g.moveTo(0, -PH-BASE); g.lineTo(0, -PH-WALL_H);
-  g.stroke({ width: 1, color: pal.trim, alpha: 0.8 });
+  // Crisp outlines
+  g.moveTo(-POST_W, 0); g.lineTo(0, -POST_H); g.lineTo(POST_W, 0);
+  g.moveTo(-POST_W, -WALL_H); g.lineTo(0, -POST_H-WALL_H); g.lineTo(POST_W, -WALL_H);
+  g.moveTo(-POST_W, 0); g.lineTo(-POST_W, -WALL_H);
+  g.moveTo(POST_W,  0); g.lineTo(POST_W,  -WALL_H);
+  g.moveTo(0, -POST_H); g.lineTo(0, -POST_H-WALL_H);
+  g.stroke({ width: 1.5, color: pal.trim });
 
   c.addChild(g);
+}
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+
+function topCapLeft(g: Graphics, pal: typeof PALETTES.stone) {
+  const hw = TILE_WIDTH_HALF, hh = TILE_HEIGHT_HALF;
+  g.poly([{ x: -hw, y: -WALL_H }, { x: 0, y: -hh-WALL_H },
+          { x: L_DX, y: -hh-WALL_H+L_DY }, { x: -hw+L_DX, y: -WALL_H+L_DY }]);
+  g.fill(pal.top);
+}
+
+function topCapRight(g: Graphics, pal: typeof PALETTES.stone) {
+  const hw = TILE_WIDTH_HALF, hh = TILE_HEIGHT_HALF;
+  g.poly([{ x: 0, y: -hh-WALL_H }, { x: hw, y: -WALL_H },
+          { x: hw+R_DX, y: -WALL_H+R_DY }, { x: R_DX, y: -hh-WALL_H+R_DY }]);
+  g.fill(pal.top);
 }
 
 function addDetail(g: Graphics, pal: typeof PALETTES.stone, side: "left" | "right") {
   const hw = TILE_WIDTH_HALF, hh = TILE_HEIGHT_HALF;
   if (pal === PALETTES.stone) {
-    // Horizontal mortar lines
     for (let i = 1; i <= 3; i++) {
       const y = -(WALL_H * i) / 4;
-      if (side === "left") {
-        g.moveTo(-hw, y); g.lineTo(0, y - hh);
-      } else {
-        g.moveTo(0, y - hh); g.lineTo(hw, y);
-      }
+      if (side === "left") { g.moveTo(-hw, y); g.lineTo(0, y - hh); }
+      else                 { g.moveTo(0, y - hh); g.lineTo(hw, y); }
       g.stroke({ width: 0.5, color: pal.mortar, alpha: 0.4 });
     }
   } else if (pal === PALETTES.wood) {
-    // Vertical planks
     for (let i = 1; i <= 3; i++) {
-      if (side === "left") {
-        const x = -hw + (hw * i) / 4;
-        const dx = (hh * i) / 4;
-        g.moveTo(x, 0); g.lineTo(x, -WALL_H);
-      } else {
-        const x = (hw * i) / 4;
-        g.moveTo(x, 0); g.lineTo(x, -WALL_H);
-      }
+      if (side === "left") { const x = -hw + (hw * i) / 4; g.moveTo(x, 0); g.lineTo(x, -WALL_H); }
+      else                 { const x = (hw * i) / 4;       g.moveTo(x, 0); g.lineTo(x, -WALL_H); }
       g.stroke({ width: 0.5, color: pal.mortar, alpha: 0.4 });
     }
   }
 }
 
+// ─── Building factory ─────────────────────────────────────────────────────────
+
 /**
- * Build wall pieces for a rectangular house footprint.
- * All four sides, one tile per wall piece, no overlaps at corners.
- *
- * @param x0,z0  Top-left corner tile
- * @param w      Width in tiles (interior)
- * @param d      Depth in tiles (interior)
+ * Build wall pieces for a rectangular house.
+ * @param x0,z0  top-left interior corner
+ * @param w,d    interior width/depth in tiles
  */
 export function makeHouse(
   x0: number, z0: number,
@@ -431,49 +305,40 @@ export function makeHouse(
   doorTile = Math.floor(w / 2),
 ): WallPiece[] {
   const pieces: WallPiece[] = [];
+  const x1 = x0 + w - 1;
+  const z1 = z0 + d - 1;
 
-  // The perimeter is (w+2) × (d+2). Corners are where rows/columns meet.
-  // We use NW corner = (x0-1, z0-1) ... SE corner = (x0+w, z0+d)
-  // But simpler: walls run along x0..x0+w-1 (north/south) and z0..z0+d-1 (east/west)
-  // Corners live at (x0-1,z0-1), (x0+w,z0-1), (x0-1,z0+d), (x0+w,z0+d)
-
-  const x1 = x0 + w - 1;  // last interior column
-  const z1 = z0 + d - 1;  // last interior row
-
-  // North wall row: constant Z (z0-1), runs along X axis.
-  // +X goes screen lower-right, so this row faces the NE edge → wall_e
+  // North wall (wall_right along z0-1)
   for (let x = x0; x <= x1; x++) {
     const isDoor = doorWall === "n" && x === x0 + doorTile;
-    pieces.push({ tileX: x, tileZ: z0 - 1, material: mat, type: isDoor ? "wall_right_door" : "wall_right" });
+    pieces.push({ tileX: x, tileZ: z0-1, material: mat, type: isDoor ? "wall_right_door" : "wall_right" });
   }
-
-  // South wall row: constant Z (z0+d), runs along X axis → wall_e
+  // South wall (wall_right along z0+d)
   for (let x = x0; x <= x1; x++) {
     const isDoor = doorWall === "s" && x === x0 + doorTile;
-    const isWin = !isDoor && x % 2 === 1;
-    pieces.push({ tileX: x, tileZ: z0 + d, material: mat, type: isDoor ? "wall_right_door" : isWin ? "wall_right_win" : "wall_right" });
+    const isWin  = !isDoor && x % 2 === 1;
+    pieces.push({ tileX: x, tileZ: z0+d, material: mat,
+      type: isDoor ? "wall_right_door" : isWin ? "wall_right_win" : "wall_right" });
   }
-
-  // West wall column: constant X (x0-1), runs along Z axis.
-  // +Z goes screen lower-left, so this column faces the NW edge → wall_n
+  // West wall (wall_left along x0-1)
   for (let z = z0; z <= z1; z++) {
-    const isDoor = doorWall === "w" && z === z0 + Math.floor(d / 2);
-    const isWin = !isDoor && z % 2 === 0;
-    pieces.push({ tileX: x0 - 1, tileZ: z, material: mat, type: isDoor ? "wall_left_door" : isWin ? "wall_left_win" : "wall_left" });
+    const isDoor = doorWall === "w" && z === z0 + Math.floor(d/2);
+    const isWin  = !isDoor && z % 2 === 0;
+    pieces.push({ tileX: x0-1, tileZ: z, material: mat,
+      type: isDoor ? "wall_left_door" : isWin ? "wall_left_win" : "wall_left" });
   }
-
-  // East wall column: constant X (x0+w), runs along Z axis → wall_n
+  // East wall (wall_left along x0+w)
   for (let z = z0; z <= z1; z++) {
-    const isDoor = doorWall === "e" && z === z0 + Math.floor(d / 2);
-    const isWin = !isDoor && z % 2 === 0;
-    pieces.push({ tileX: x0 + w, tileZ: z, material: mat, type: isDoor ? "wall_left_door" : isWin ? "wall_left_win" : "wall_left" });
+    const isDoor = doorWall === "e" && z === z0 + Math.floor(d/2);
+    const isWin  = !isDoor && z % 2 === 0;
+    pieces.push({ tileX: x0+w, tileZ: z, material: mat,
+      type: isDoor ? "wall_left_door" : isWin ? "wall_left_win" : "wall_left" });
   }
-
-  // Four corners — each gets its own tile with a corner post
-  pieces.push({ tileX: x0 - 1, tileZ: z0 - 1, material: mat, type: "wall_corner" });
-  pieces.push({ tileX: x0 + w, tileZ: z0 - 1, material: mat, type: "wall_corner" });
-  pieces.push({ tileX: x0 - 1, tileZ: z0 + d, material: mat, type: "wall_corner" });
-  pieces.push({ tileX: x0 + w, tileZ: z0 + d, material: mat, type: "wall_corner" });
+  // Four corner posts
+  pieces.push({ tileX: x0-1, tileZ: z0-1, material: mat, type: "wall_corner" });
+  pieces.push({ tileX: x0+w, tileZ: z0-1, material: mat, type: "wall_corner" });
+  pieces.push({ tileX: x0-1, tileZ: z0+d, material: mat, type: "wall_corner" });
+  pieces.push({ tileX: x0+w, tileZ: z0+d, material: mat, type: "wall_corner" });
 
   return pieces;
 }
