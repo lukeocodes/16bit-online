@@ -256,6 +256,20 @@ export class Game {
       }
     });
 
+    this.stateSync.setOnLootDrop((items) => {
+      for (const item of items) {
+        if (this.hud) {
+          this.hud.chatBox.addSystemMessage(`Looted: ${item.icon} ${item.name} x${item.qty}`);
+        }
+      }
+    });
+
+    this.stateSync.setOnInventorySync((items) => {
+      // Store inventory for UI (TODO: inventory panel)
+      (this as any)._inventory = items;
+      console.log(`[Game] Inventory synced: ${items.length} items`);
+    });
+
     this.stateSync.setOnChat((senderId, senderName, text) => {
       if (this.hud) {
         this.hud.chatBox.addMessage(senderName, text);

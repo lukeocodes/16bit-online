@@ -1,0 +1,99 @@
+import type { Graphics } from "pixi.js";
+import type { Model, RenderContext, DrawCall, AttachmentPoint, V } from "../types";
+
+/**
+ * Mail boots — chain mail sabatons with leather sole.
+ */
+export class BootsMail implements Model {
+  readonly id = "boots-mail";
+  readonly name = "Mail Sabatons";
+  readonly category = "feet" as const;
+  readonly slot = "feet-L" as const;
+
+  getDrawCalls(ctx: RenderContext): DrawCall[] {
+    const { skeleton, palette, farSide, nearSide } = ctx;
+    const j = skeleton.joints;
+    const iso = skeleton.iso;
+    const calls: DrawCall[] = [];
+
+    for (const side of [farSide, nearSide]) {
+      const d = side === farSide ? 11.5 : 13.5;
+      calls.push({ depth: d, draw: (g, s) => this.drawBoot(g, j, iso, palette, s, side) });
+    }
+    return calls;
+  }
+
+  private drawBoot(g: Graphics, j: Record<string, V>, iso: V, p: any, s: number, side: "L" | "R"): void {
+    const ankle = j[`ankle${side}`];
+    const knee = j[`knee${side}`];
+    const color = p.body;
+    const dk = p.bodyDk;
+
+    // Mail shaft (shorter than leather, to the ankle)
+    const shaftTopY = ankle.y - 3.5;
+    const shaftTopX = ankle.x + (knee.x - ankle.x) * 0.2;
+    g.roundRect((shaftTopX - 3) * s, shaftTopY * s, 6 * s, (ankle.y - shaftTopY + 1) * s, 1 * s);
+    g.fill(color);
+    g.roundRect((shaftTopX - 3) * s, shaftTopY * s, 6 * s, (ankle.y - shaftTopY + 1) * s, 1 * s);
+    g.stroke({ width: s * 0.4, color: p.outline, alpha: 0.35 });
+
+    // Ring pattern on shaft
+    for (let row = 0; row < 2; row++) {
+      const ry = shaftTopY + 1 + row * 2;
+      for (let col = 0; col < 3; col++) {
+        const rx = shaftTopX - 1.5 + col * 1.5;
+        g.circle(rx * s, ry * s, 0.4 * s);
+        g.stroke({ width: s * 0.2, color: p.bodyLt, alpha: 0.3 });
+      }
+    }
+
+    // Top rim
+    g.ellipse(shaftTopX * s, shaftTopY * s, 3.2 * s, 1 * s);
+    g.fill(p.accent);
+
+    // Foot
+    const footLen = 4.3;
+    const fwdX = iso.x * footLen;
+    const fwdY = iso.y * footLen * 0.5;
+    const tipX = ankle.x + fwdX;
+    const tipY = ankle.y + fwdY + 1.6;
+
+    const fdx = tipX - ankle.x;
+    const fdy = tipY - ankle.y;
+    const flen = Math.sqrt(fdx * fdx + fdy * fdy) || 1;
+    const pnx = -fdy / flen;
+    const pny = fdx / flen;
+    const hw = 2.3;
+    const tw = 1.4;
+
+    g.moveTo((ankle.x + pnx * hw) * s, (ankle.y + pny * hw) * s);
+    g.lineTo((tipX + pnx * tw) * s, (tipY + pny * tw) * s);
+    g.quadraticCurveTo(
+      (tipX + fdx / flen * 1.5) * s, (tipY + fdy / flen * 1) * s,
+      (tipX - pnx * tw) * s, (tipY - pny * tw) * s
+    );
+    g.lineTo((ankle.x - pnx * hw) * s, (ankle.y - pny * hw) * s);
+    g.closePath();
+    g.fill(color);
+    g.moveTo((ankle.x + pnx * hw) * s, (ankle.y + pny * hw) * s);
+    g.lineTo((tipX + pnx * tw) * s, (tipY + pny * tw) * s);
+    g.quadraticCurveTo(
+      (tipX + fdx / flen * 1.5) * s, (tipY + fdy / flen * 1) * s,
+      (tipX - pnx * tw) * s, (tipY - pny * tw) * s
+    );
+    g.lineTo((ankle.x - pnx * hw) * s, (ankle.y - pny * hw) * s);
+    g.closePath();
+    g.stroke({ width: s * 0.4, color: p.outline, alpha: 0.35 });
+
+    // Foot ring pattern
+    for (let i = 0; i < 2; i++) {
+      const t = (i + 1) / 3;
+      const fx = ankle.x + fdx * t;
+      const fy = ankle.y + fdy * t;
+      g.circle(fx * s, fy * s, 0.4 * s);
+      g.stroke({ width: s * 0.2, color: p.bodyLt, alpha: 0.25 });
+    }
+  }
+
+  getAttachmentPoints(): Record<string, AttachmentPoint> { return {}; }
+}

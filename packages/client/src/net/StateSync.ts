@@ -22,6 +22,8 @@ export type ChatCallback = (senderId: string, senderName: string, text: string) 
 export type ZoneChangeCallback = (zoneId: string, zoneName: string, mapFile: string, spawnX: number, spawnZ: number, levelRange: [number, number], musicTag: string) => void;
 export type AbilityCooldownCallback = (abilityId: string, remaining: number) => void;
 export type ChunkDataCallback = (cx: number, cz: number, heights: Float32Array) => void;
+export type LootDropCallback = (items: Array<{ itemId: string; name: string; icon: string; qty: number }>) => void;
+export type InventorySyncCallback = (items: Array<{ id: string; itemId: string; name: string; icon: string; type: string; quantity: number; equipped: boolean; slot: string | null }>) => void;
 
 export class StateSync {
   private entityManager: EntityManager;
@@ -40,6 +42,8 @@ export class StateSync {
   private onZoneChange: ZoneChangeCallback | null = null;
   private onAbilityCooldown: AbilityCooldownCallback | null = null;
   private onChunkDataCb: ChunkDataCallback | null = null;
+  private onLootDrop: LootDropCallback | null = null;
+  private onInventorySync: InventorySyncCallback | null = null;
   private terrainYResolver: ((x: number, z: number) => number) | null = null;
 
   // Spawn points (for dev mode rendering)
@@ -77,6 +81,8 @@ export class StateSync {
   setOnAbilityCooldown(handler: AbilityCooldownCallback) { this.onAbilityCooldown = handler; }
   setOnChat(handler: ChatCallback) { this.onChat = handler; }
   setOnChunkData(handler: ChunkDataCallback) { this.onChunkDataCb = handler; }
+  setOnLootDrop(handler: LootDropCallback) { this.onLootDrop = handler; }
+  setOnInventorySync(handler: InventorySyncCallback) { this.onInventorySync = handler; }
 
   handleChunkData(data: ArrayBuffer): void {
     // Format: [opcode:u8] [cx:i16LE] [cz:i16LE] [heights:2048 bytes Float16]
@@ -254,6 +260,16 @@ export class StateSync {
       case Opcode.ZONE_CHANGE:
         if (this.onZoneChange) {
           this.onZoneChange(data.zoneId, data.zoneName, data.mapFile, data.spawnX, data.spawnZ, data.levelRange, data.musicTag);
+        }
+        break;
+      case Opcode.LOOT_DROP:
+        if (this.onLootDrop && data.items) {
+          this.onLootDrop(data.items);
+        }
+        break;
+      case Opcode.INVENTORY_SYNC:
+        if (this.onInventorySync && data.items) {
+          this.onInventorySync(data.items);
         }
         break;
     }

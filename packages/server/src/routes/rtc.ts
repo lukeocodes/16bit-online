@@ -17,6 +17,7 @@ import { getOrGenerateChunkHeights } from "../world/chunk-cache.js";
 import { generateTileHeight, CONTINENTAL_SCALE } from "../world/terrain-noise.js";
 import { isInTiledMap } from "../world/tiled-map.js";
 import { initPlayerProgress, removePlayerProgress, handleKill } from "../game/world.js";
+import { loadInventory, saveInventory, sendInventory } from "../game/inventory.js";
 import { db } from "../db/postgres.js";
 import { characters } from "../db/schema.js";
 import { eq } from "drizzle-orm";
@@ -83,8 +84,10 @@ export async function rtcRoutes(app: FastifyInstance) {
         registerEntity(entityId, "melee", 5, 2.0, 50, 50);
       }
 
-      // Initialize XP/level tracking
+      // Initialize XP/level tracking + inventory
       initPlayerProgress(entityId, characterId, charRow?.xp ?? 0, charRow?.level ?? 1);
+      loadInventory(entityId, characterId).catch(err =>
+        console.error(`[Inventory] Failed to load for ${entityId}:`, err));
 
       // Server creates the peer connection and DataChannels
       let iceServers: any[] = config.ice.stun.map(url => ({ urls: url }));
@@ -373,6 +376,9 @@ export async function rtcRoutes(app: FastifyInstance) {
             )));
           }
           reliableChannel.send(Buffer.from(packReliable(Opcode.WORLD_READY, {})));
+
+          // Send inventory after world is ready
+          sendInventory(entityId);
         }
       });
 
@@ -382,7 +388,7 @@ export async function rtcRoutes(app: FastifyInstance) {
           const ent = entityStore.get(entityId);
           if (!ent) return;
 
-          // Save position and XP/level to database
+          // Save position, XP/level, and inventory to database
           const progress = removePlayerProgress(entityId);
           db.update(characters)
             .set({
@@ -391,6 +397,9 @@ export async function rtcRoutes(app: FastifyInstance) {
             })
             .where(eq(characters.id, characterId))
             .catch((err) => console.error(`[DB] Failed to save state for ${entityId}:`, err));
+
+          saveInventory(entityId)
+            .catch((err) => console.error(`[Inventory] Failed to save for ${entityId}:`, err));
 
           // Remove from connection manager (no longer receiving data)
           connectionManager.remove(entityId);

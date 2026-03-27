@@ -12,8 +12,8 @@ const SLOT_CATEGORIES: Record<string, string[]> = {
   "hand-L": ["offhand"],
   torso: ["armor"],
   "torso-back": [],
-  legs: [],
-  "feet-L": [],
+  legs: ["legs"],
+  "feet-L": ["feet"],
   "feet-R": [],
 };
 

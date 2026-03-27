@@ -9,6 +9,7 @@ import {
   packBinaryDamage, packBinaryDeath, packBinaryState,
 } from "./protocol.js";
 import { xpForKill, processXpGain, xpToNextLevel, totalXpForLevel } from "./experience.js";
+import { rollAndGiveLoot } from "./inventory.js";
 import { config } from "../config.js";
 
 /**
@@ -50,8 +51,11 @@ export function handleKill(killerId: string, deadEntityId: string) {
     }
   }
 
-  // NPC death → remove + schedule respawn
+  // NPC death → loot drop + remove + schedule respawn
   if (deadEntity?.entityType === "npc") {
+    if (killerEntity?.entityType === "player") {
+      rollAndGiveLoot(killerId, deadEntityId);
+    }
     handleNpcDeath(deadEntityId);
   }
 

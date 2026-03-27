@@ -59,3 +59,14 @@ export const chunkData = pgTable("chunk_data", {
 }, (table) => [
   primaryKey({ columns: [table.mapId, table.chunkX, table.chunkY, table.chunkZ] }),
 ]);
+
+// Character inventory — items owned by a character
+export const characterInventory = pgTable("character_inventory", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  characterId: uuid("character_id").notNull().references(() => characters.id),
+  itemId: varchar("item_id", { length: 50 }).notNull(),
+  quantity: integer("quantity").default(1).notNull(),
+  equipped: boolean("equipped").default(false).notNull(),
+  slot: varchar("slot", { length: 20 }),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+});
