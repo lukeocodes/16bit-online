@@ -199,10 +199,9 @@ function checkEnemyProximity() {
     // Use hysteresis: detect at ENEMY_DETECTION_RADIUS, clear at ENEMY_CLEAR_RADIUS
     const wasNearby = enemyNearbyState.get(conn.entityId) ?? false;
     const checkRadius = wasNearby ? ENEMY_CLEAR_RADIUS : ENEMY_DETECTION_RADIUS;
-    const nearbyEntities = entityStore.getNearbyEntities(player.x, player.z, checkRadius);
     const nearbyNpcIds: string[] = [];
 
-    for (const entity of nearbyEntities) {
+    for (const entity of entityStore.iterNearbyEntities(player.x, player.z, checkRadius)) {
       if (entity.entityType !== "npc") continue;
       const manhattan = Math.abs(entity.x - player.x) + Math.abs(entity.z - player.z);
       if (manhattan <= checkRadius) {
@@ -227,11 +226,10 @@ function broadcastPositions() {
     const self = entityStore.get(conn.entityId);
     if (!self) continue;
 
-    // Write directly into pre-allocated buffer — no intermediate array
-    const nearbyEntities = entityStore.getNearbyEntities(self.x, self.z);
+    // Write directly into pre-allocated buffer — iterator avoids array allocation
     let count = 0;
 
-    for (const other of nearbyEntities) {
+    for (const other of entityStore.iterNearbyEntities(self.x, self.z)) {
       if (other.entityId === conn.entityId) continue;
       if (other.mapId !== self.mapId) continue; // Only same-zone entities
 
@@ -279,7 +277,7 @@ function broadcastState() {
     }
 
     // Nearby entity states — only send if hp/maxHp changed
-    for (const other of entityStore.getNearbyEntities(self.x, self.z)) {
+    for (const other of entityStore.iterNearbyEntities(self.x, self.z)) {
       if (other.entityId === conn.entityId) continue;
 
       const combat = getCombatState(other.entityId);

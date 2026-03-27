@@ -12,7 +12,7 @@ Read this file at the start of each model workbench session. Update after signif
 - **Palette** — `computePalette(skin, hair, eyes, primary, secondary, armorType)` generates full color set from base colors + armor material.
 - **Attachment slots** — `root`, `head-top`, `hand-R`, `hand-L`, `torso`, `torso-back`, `legs`, `feet-L`, `feet-R`
 
-## Current State (2026-03-27)
+## Current State (2026-03-27, session 2)
 
 ### Workbench UI
 - [x] 3-panel layout: left nav (model browser), center (PixiJS canvas), right (config panel)
@@ -69,9 +69,9 @@ Read this file at the start of each model workbench session. Update after signif
 #### Bodies (HIGH)
 - [x] Elf Body — DONE
 - [x] Dwarf Body — DONE
-- [ ] Skeleton NPC — bone-colored, visible ribs, skull head
-- [ ] Goblin NPC — wide body, green skin, pointed ears, red eyes
-- [ ] Rabbit NPC — oval body, tall ears, small
+- [x] Skeleton NPC — DONE. Rib cage, skull with eye sockets + red glow, bony limbs with dual forearm bones, finger bones, pelvic bone, vertebrae. Can hold weapons.
+- [x] Goblin NPC — DONE. Green skin, wide potbelly, pointed triangular ears, red/yellow eyes, underbite fangs, clawed hands/feet, broad nose. Can hold weapons.
+- [x] Rabbit NPC — DONE. Non-humanoid oval body, tall ears with pink inner, cheek puffs, whiskers, cotton tail, big eyes, hopping walk. No weapon slots.
 
 #### Hair (MEDIUM)
 - [x] Long hair — DONE
@@ -112,8 +112,11 @@ Read this file at the start of each model workbench session. Update after signif
 
 ## What to Work on Next
 Priority for each session (tackle 1-2 items per run):
-1. Elf + Dwarf body models (enables race selection)
-2. More hair styles (5 total minimum)
-3. Armor leg/boot pieces (enables full armor sets)
-4. NPC body models (skeleton, goblin, rabbit)
-5. Armor race variants
+1. ~~Elf + Dwarf body models~~ — DONE
+2. ~~More hair styles (5 total)~~ — DONE
+3. ~~NPC body models (skeleton, goblin, rabbit)~~ — DONE
+4. Armor leg/boot pieces (enables full armor sets)
+5. More NPC models (imp, ogre, wraith, wolf, bear)
+6. Additional offhand items (tower shield, buckler, tome, torch)
+7. Armor race variants (dragon, skeleton, ogre, elven)
+8. Clean up legacy files (CharacterModel.ts, Controls.ts)

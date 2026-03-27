@@ -110,8 +110,8 @@ class EntityStore {
   }
 
   /** Get all entities within Chebyshev radius of (x, z). */
-  getNearbyEntities(x: number, z: number, radius: number = 32): ServerEntity[] {
-    const results: ServerEntity[] = [];
+  /** Iterate nearby entities without allocating an array */
+  *iterNearbyEntities(x: number, z: number, radius: number = 32): IterableIterator<ServerEntity> {
     const minCellX = Math.floor((x - radius) / CELL_SIZE);
     const maxCellX = Math.floor((x + radius) / CELL_SIZE);
     const minCellZ = Math.floor((z - radius) / CELL_SIZE);
@@ -125,11 +125,14 @@ class EntityStore {
           const entity = this.entities.get(eid);
           if (!entity) continue;
           const dist = Math.max(Math.abs(entity.x - x), Math.abs(entity.z - z));
-          if (dist <= radius) results.push(entity);
+          if (dist <= radius) yield entity;
         }
       }
     }
-    return results;
+  }
+
+  getNearbyEntities(x: number, z: number, radius: number = 32): ServerEntity[] {
+    return Array.from(this.iterNearbyEntities(x, z, radius));
   }
 
   /** Get only players within Chebyshev radius of (x, z). */
@@ -166,12 +169,11 @@ class EntityStore {
     this.awakeSetTick = tick;
     this.awakeSet.clear();
 
-    const players = this.getByType("player");
-    for (const player of players) {
-      this.awakeSet.add(player.entityId);
-      const nearby = this.getNearbyEntities(player.x, player.z, AWAKE_RADIUS);
-      for (const entity of nearby) {
-        this.awakeSet.add(entity.entityId);
+    for (const entity of this.entities.values()) {
+      if (entity.entityType !== "player") continue;
+      this.awakeSet.add(entity.entityId);
+      for (const nearby of this.iterNearbyEntities(entity.x, entity.z, AWAKE_RADIUS)) {
+        this.awakeSet.add(nearby.entityId);
       }
     }
   }
