@@ -65,12 +65,7 @@ async function main() {
     showGhostBody: false,
     compositeConfig: {
       baseModelId: "human-body",
-      attachments: [
-        { slot: "head-top" as AttachmentSlot, modelId: "hair-short" },
-        { slot: "torso" as AttachmentSlot, modelId: "armor-leather" },
-        { slot: "hand-R" as AttachmentSlot, modelId: "weapon-sword" },
-        { slot: "hand-L" as AttachmentSlot, modelId: "shield-kite" },
-      ],
+      attachments: [],
       palette: defaultPalette,
       build: 1.0,
       height: 1.0,

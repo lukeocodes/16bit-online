@@ -191,16 +191,7 @@ export function createConfigPanel(
       appendHeading(SLOT_LABELS[slotName] ?? slotName);
 
       const existingAtt = state.compositeConfig.attachments.find((a) => a.slot === slotName);
-      let currentModelId: string;
-      if (existingAtt) {
-        currentModelId = existingAtt.modelId;
-      } else if (compatibleModels.length > 0) {
-        // Auto-fill: seed the first compatible model directly into state (no notify — avoids rebuild loop)
-        currentModelId = compatibleModels[0].id;
-        state.compositeConfig.attachments.push({ slot: slotName as any, modelId: currentModelId });
-      } else {
-        currentModelId = "none";
-      }
+      const currentModelId = existingAtt?.modelId ?? "none";
 
       const div = document.createElement("div");
       div.className = "control-group";
