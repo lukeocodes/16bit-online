@@ -2,6 +2,7 @@ import type { Screen } from "../UIManager";
 import { MiniMap } from "../components/MiniMap";
 import { WorldMap } from "../components/WorldMap";
 import { SettingsMenu } from "../components/SettingsMenu";
+import { ChatBox } from "../components/ChatBox";
 
 export interface TargetInfo {
   name: string;
@@ -22,17 +23,47 @@ export class GameHUD implements Screen {
   public miniMap: MiniMap;
   public worldMap: WorldMap;
   public settingsMenu: SettingsMenu;
+  public chatBox: ChatBox;
 
   private onAutoAttackToggle: (() => void) | null = null;
+  private onAbilityUse: ((slot: number) => void) | null = null;
+  private abilitySlots: HTMLElement[] = [];
 
   constructor() {
     this.miniMap = new MiniMap();
     this.worldMap = new WorldMap();
     this.settingsMenu = new SettingsMenu();
+    this.chatBox = new ChatBox();
   }
 
   setOnAutoAttackToggle(handler: () => void) {
     this.onAutoAttackToggle = handler;
+  }
+
+  setOnAbilityUse(handler: (slot: number) => void) {
+    this.onAbilityUse = handler;
+  }
+
+  /** Update ability slot visual to show cooldown overlay */
+  updateAbilityCooldown(slot: number, remainingSec: number) {
+    const el = this.abilitySlots[slot];
+    if (!el) return;
+    // Grey out + show timer text
+    el.style.opacity = remainingSec > 0 ? "0.4" : "1";
+    const existing = el.querySelector(".cd-overlay") as HTMLElement;
+    if (remainingSec > 0) {
+      if (existing) {
+        existing.textContent = `${remainingSec}s`;
+      } else {
+        const overlay = document.createElement("span");
+        overlay.className = "cd-overlay";
+        overlay.textContent = `${remainingSec}s`;
+        overlay.style.cssText = "position:absolute; inset:0; display:flex; align-items:center; justify-content:center; font-size:14px; color:#fff; background:#00000088; border-radius:6px;";
+        el.appendChild(overlay);
+      }
+    } else if (existing) {
+      existing.remove();
+    }
   }
 
   render(): HTMLElement {
@@ -44,6 +75,7 @@ export class GameHUD implements Screen {
     this.container.appendChild(this.createTargetPanel());
     this.container.appendChild(this.createActionBar());
     this.container.appendChild(this.createMiniMap());
+    this.container.appendChild(this.chatBox.render());
     this.container.appendChild(this.worldMap.render());
     this.container.appendChild(this.settingsMenu.render());
 
@@ -59,7 +91,11 @@ export class GameHUD implements Screen {
     }
 
     this.targetPanel.style.display = "block";
-    if (this.targetName) this.targetName.textContent = info.name;
+    if (this.targetName) {
+      // Derive difficulty level from max HP: 10→Lv1, 15→Lv2, 25→Lv4, 40→Lv6, 50→Lv8
+      const level = Math.max(1, Math.round(info.maxHp / 6));
+      this.targetName.textContent = `${info.name}  Lv${level}`;
+    }
     if (this.targetHpFill) {
       const pct = Math.max(0, (info.hp / info.maxHp) * 100);
       this.targetHpFill.style.width = `${pct}%`;
@@ -83,10 +119,39 @@ export class GameHUD implements Screen {
     }
   }
 
+  setPlayerName(name: string) {
+    const el = this.container?.querySelector("#player-name-label");
+    if (el) el.textContent = name;
+  }
+
   updatePlayerHp(hp: number, maxHp: number, mana: number, maxMana: number, stamina: number, maxStamina: number) {
     this.updateBar("hp", hp, maxHp);
     this.updateBar("mp", mana, maxMana);
     this.updateBar("st", stamina, maxStamina);
+  }
+
+  /** Show a zone entry/exit notification centered on screen */
+  showZoneNotification(text: string): void {
+    if (!this.container) return;
+
+    const el = document.createElement("div");
+    el.style.cssText = `
+      position: absolute; top: 25%; left: 50%; transform: translate(-50%, -50%);
+      color: #f0e8d0; font-size: 22px; font-weight: bold; font-family: 'Segoe UI', system-ui, sans-serif;
+      text-shadow: 0 2px 8px rgba(0,0,0,0.8), 0 0 20px rgba(0,0,0,0.5);
+      letter-spacing: 2px; text-transform: uppercase;
+      opacity: 0; pointer-events: none;
+      transition: opacity 0.6s ease-in;
+    `;
+    el.textContent = text;
+    this.container.appendChild(el);
+
+    // Fade in
+    requestAnimationFrame(() => { el.style.opacity = "1"; });
+
+    // Fade out after 2s, remove after 3s
+    setTimeout(() => { el.style.transition = "opacity 1s ease-out"; el.style.opacity = "0"; }, 2000);
+    setTimeout(() => { el.remove(); }, 3000);
   }
 
   private updateBar(id: string, value: number, max: number) {
@@ -120,19 +185,34 @@ export class GameHUD implements Screen {
     };
     bar.appendChild(this.autoAttackBtn);
 
-    // Remaining empty slots
-    for (let i = 1; i < 6; i++) {
+    // Ability slots with keybind labels and placeholder icons
+    const slotDefs = [
+      { key: "2", icon: "🛡", label: "Defend", color: "#4488cc" },
+      { key: "3", icon: "💊", label: "Heal", color: "#44cc66" },
+      { key: "4", icon: "🔥", label: "Fire", color: "#cc6622" },
+      { key: "5", icon: "❄", label: "Ice", color: "#66aadd" },
+      { key: "6", icon: "⚡", label: "Shock", color: "#cccc44" },
+    ];
+    for (const def of slotDefs) {
       const slot = document.createElement("div");
       slot.style.cssText = `
         width: 52px; height: 52px; background: #0a0a1a88;
         border: 1px solid #444; border-radius: 6px;
-        display: flex; align-items: center; justify-content: center;
-        color: #555; font-size: 12px; cursor: pointer;
-        transition: border-color 0.15s;
+        display: flex; align-items: center; justify-content: center; flex-direction: column;
+        color: #555; font-size: 10px; cursor: pointer;
+        transition: border-color 0.15s; position: relative; user-select: none;
       `;
-      slot.textContent = String(i + 1);
-      slot.onmouseenter = () => (slot.style.borderColor = "#13ef93");
+      slot.innerHTML = `<span style="font-size:16px; opacity:0.4">${def.icon}</span><span style="opacity:0.3">${def.label}</span>`;
+      // Keybind indicator
+      const keybind = document.createElement("span");
+      keybind.textContent = def.key;
+      keybind.style.cssText = `position:absolute; top:2px; right:4px; font-size:9px; color:#666;`;
+      slot.appendChild(keybind);
+      slot.onmouseenter = () => (slot.style.borderColor = def.color);
       slot.onmouseleave = () => (slot.style.borderColor = "#444");
+      slot.onclick = () => { if (this.onAbilityUse) this.onAbilityUse(parseInt(def.key) - 1); };
+      slot.title = `${def.label} (${def.key})`;
+      this.abilitySlots.push(slot);
       bar.appendChild(slot);
     }
 
@@ -148,6 +228,7 @@ export class GameHUD implements Screen {
     `;
 
     const name = document.createElement("div");
+    name.id = "player-name-label";
     name.textContent = "Player";
     name.style.cssText = "font-size: 14px; font-weight: 600; color: #e0e0e0; margin-bottom: 8px; position: relative;";
 
@@ -191,7 +272,76 @@ export class GameHUD implements Screen {
       this.playerPanel.appendChild(row);
     }
 
+    // XP bar
+    const xpRow = document.createElement("div");
+    xpRow.style.cssText = "display: flex; align-items: center; gap: 6px; margin-top: 6px;";
+
+    const xpLabel = document.createElement("span");
+    xpLabel.id = "xp-level";
+    xpLabel.textContent = "Lv 1";
+    xpLabel.style.cssText = "width: 32px; font-size: 11px; color: #c8a848; font-weight: 600;";
+
+    const xpTrack = document.createElement("div");
+    xpTrack.style.cssText = "flex: 1; height: 4px; background: #333; border-radius: 2px; overflow: hidden;";
+
+    const xpFill = document.createElement("div");
+    xpFill.id = "bar-fill-xp";
+    xpFill.style.cssText = "height: 100%; background: #c8a848; border-radius: 2px; width: 0%; transition: width 0.3s;";
+    xpTrack.appendChild(xpFill);
+
+    const xpText = document.createElement("span");
+    xpText.id = "bar-text-xp";
+    xpText.textContent = "0";
+    xpText.style.cssText = "width: 28px; text-align: right; font-size: 10px; color: #888;";
+
+    xpRow.append(xpLabel, xpTrack, xpText);
+    this.playerPanel.appendChild(xpRow);
+
     return this.playerPanel;
+  }
+
+  updateXp(xpIntoLevel: number, xpToNext: number, level: number) {
+    const fill = this.container?.querySelector("#bar-fill-xp") as HTMLElement | null;
+    const text = this.container?.querySelector("#bar-text-xp") as HTMLElement | null;
+    const label = this.container?.querySelector("#xp-level") as HTMLElement | null;
+    if (fill) fill.style.width = `${Math.max(0, (xpIntoLevel / xpToNext) * 100)}%`;
+    if (text) text.textContent = `${xpIntoLevel}`;
+    if (label) label.textContent = `Lv ${level}`;
+  }
+
+  showXpGain(amount: number) {
+    if (!this.container) return;
+    const el = document.createElement("div");
+    el.textContent = `+${amount} XP`;
+    el.style.cssText = `
+      position: absolute; bottom: 80px; left: 50%; transform: translateX(-50%);
+      color: #c8a848; font-size: 16px; font-weight: bold; pointer-events: none;
+      text-shadow: 0 1px 4px rgba(0,0,0,0.8);
+      opacity: 1; transition: all 1.5s ease-out;
+    `;
+    this.container.appendChild(el);
+    requestAnimationFrame(() => {
+      el.style.opacity = "0";
+      el.style.transform = "translateX(-50%) translateY(-40px)";
+    });
+    setTimeout(() => el.remove(), 1600);
+  }
+
+  showLevelUp(level: number) {
+    if (!this.container) return;
+    const el = document.createElement("div");
+    el.textContent = `LEVEL UP! → ${level}`;
+    el.style.cssText = `
+      position: absolute; top: 35%; left: 50%; transform: translate(-50%, -50%);
+      color: #ffd700; font-size: 28px; font-weight: bold; pointer-events: none;
+      text-shadow: 0 2px 12px rgba(255,215,0,0.6), 0 0 30px rgba(255,215,0,0.3);
+      letter-spacing: 3px; text-transform: uppercase;
+      opacity: 0; transition: opacity 0.4s ease-in;
+    `;
+    this.container.appendChild(el);
+    requestAnimationFrame(() => { el.style.opacity = "1"; });
+    setTimeout(() => { el.style.transition = "opacity 1s ease-out"; el.style.opacity = "0"; }, 2500);
+    setTimeout(() => el.remove(), 3600);
   }
 
   private createTargetPanel(): HTMLElement {

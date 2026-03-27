@@ -13,8 +13,15 @@ export const Opcode = {
   SPAWN_POINT: 60,
   ENEMY_NEARBY: 70,
   ZONE_MUSIC_TAG: 71,
+  XP_GAIN: 80,
+  LEVEL_UP: 81,
+  PLAYER_RESPAWN: 82,
   CHUNK_REQUEST: 10,
   CHUNK_DATA: 11,
+  ACTION_USE: 30,
+  ABILITY_COOLDOWN: 32,
+  ZONE_CHANGE_REQUEST: 90,
+  ZONE_CHANGE: 91,
   WORLD_READY: 100,
   PING: 253,
   PONG: 254,
@@ -64,6 +71,18 @@ export function packEnemyNearby(playerId: string, entityIds: string[], nearby: b
 
 export function packZoneMusicTag(playerId: string, musicState: string): string {
   return packReliable(Opcode.ZONE_MUSIC_TAG, { playerId, musicState });
+}
+
+export function packXpGain(playerId: string, xpGained: number, totalXp: number, xpToNext: number, level: number): string {
+  return packReliable(Opcode.XP_GAIN, { playerId, xpGained, totalXp, xpToNext, level });
+}
+
+export function packLevelUp(playerId: string, newLevel: number, hpBonus: number, manaBonus: number, staminaBonus: number): string {
+  return packReliable(Opcode.LEVEL_UP, { playerId, newLevel, hpBonus, manaBonus, staminaBonus });
+}
+
+export function packPlayerRespawn(entityId: string, x: number, y: number, z: number, hp: number, maxHp: number): string {
+  return packReliable(Opcode.PLAYER_RESPAWN, { entityId, x, y, z, hp, maxHp });
 }
 
 // Binary position: 24 bytes

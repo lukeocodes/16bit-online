@@ -1,6 +1,8 @@
+/// <reference types="node" />
 import { describe, it, expect } from "vitest";
-import { readFileSync } from "fs";
-import { resolve } from "path";
+import { readFileSync } from "node:fs";
+import { resolve, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
 import { Opcode, packPosition } from "./net/Protocol";
 
 /**
@@ -8,7 +10,7 @@ import { Opcode, packPosition } from "./net/Protocol";
  * stay in sync with the shared protocol.json specification.
  */
 
-const sharedDir = resolve(import.meta.dirname, "../../shared");
+const sharedDir = resolve(dirname(fileURLToPath(import.meta.url)), "../../shared");
 const protocol = JSON.parse(readFileSync(resolve(sharedDir, "protocol.json"), "utf-8"));
 const constants = JSON.parse(readFileSync(resolve(sharedDir, "constants.json"), "utf-8"));
 

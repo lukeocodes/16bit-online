@@ -1,8 +1,8 @@
-import type { Mesh } from "@babylonjs/core/Meshes/mesh";
+import type { Container } from "pixi.js";
 
 export interface RenderableComponent {
   type: "renderable";
-  mesh: Mesh | null;
+  displayObject: Container | null;
   meshType: string; // "player", "npc", "object"
   bodyColor: string;
   skinColor: string;
@@ -18,7 +18,7 @@ export function createRenderable(
 ): RenderableComponent {
   return {
     type: "renderable",
-    mesh: null,
+    displayObject: null,
     meshType,
     bodyColor,
     skinColor,

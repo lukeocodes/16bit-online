@@ -35,6 +35,7 @@ export const characters = pgTable("characters", {
   posZ: real("pos_z").default(0).notNull(),
   mapId: integer("map_id").default(1).notNull(),
   level: integer("level").default(1).notNull(),
+  xp: integer("xp").default(0).notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   lastPlayed: timestamp("last_played", { withTimezone: true }),
 });

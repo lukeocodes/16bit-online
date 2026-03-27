@@ -131,8 +131,10 @@ export function tickWandering(dt: number) {
     const point = spawnPoints.get(spawned.spawnPointId);
     if (!point) continue;
 
-    // Random chance to start wandering each tick
-    if (Math.random() > 0.02) continue; // ~2% per tick = wander every ~2.5s at 20Hz
+    // Per-NPC wander chance from template, jittered ±25% for variety
+    const baseChance = template.wanderChance ?? 0.02;
+    const wanderChance = baseChance * (0.75 + Math.random() * 0.5);
+    if (Math.random() > wanderChance) continue;
 
     // Pick a random tile within spawn distance
     const angle = Math.random() * Math.PI * 2;
@@ -143,22 +145,26 @@ export function tickWandering(dt: number) {
     // Phase 2: Check walkability of target wander destination
     if (!isWalkable(targetX, targetZ)) continue;
 
-    // Move one tile toward target
-    const dx = targetX - Math.round(entity.x);
-    const dz = targetZ - Math.round(entity.z);
-    if (dx === 0 && dz === 0) continue;
+    // Move up to wanderSteps tiles toward target, jittered ±1
+    const baseSteps = template.wanderSteps ?? 1;
+    const maxSteps = Math.max(1, baseSteps + Math.floor(Math.random() * 3) - 1);
+    for (let step = 0; step < maxSteps; step++) {
+      const dx = targetX - Math.round(entity.x);
+      const dz = targetZ - Math.round(entity.z);
+      if (dx === 0 && dz === 0) break;
 
-    if (Math.abs(dx) > Math.abs(dz)) {
-      const nextX = entity.x + Math.sign(dx);
-      const nextZ = entity.z;
-      if (isWalkable(Math.round(nextX), Math.round(nextZ))) {
-        entityStore.updatePosition(entityId, nextX, nextZ);
-      }
-    } else {
-      const nextX = entity.x;
-      const nextZ = entity.z + Math.sign(dz);
-      if (isWalkable(Math.round(nextX), Math.round(nextZ))) {
-        entityStore.updatePosition(entityId, nextX, nextZ);
+      if (Math.abs(dx) > Math.abs(dz)) {
+        const nextX = entity.x + Math.sign(dx);
+        const nextZ = entity.z;
+        if (isWalkable(Math.round(nextX), Math.round(nextZ))) {
+          entityStore.updatePosition(entityId, nextX, nextZ);
+        } else break;
+      } else {
+        const nextX = entity.x;
+        const nextZ = entity.z + Math.sign(dz);
+        if (isWalkable(Math.round(nextX), Math.round(nextZ))) {
+          entityStore.updatePosition(entityId, nextX, nextZ);
+        } else break;
       }
     }
   }

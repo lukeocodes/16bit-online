@@ -45,10 +45,10 @@ export class EntityManager {
       if (cell?.size === 0) this.spatialGrid.delete(cellKey);
     }
 
-    // Dispose mesh if renderable
+    // Destroy display object if renderable
     const renderable = entity.components.get("renderable") as RenderableComponent | undefined;
-    if (renderable?.mesh) {
-      renderable.mesh.dispose();
+    if (renderable?.displayObject) {
+      renderable.displayObject.destroy();
     }
 
     this.entities.delete(id);
@@ -130,6 +130,17 @@ export class EntityManager {
       }
     }
     return results;
+  }
+
+  /** Allocation-free iteration over entities matching component types */
+  *iterEntitiesWithComponents(...types: ComponentType[]): IterableIterator<Entity> {
+    for (const entity of this.entities.values()) {
+      let match = true;
+      for (let i = 0; i < types.length; i++) {
+        if (!entity.components.has(types[i])) { match = false; break; }
+      }
+      if (match) yield entity;
+    }
   }
 
   getAllEntities(): IterableIterator<Entity> {

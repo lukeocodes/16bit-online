@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { EntityManager } from "../EntityManager";
 import { createPosition } from "../components/Position";
+import type { PositionComponent } from "../components/Position";
 import { createMovement } from "../components/Movement";
 import { MovementSystem } from "./MovementSystem";
 
@@ -24,7 +25,7 @@ describe("MovementSystem", () => {
   describe("idle state", () => {
     it("does not move when idle (no queued direction)", () => {
       addMovableEntity("e-1", 5, 5);
-      const pos = em.getComponent("e-1", "position")!;
+      const pos = em.getComponent<PositionComponent>("e-1", "position")!;
 
       system.update(0.05);
       expect(pos.x).toBe(5);
@@ -58,7 +59,7 @@ describe("MovementSystem", () => {
 
     it("interpolates position between tiles", () => {
       const mov = addMovableEntity("e-1", 0, 0, 5.0);
-      const pos = em.getComponent("e-1", "position")!;
+      const pos = em.getComponent<PositionComponent>("e-1", "position")!;
       mov.moving = true;
       mov.targetX = 1;
       mov.targetZ = 0;
@@ -71,7 +72,7 @@ describe("MovementSystem", () => {
 
     it("snaps to target when progress >= 1", () => {
       const mov = addMovableEntity("e-1", 0, 0, 5.0);
-      const pos = em.getComponent("e-1", "position")!;
+      const pos = em.getComponent<PositionComponent>("e-1", "position")!;
       mov.moving = true;
       mov.targetX = 1;
       mov.targetZ = 0;

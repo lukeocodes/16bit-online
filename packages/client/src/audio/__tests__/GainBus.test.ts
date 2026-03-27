@@ -88,7 +88,7 @@ describe("GainBus", () => {
   });
 
   it("fadeTo(targetVol, durationSec) schedules a linear ramp", () => {
-    ctx.currentTime = 1.0;
+    (ctx as any).currentTime = 1.0;
     const bus = new GainBus(ctx as unknown as AudioContext, destination);
     bus.fadeTo(0.3, 2.0);
     const gainParam = ctx._gainNodes[0].gain;

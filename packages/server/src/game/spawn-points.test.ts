@@ -240,13 +240,19 @@ describe("spawn-points", () => {
       const origX = npc.x;
       const origZ = npc.z;
 
-      // Mock Math.random to always return < 0.02 (force wandering)
-      // then return values for angle and distance calculations
+      // Mock Math.random sequence:
+      // 1. wanderChance jitter (0.75 + val * 0.5)
+      // 2. wander trigger check (must be < wanderChance)
+      // 3. angle
+      // 4. distance
+      // 5. maxSteps jitter
       const mockRandom = vi.spyOn(Math, "random");
       mockRandom
-        .mockReturnValueOnce(0.01)  // < 0.02, triggers wander
+        .mockReturnValueOnce(0.5)   // jitter → chance = 0.02 * (0.75 + 0.25) = 0.02
+        .mockReturnValueOnce(0.001) // < 0.02, triggers wander
         .mockReturnValueOnce(0.25)  // angle = 0.25 * 2π
-        .mockReturnValueOnce(0.5);  // dist = 0.5 * point.distance
+        .mockReturnValueOnce(0.5)   // dist = 0.5 * point.distance
+        .mockReturnValueOnce(0.5);  // maxSteps jitter
 
       tickWandering(0.05);
 
@@ -300,9 +306,11 @@ describe("spawn-points", () => {
 
       const mockRandom = vi.spyOn(Math, "random");
       mockRandom
-        .mockReturnValueOnce(0.01)   // triggers wander
+        .mockReturnValueOnce(0.5)    // jitter → chance = 0.02
+        .mockReturnValueOnce(0.001)  // < 0.02, triggers wander
         .mockReturnValueOnce(0.0)    // angle = 0 (east) → cos(0)=1, sin(0)=0
-        .mockReturnValueOnce(0.99);  // dist ≈ 4.95 → target=(15, 20)
+        .mockReturnValueOnce(0.99)   // dist ≈ 4.95 → target=(15, 20)
+        .mockReturnValueOnce(0.5);   // maxSteps jitter
 
       // dx = 15-10 = 5, dz = 20-20 = 0 → |dx| > |dz| → X branch
       tickWandering(0.05);
@@ -339,7 +347,8 @@ describe("spawn-points", () => {
 
       const mockRandom = vi.spyOn(Math, "random");
       mockRandom
-        .mockReturnValueOnce(0.01)  // triggers wander
+        .mockReturnValueOnce(0.5)   // jitter
+        .mockReturnValueOnce(0.001) // triggers wander
         .mockReturnValueOnce(0)     // angle = 0
         .mockReturnValueOnce(0);    // dist = 0 → target = spawn center = current pos
 
@@ -361,9 +370,11 @@ describe("spawn-points", () => {
 
       const mockRandom = vi.spyOn(Math, "random");
       mockRandom
-        .mockReturnValueOnce(0.01)    // triggers wander
+        .mockReturnValueOnce(0.5)     // jitter
+        .mockReturnValueOnce(0.001)   // triggers wander
         .mockReturnValueOnce(0.25)    // angle = π/2 (north)
-        .mockReturnValueOnce(0.5);    // dist = 5
+        .mockReturnValueOnce(0.5)     // dist = 5
+        .mockReturnValueOnce(0.5);    // maxSteps jitter
 
       // angle = 0.25 * 2π = π/2 → cos(π/2) ≈ 0, sin(π/2) = 1
       // targetX = round(0 + 0 * 5) = 0, targetZ = round(0 + 1 * 5) = 5

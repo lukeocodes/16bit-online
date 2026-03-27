@@ -12,6 +12,7 @@ let game: Game | null = null;
 if (import.meta.env.DEV) {
   import("./dev/PlaywrightAPI").then(({ createPlaywrightAPI }) => {
     (window as any).__game = createPlaywrightAPI(() => game);
+    (window as any).__gameInstance = () => game;
     console.log("[Dev] Playwright API available at window.__game");
   });
 }
@@ -49,17 +50,25 @@ async function boot() {
     const token = session.getToken();
     if (!token) throw new Error("Not authenticated");
 
+    // Set character name from session data
+    const chars = session.getCharacters();
+    const selectedChar = chars.find(c => c.id === characterId);
+    if (selectedChar) game.setCharacterName(selectedChar.name);
+
     loading.setStatus("Connecting to server...", 10);
     await game.connectToServer(token, characterId);
     loading.setStatus("Loading entities...", 80);
 
     loading.setStatus("Entering world...", 95);
-    game.start(characterId);
+    await game.start(characterId);
 
     // Give the HUD reference after Router swaps to it
     setTimeout(() => {
       const hud = (router as any)._activeHud;
-      if (hud && game) game.setHUD(hud);
+      if (hud && game) {
+        game.setHUD(hud);
+        if (selectedChar) hud.setPlayerName(selectedChar.name);
+      }
 
       // Expose audio dev API for console testing
       if (import.meta.env.DEV && game) {

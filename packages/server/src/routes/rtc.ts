@@ -8,12 +8,15 @@ import { registerEntity, unregisterEntity, engageTarget, disengage, getCombatSta
 import { getNpcTemplate } from "../game/npcs.js";
 import { getAllSpawnPoints } from "../game/spawn-points.js";
 import { isInSafeZone } from "../game/zones.js";
+import { getZone } from "../game/zone-registry.js";
 import { isWalkable } from "../world/terrain.js";
 import { startLingering, cancelLingering, isLingering } from "../game/linger.js";
-import { Opcode, packEntitySpawn, packEntityDespawn, packReliable, packSpawnPoint, packChunkData } from "../game/protocol.js";
+import { Opcode, packEntitySpawn, packEntityDespawn, packReliable, packSpawnPoint, packChunkData, packDamageEvent, packEntityDeath, packEntityState } from "../game/protocol.js";
 import { getServerNoisePerm, getCachedWorldMapGzip, getWorldMap } from "../world/queries.js";
 import { getOrGenerateChunkHeights } from "../world/chunk-cache.js";
 import { generateTileHeight, CONTINENTAL_SCALE } from "../world/terrain-noise.js";
+import { isInTiledMap } from "../world/tiled-map.js";
+import { initPlayerProgress, removePlayerProgress, handleKill } from "../game/world.js";
 import { db } from "../db/postgres.js";
 import { characters } from "../db/schema.js";
 import { eq } from "drizzle-orm";
@@ -49,13 +52,12 @@ export async function rtcRoutes(app: FastifyInstance) {
       }
 
       // Load position from database
-      // Default spawn on Human continent (Aethermere) — chunk (666, 575) in tile coords
-      const DEFAULT_SPAWN_X = 666 * 32; // 21312
-      const DEFAULT_SPAWN_Z = 575 * 32; // 18400
-      let startX = DEFAULT_SPAWN_X, startY = 0, startZ = DEFAULT_SPAWN_Z, startMapId = 1;
+      let startX = config.world.spawnX, startY = 0, startZ = config.world.spawnZ, startMapId = 1;
       const [charRow] = await db.select({
+        name: characters.name,
         posX: characters.posX, posY: characters.posY,
         posZ: characters.posZ, mapId: characters.mapId,
+        xp: characters.xp, level: characters.level,
       }).from(characters).where(eq(characters.id, characterId));
       if (charRow && !(charRow.posX === 0 && charRow.posZ === 0)) {
         startX = charRow.posX;
@@ -73,13 +75,16 @@ export async function rtcRoutes(app: FastifyInstance) {
         // Fresh spawn at saved position
         entity = {
           entityId, characterId: entityId, accountId: account.id,
-          name: account.displayName || "Player", entityType: "player",
+          name: charRow?.name || account.displayName || "Player", entityType: "player",
           x: startX, y: startY, z: startZ,
           rotation: 0, mapId: startMapId, lastUpdate: Date.now(),
         };
         entityStore.add(entity);
         registerEntity(entityId, "melee", 5, 2.0, 50, 50);
       }
+
+      // Initialize XP/level tracking
+      initPlayerProgress(entityId, characterId, charRow?.xp ?? 0, charRow?.level ?? 1);
 
       // Server creates the peer connection and DataChannels
       let iceServers: any[] = config.ice.stun.map(url => ({ urls: url }));
@@ -147,21 +152,24 @@ export async function rtcRoutes(app: FastifyInstance) {
           // Silent rejection: if target tile is blocked, just don't update position
           if (isWalkable(Math.round(newX), Math.round(newZ))) {
             // Phase 3: Validate player Y against terrain height
-            const world = getWorldMap();
-            if (world) {
-              const tileX = Math.round(newX);
-              const tileZ = Math.round(newZ);
-              const perm = getServerNoisePerm();
-              const chunkX = Math.floor(tileX / 32); // CHUNK_SIZE
-              const chunkZ = Math.floor(tileZ / 32);
-              if (chunkX >= 0 && chunkX < world.width && chunkZ >= 0 && chunkZ < world.height) {
-                const continentalElev = world.elevation[chunkZ * world.width + chunkX];
-                const biomeId = world.biomeMap[chunkZ * world.width + chunkX];
-                const expectedY = generateTileHeight(tileX, tileZ, continentalElev, biomeId, perm);
-                const clientY = msg.readFloatLE(12);
-                if (Math.abs(clientY - expectedY) > 0.5) {
-                  // Y mismatch -- likely cheat, silently reject
-                  return;
+            // Skip Y validation when using Tiled maps (client sends Y=0 for flat terrain)
+            const tileX = Math.round(newX);
+            const tileZ = Math.round(newZ);
+            const inTiledMap = isInTiledMap(tileX, tileZ);
+            if (!inTiledMap) {
+              const world = getWorldMap();
+              if (world) {
+                const perm = getServerNoisePerm();
+                const chunkX = Math.floor(tileX / 32); // CHUNK_SIZE
+                const chunkZ = Math.floor(tileZ / 32);
+                if (chunkX >= 0 && chunkX < world.width && chunkZ >= 0 && chunkZ < world.height) {
+                  const continentalElev = world.elevation[chunkZ * world.width + chunkX];
+                  const biomeId = world.biomeMap[chunkZ * world.width + chunkX];
+                  const expectedY = generateTileHeight(tileX, tileZ, continentalElev, biomeId, perm);
+                  const clientY = msg.readFloatLE(12);
+                  if (Math.abs(clientY - expectedY) > 0.5) {
+                    return;
+                  }
                 }
               }
             }
@@ -181,6 +189,145 @@ export async function rtcRoutes(app: FastifyInstance) {
           engageTarget(entityId, parsed.targetId);
         } else if (parsed.op === Opcode.AUTO_ATTACK_CANCEL) {
           disengage(entityId);
+        } else if (parsed.op === Opcode.ACTION_USE && parsed.abilityId) {
+          const abilityId = parsed.abilityId as string;
+          const now = Date.now();
+
+          // Ability cooldown definitions (ms)
+          const ABILITY_COOLDOWNS: Record<string, number> = {
+            defend: 15000, heal: 10000, fire: 8000, ice: 12000, shock: 6000,
+          };
+          const cooldownMs = ABILITY_COOLDOWNS[abilityId];
+          if (!cooldownMs) return;
+
+          // Check cooldown
+          const cdKey = `_cd_${abilityId}`;
+          const lastUsed = (entity as any)[cdKey] ?? 0;
+          if (now - lastUsed < cooldownMs) {
+            const remaining = Math.ceil((cooldownMs - (now - lastUsed)) / 1000);
+            if (reliableChannel.readyState === "open") {
+              reliableChannel.send(packReliable(Opcode.ABILITY_COOLDOWN, { abilityId, remaining }));
+            }
+            return;
+          }
+
+          // Mark cooldown
+          (entity as any)[cdKey] = now;
+          const cdSec = Math.ceil(cooldownMs / 1000);
+
+          if (abilityId === "defend") {
+            // Defend: 50% damage reduction for 5 seconds
+            (entity as any)._defendUntil = now + 5000;
+            console.log(`[Ability] ${entity.name} used Defend (5s)`);
+            if (reliableChannel.readyState === "open") {
+              reliableChannel.send(packReliable(Opcode.ABILITY_COOLDOWN, { abilityId, remaining: cdSec }));
+            }
+          } else if (abilityId === "heal") {
+            const selfCombat = getCombatState(entityId);
+            if (!selfCombat || selfCombat.hp >= selfCombat.maxHp) { (entity as any)[cdKey] = 0; return; }
+            const healAmount = Math.min(20, selfCombat.maxHp - selfCombat.hp);
+            selfCombat.hp = Math.min(selfCombat.maxHp, selfCombat.hp + healAmount);
+            console.log(`[Ability] ${entity.name} used Heal: +${healAmount} HP (${selfCombat.hp}/${selfCombat.maxHp})`);
+            if (reliableChannel.readyState === "open") {
+              reliableChannel.send(packEntityState(entityId, selfCombat.hp, selfCombat.maxHp));
+              reliableChannel.send(packReliable(Opcode.ABILITY_COOLDOWN, { abilityId, remaining: cdSec }));
+              connectionManager.broadcastReliable(packEntityState(entityId, selfCombat.hp, selfCombat.maxHp), entityId);
+            }
+          } else if (abilityId === "fire" || abilityId === "ice" || abilityId === "shock") {
+            // Offensive abilities — require a combat target in range
+            const combatState = getCombatState(entityId);
+            const targetId = parsed.targetId || combatState?.targetId;
+            if (!targetId) { (entity as any)[cdKey] = 0; return; }
+            const target = entityStore.get(targetId);
+            const targetCombat = getCombatState(targetId);
+            if (!target || !targetCombat || targetCombat.hp <= 0) { (entity as any)[cdKey] = 0; return; }
+
+            // Range check (magic range = 4 tiles)
+            const dist = Math.max(Math.abs(entity.x - target.x), Math.abs(entity.z - target.z));
+            if (dist > 4) { (entity as any)[cdKey] = 0; return; }
+
+            // Damage by type
+            let damage: number;
+            let weaponType: string;
+            if (abilityId === "fire") {
+              damage = 15 + Math.floor(Math.random() * 6); // 15-20 burst
+              weaponType = "fire";
+            } else if (abilityId === "ice") {
+              damage = 10 + Math.floor(Math.random() * 4); // 10-13 + slow effect
+              weaponType = "ice";
+            } else {
+              damage = 8 + Math.floor(Math.random() * 3); // 8-10 fast chain
+              weaponType = "shock";
+            }
+
+            // Apply defend reduction on target
+            if ((target as any)._defendUntil && now < (target as any)._defendUntil) {
+              damage = Math.floor(damage * 0.5);
+            }
+
+            targetCombat.hp = Math.max(0, targetCombat.hp - damage);
+            targetCombat.inCombat = true;
+            targetCombat.combatTimer = 6.0;
+            // Retaliate
+            if (!targetCombat.autoAttacking) {
+              targetCombat.autoAttacking = true;
+              targetCombat.targetId = entityId;
+              targetCombat.attackTimer = 0;
+            }
+
+            console.log(`[Ability] ${entity.name} used ${abilityId} on ${target.name}: ${damage} dmg (${targetCombat.hp}/${targetCombat.maxHp})`);
+
+            // Broadcast damage
+            connectionManager.broadcastReliable(packDamageEvent(entityId, targetId, damage, weaponType));
+            if (reliableChannel.readyState === "open") {
+              reliableChannel.send(packReliable(Opcode.ABILITY_COOLDOWN, { abilityId, remaining: cdSec }));
+            }
+
+            // Handle kill (XP, respawn, etc.)
+            if (targetCombat.hp <= 0) {
+              handleKill(entityId, targetId);
+            }
+          }
+        } else if (parsed.op === 20 /* CHAT_MESSAGE */ && typeof parsed.text === "string") {
+          // Chat: sanitize, truncate, broadcast to all players
+          const text = parsed.text.trim().slice(0, 200);
+          if (text.length === 0) return;
+          const senderName = entity.name || "Unknown";
+          const chatMsg = JSON.stringify({ op: 20, senderId: entityId, senderName, text });
+          connectionManager.broadcastReliable(chatMsg);
+        } else if (parsed.op === Opcode.ZONE_CHANGE_REQUEST && parsed.exitId) {
+          // Zone transition: validate exit, move entity, notify client
+          const currentZone = getZone(entity.mapId === 1 ? "human-meadows" : `zone-${entity.mapId}`);
+          if (!currentZone) return;
+          const exit = currentZone.exits[parsed.exitId];
+          if (!exit) {
+            console.log(`[WebRTC] Invalid zone exit: ${parsed.exitId}`);
+            return;
+          }
+          const targetZone = getZone(exit.targetZone);
+          if (!targetZone) {
+            console.log(`[WebRTC] Target zone not found: ${exit.targetZone}`);
+            return;
+          }
+          // Move entity to new zone
+          entity.x = exit.spawnX;
+          entity.z = exit.spawnZ;
+          entity.y = 0;
+          // TODO: update entity.mapId when multi-zone is fully wired
+          console.log(`[WebRTC] Zone change: ${entityId} -> ${targetZone.name} at (${exit.spawnX}, ${exit.spawnZ})`);
+          // Notify client to load new map
+          if (reliableChannel.readyState === "open") {
+            reliableChannel.send(JSON.stringify({
+              op: Opcode.ZONE_CHANGE,
+              zoneId: targetZone.id,
+              zoneName: targetZone.name,
+              mapFile: targetZone.mapFile,
+              spawnX: exit.spawnX,
+              spawnZ: exit.spawnZ,
+              levelRange: targetZone.levelRange,
+              musicTag: targetZone.musicTag,
+            }));
+          }
         } else if (parsed.op === Opcode.CHUNK_REQUEST && parsed.cx !== undefined && parsed.cz !== undefined) {
           const world = getWorldMap();
           if (!world) return;
@@ -233,11 +380,15 @@ export async function rtcRoutes(app: FastifyInstance) {
           const ent = entityStore.get(entityId);
           if (!ent) return;
 
-          // Save position to database
+          // Save position and XP/level to database
+          const progress = removePlayerProgress(entityId);
           db.update(characters)
-            .set({ posX: ent.x, posY: ent.y, posZ: ent.z, mapId: ent.mapId })
+            .set({
+              posX: ent.x, posY: ent.y, posZ: ent.z, mapId: ent.mapId,
+              ...(progress ? { xp: progress.xp, level: progress.level } : {}),
+            })
             .where(eq(characters.id, characterId))
-            .catch((err) => console.error(`[DB] Failed to save position for ${entityId}:`, err));
+            .catch((err) => console.error(`[DB] Failed to save state for ${entityId}:`, err));
 
           // Remove from connection manager (no longer receiving data)
           connectionManager.remove(entityId);

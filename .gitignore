@@ -44,3 +44,7 @@ bun.lockb
 
 # Vite
 packages/client/dist/
+
+# Playwright screenshots (test artifacts)
+*.png
+!packages/client/public/**/*.png

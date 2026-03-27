@@ -157,7 +157,8 @@ describe("isWalkable", () => {
     // unless initWorldMap has been called. Since we reset, getWorldMap returns null.
     // However, terrain.ts imports from queries.ts which may have module-level state.
     // We need to verify isWalkable handles the null case.
-    expect(terrainMod.isWalkable(100, 100)).toBe(false);
+    // Use coordinates outside the Tiled map range (0-127) so the bypass doesn't apply
+    expect(terrainMod.isWalkable(500, 500)).toBe(false);
   });
 
   it("returns false for out-of-bounds coordinates (negative)", async () => {

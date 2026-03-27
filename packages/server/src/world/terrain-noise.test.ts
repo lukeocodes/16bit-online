@@ -83,29 +83,29 @@ describe("terrain-noise", () => {
       }
     });
 
-    it("mountains have amplitude 3.5", () => {
-      expect(BIOME_TERRAIN_PROFILES[BiomeType.MOUNTAIN].amplitude).toBe(3.5);
+    it("mountains have high amplitude", () => {
+      expect(BIOME_TERRAIN_PROFILES[BiomeType.MOUNTAIN].amplitude).toBe(4.0);
     });
 
-    it("snow peaks have amplitude 4.5 and frequency 0.14", () => {
-      expect(BIOME_TERRAIN_PROFILES[BiomeType.SNOW_PEAK].amplitude).toBe(4.5);
-      expect(BIOME_TERRAIN_PROFILES[BiomeType.SNOW_PEAK].frequency).toBe(0.14);
+    it("snow peaks have highest amplitude", () => {
+      expect(BIOME_TERRAIN_PROFILES[BiomeType.SNOW_PEAK].amplitude).toBe(5.0);
+      expect(BIOME_TERRAIN_PROFILES[BiomeType.SNOW_PEAK].frequency).toBe(0.12);
     });
 
-    it("grassland amplitude is gentle (0.7)", () => {
-      expect(BIOME_TERRAIN_PROFILES[BiomeType.TEMPERATE_GRASSLAND].amplitude).toBe(0.7);
+    it("grassland amplitude is moderate", () => {
+      expect(BIOME_TERRAIN_PROFILES[BiomeType.TEMPERATE_GRASSLAND].amplitude).toBe(1.5);
     });
 
     it("water biomes stay nearly flat", () => {
       expect(BIOME_TERRAIN_PROFILES[BiomeType.DEEP_OCEAN].amplitude).toBeLessThanOrEqual(0.1);
-      expect(BIOME_TERRAIN_PROFILES[BiomeType.SHALLOW_OCEAN].amplitude).toBeLessThanOrEqual(0.15);
+      expect(BIOME_TERRAIN_PROFILES[BiomeType.SHALLOW_OCEAN].amplitude).toBeLessThanOrEqual(0.2);
       expect(BIOME_TERRAIN_PROFILES[BiomeType.RIVER].amplitude).toBeLessThanOrEqual(0.1);
       expect(BIOME_TERRAIN_PROFILES[BiomeType.LAKE].amplitude).toBeLessThanOrEqual(0.15);
     });
 
     it("swamp and beach are low amplitude", () => {
-      expect(BIOME_TERRAIN_PROFILES[BiomeType.SWAMP].amplitude).toBeLessThanOrEqual(0.2);
-      expect(BIOME_TERRAIN_PROFILES[BiomeType.BEACH].amplitude).toBeLessThanOrEqual(0.2);
+      expect(BIOME_TERRAIN_PROFILES[BiomeType.SWAMP].amplitude).toBeLessThanOrEqual(0.5);
+      expect(BIOME_TERRAIN_PROFILES[BiomeType.BEACH].amplitude).toBeLessThanOrEqual(0.5);
     });
   });
 

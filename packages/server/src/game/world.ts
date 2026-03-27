@@ -1,14 +1,83 @@
 import { tick as combatTick, getCombatState } from "./combat.js";
 import { entityStore } from "./entities.js";
-import { handleNpcDeath, tickWandering } from "./npcs.js";
+import { handleNpcDeath, tickWandering, getNpcTemplate } from "./npcs.js";
 import { connectionManager } from "../ws/connections.js";
 import {
   packPosition, packDamageEvent, packEntityDeath,
   packEntityDespawn, packEntityState, packCombatState,
-  packEnemyNearby,
+  packEnemyNearby, packXpGain, packLevelUp, packPlayerRespawn,
 } from "./protocol.js";
+import { xpForKill, processXpGain, xpToNextLevel, totalXpForLevel } from "./experience.js";
+import { config } from "../config.js";
+
+/**
+ * Handle a kill event — awards XP, broadcasts death, schedules respawn.
+ * Called from both combatTick and ability handlers.
+ */
+export function handleKill(killerId: string, deadEntityId: string) {
+  connectionManager.broadcastReliable(packEntityDeath(deadEntityId));
+  connectionManager.broadcastReliable(packEntityDespawn(deadEntityId));
+
+  const killerEntity = entityStore.get(killerId);
+  const deadEntity = entityStore.get(deadEntityId);
+
+  // Award XP
+  if (killerEntity?.entityType === "player" && deadEntity?.entityType === "npc") {
+    const prog = playerProgress.get(killerId);
+    if (prog) {
+      const npcCombat = getCombatState(deadEntityId);
+      const npcMaxHp = npcCombat?.maxHp ?? 10;
+      const npcDmg = npcCombat?.weaponDamage ?? 2;
+      const npcLevel = 1;
+      const xpGained = xpForKill(npcMaxHp, npcDmg, npcLevel);
+      const result = processXpGain(prog.xp, xpGained, prog.level);
+      prog.xp = result.newXp;
+      prog.level = result.newLevel;
+
+      const xpNeeded = xpToNextLevel(prog.level);
+      const xpIntoLevel = prog.xp - totalXpForLevel(prog.level);
+      connectionManager.sendReliable(killerId, packXpGain(killerId, xpGained, xpIntoLevel, xpNeeded, prog.level));
+
+      for (const lu of result.levelUps) {
+        connectionManager.sendReliable(killerId, packLevelUp(killerId, lu.newLevel, lu.hpBonus, lu.manaBonus, lu.staminaBonus));
+        const killerCombat = getCombatState(killerId);
+        if (killerCombat) {
+          killerCombat.maxHp += lu.hpBonus;
+          killerCombat.hp = killerCombat.maxHp;
+        }
+      }
+    }
+  }
+
+  // NPC death → remove + schedule respawn
+  if (deadEntity?.entityType === "npc") {
+    handleNpcDeath(deadEntityId);
+  }
+
+  // Player death → respawn at town after 3s
+  if (deadEntity?.entityType === "player") {
+    const playerId = deadEntityId;
+    setTimeout(() => {
+      const entity = entityStore.get(playerId);
+      const combat = getCombatState(playerId);
+      if (!entity || !combat) return;
+      entity.x = config.world.spawnX;
+      entity.z = config.world.spawnZ;
+      entity.y = 0;
+      combat.hp = combat.maxHp;
+      combat.inCombat = false;
+      combat.autoAttacking = false;
+      combat.targetId = null;
+      combat.combatTimer = 0;
+      connectionManager.sendReliable(playerId, packPlayerRespawn(playerId, entity.x, 0, entity.z, combat.hp, combat.maxHp));
+      connectionManager.broadcastReliable(packEntityState(playerId, combat.hp, combat.maxHp), playerId);
+      console.log(`[Respawn] Player ${playerId} respawned at town`);
+    }, 3000);
+  }
+}
 
 const ENEMY_DETECTION_RADIUS = 16;
+const ENEMY_CLEAR_RADIUS = 22; // Hysteresis: must be further away to clear enemy_nearby
 const TICK_RATE = 20;
 const TICK_INTERVAL = 1000 / TICK_RATE;
 const STATE_BROADCAST_INTERVAL = 500;
@@ -18,6 +87,28 @@ let stateBroadcastAccum = 0;
 
 // Track per-player enemy-nearby state (playerId -> wasNearby)
 const enemyNearbyState = new Map<string, boolean>();
+
+// In-memory player XP/level state (synced to DB on disconnect)
+interface PlayerProgress {
+  xp: number;
+  level: number;
+  characterId: string;
+}
+const playerProgress = new Map<string, PlayerProgress>();
+
+export function initPlayerProgress(entityId: string, characterId: string, xp: number, level: number) {
+  playerProgress.set(entityId, { xp, level, characterId });
+}
+
+export function getPlayerProgress(entityId: string): PlayerProgress | undefined {
+  return playerProgress.get(entityId);
+}
+
+export function removePlayerProgress(entityId: string): PlayerProgress | undefined {
+  const prog = playerProgress.get(entityId);
+  playerProgress.delete(entityId);
+  return prog;
+}
 
 // Pre-allocated position broadcast buffer (resized if needed)
 const MAX_ENTITIES_PER_BATCH = 64;
@@ -65,9 +156,7 @@ function gameTick() {
   }
 
   for (const event of deaths) {
-    connectionManager.broadcastReliable(packEntityDeath(event.entityId));
-    connectionManager.broadcastReliable(packEntityDespawn(event.entityId));
-    handleNpcDeath(event.entityId);
+    handleKill(event.killerId, event.entityId);
   }
 
   // Enemy proximity detection (fires on state change only)
@@ -90,19 +179,21 @@ function checkEnemyProximity() {
     if (!player) continue;
 
     // Find NPC entities within detection radius (Manhattan distance)
-    const nearbyEntities = entityStore.getNearbyEntities(player.x, player.z, ENEMY_DETECTION_RADIUS);
+    // Use hysteresis: detect at ENEMY_DETECTION_RADIUS, clear at ENEMY_CLEAR_RADIUS
+    const wasNearby = enemyNearbyState.get(conn.entityId) ?? false;
+    const checkRadius = wasNearby ? ENEMY_CLEAR_RADIUS : ENEMY_DETECTION_RADIUS;
+    const nearbyEntities = entityStore.getNearbyEntities(player.x, player.z, checkRadius);
     const nearbyNpcIds: string[] = [];
 
     for (const entity of nearbyEntities) {
       if (entity.entityType !== "npc") continue;
       const manhattan = Math.abs(entity.x - player.x) + Math.abs(entity.z - player.z);
-      if (manhattan <= ENEMY_DETECTION_RADIUS) {
+      if (manhattan <= checkRadius) {
         nearbyNpcIds.push(entity.entityId);
       }
     }
 
     const isNearby = nearbyNpcIds.length > 0;
-    const wasNearby = enemyNearbyState.get(conn.entityId) ?? false;
 
     if (isNearby !== wasNearby) {
       enemyNearbyState.set(conn.entityId, isNearby);
@@ -125,6 +216,7 @@ function broadcastPositions() {
 
     for (const other of nearbyEntities) {
       if (other.entityId === conn.entityId) continue;
+      if (other.mapId !== self.mapId) continue; // Only same-zone entities
 
       // Grow buffer if needed (rare — only if >64 entities nearby)
       if (count >= MAX_ENTITIES_PER_BATCH && 2 + (count + 1) * ENTRY_SIZE > posBuf.length) {

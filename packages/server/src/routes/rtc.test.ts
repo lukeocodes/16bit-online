@@ -222,8 +222,8 @@ describe("rtc routes", () => {
 
       expect(res.statusCode).toBe(200);
       const body = JSON.parse(res.body);
-      // Default spawn is at Human continent (chunk 666,575 in tile coords)
-      expect(body.spawn).toEqual({ x: 21312, y: 0, z: 18400, mapId: 1 });
+      // Default spawn matches config.world.spawnX/Z (Tiled map center)
+      expect(body.spawn).toEqual({ x: 128, y: 0, z: 128, mapId: 1 });
     });
 
     it("cleans up stale entity on fresh connect", async () => {
@@ -543,7 +543,7 @@ describe("rtc routes", () => {
       iceChangeCb("disconnected");
 
       expect(spy).toHaveBeenCalledWith(
-        expect.stringContaining("Failed to save position"),
+        expect.stringContaining("Failed to save state"),
         expect.any(Error),
       );
       spy.mockRestore();

@@ -1,6 +1,10 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { describe, it, expect, beforeAll, beforeEach, afterEach, vi } from "vitest";
+import { resolve, dirname } from "path";
+import { fileURLToPath } from "url";
 import { entityStore } from "./entities.js";
 import { unregisterEntity } from "./combat.js";
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
 
 vi.mock("../ws/connections.js", () => ({
   connectionManager: {
@@ -14,7 +18,13 @@ vi.mock("../world/terrain.js", () => ({
   isWalkable: vi.fn(() => true),
 }));
 
+import { loadTiledMap } from "../world/tiled-map.js";
 import { spawnInitialNpcs, handleNpcDeath, getNpcTemplate, getNpcIds, isSpawnedNPC, cleanup } from "./npcs.js";
+
+// Load the Tiled map so spawn points are available
+beforeAll(() => {
+  loadTiledMap(resolve(__dirname, "../../../client/public/maps/starter.json"));
+});
 
 describe("npcs", () => {
   beforeEach(() => {
@@ -30,11 +40,15 @@ describe("npcs", () => {
   });
 
   describe("spawnInitialNpcs", () => {
-    it("spawns skeleton NPCs at the default spawn point", () => {
+    it("spawns NPCs at all spawn points", () => {
       spawnInitialNpcs();
 
       const npcs = entityStore.getByType("npc");
-      expect(npcs.length).toBe(4); // maxCount: 4
+      // 12 spawn points from Tiled map:
+      // town_rabbits(4) + roadside_goblins(3) + skeleton_camp(5) + goblin_swamp(4)
+      // + forest_imps(4) + lakeside_goblins(4) + desert_skeletons(4) + north_rabbits(6)
+      // + elite_ruins(3) + imp_volcano(4) + goblin_fortress(6) + kings_grove(1) = 48
+      expect(npcs.length).toBe(48);
     });
 
     it("all spawned NPCs are tracked", () => {
@@ -51,7 +65,7 @@ describe("npcs", () => {
       for (const npc of entityStore.getByType("npc")) {
         const template = getNpcTemplate(npc.entityId);
         expect(template).toBeDefined();
-        expect(template!.groupId).toBe("skeleton");
+        expect(["skeleton", "goblin", "rabbit", "imp"]).toContain(template!.groupId);
       }
     });
   });

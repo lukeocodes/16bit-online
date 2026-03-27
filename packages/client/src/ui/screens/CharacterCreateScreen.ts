@@ -152,7 +152,7 @@ export class CharacterCreateScreen implements Screen {
     remaining.id = "stat-remaining";
     remaining.style.cssText = "font-size: 13px; color: #13ef93; margin-bottom: 8px;";
 
-    const stats: Array<{ key: keyof typeof this.stats; label: string }> = [
+    const stats: Array<{ key: "str" | "dex" | "int"; label: string }> = [
       { key: "str", label: "STR" },
       { key: "dex", label: "DEX" },
       { key: "int", label: "INT" },

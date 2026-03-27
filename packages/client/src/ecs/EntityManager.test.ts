@@ -4,6 +4,7 @@ import { createPosition } from "./components/Position";
 import { createMovement } from "./components/Movement";
 import { createRenderable } from "./components/Renderable";
 import { createStats } from "./components/Stats";
+import type { StatsComponent } from "./components/Stats";
 import { createCombat } from "./components/Combat";
 
 describe("EntityManager", () => {
@@ -34,14 +35,14 @@ describe("EntityManager", () => {
       expect(() => em.removeEntity("ghost")).not.toThrow();
     });
 
-    it("disposes mesh on removal when renderable has a mesh", () => {
+    it("destroys display object on removal when renderable has one", () => {
       em.addEntity("e-mesh");
       const renderable = createRenderable();
-      renderable.mesh = { dispose: vi.fn() } as any; // Mock Babylon mesh
+      renderable.displayObject = { destroy: vi.fn() } as any; // Mock PixiJS container
       em.addComponent("e-mesh", renderable);
 
       em.removeEntity("e-mesh");
-      expect(renderable.mesh!.dispose).toHaveBeenCalled();
+      expect(renderable.displayObject!.destroy).toHaveBeenCalled();
     });
 
     it("handles removal with renderable but no mesh", () => {
@@ -83,7 +84,7 @@ describe("EntityManager", () => {
       em.addEntity("e-1");
       em.addComponent("e-1", createStats(5, 5, 20));
       em.addComponent("e-1", createStats(15, 10, 5));
-      const stats = em.getComponent("e-1", "stats");
+      const stats = em.getComponent<StatsComponent>("e-1", "stats");
       expect(stats!.str).toBe(15);
     });
   });

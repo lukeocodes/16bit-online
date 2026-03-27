@@ -2,8 +2,9 @@ import { EntityManager } from "../EntityManager";
 import type { PositionComponent } from "../components/Position";
 import type { MovementComponent } from "../components/Movement";
 
-/** Max per-tile height difference (world units) the player can walk across */
-const MAX_TILE_HEIGHT_DIFF = 0.8;
+/** Max per-tile height difference (world units) the player can walk across.
+ *  Increase to allow traversing steeper terrain. */
+const MAX_TILE_HEIGHT_DIFF = 2.0;
 
 export class MovementSystem {
   private entityManager: EntityManager;
@@ -30,6 +31,24 @@ export class MovementSystem {
       // Remote entities are driven by InterpolationSystem, not MovementSystem
       if (pos.isRemote) continue;
 
+      // Wall bump animation (small nudge + bounce back)
+      if (mov.bumping) {
+        mov.bumpProgress += dt * 12; // fast ~80ms round-trip
+        if (mov.bumpProgress >= 2) {
+          mov.bumping = false;
+          mov.bumpProgress = 0;
+          pos.x = mov.tileX;
+          pos.z = mov.tileZ;
+        } else {
+          // 0→1 = nudge out (0.2 tiles max), 1→2 = spring back
+          const t = mov.bumpProgress < 1 ? mov.bumpProgress : 2 - mov.bumpProgress;
+          const offset = t * 0.2;
+          pos.x = mov.tileX + mov.bumpDx * offset;
+          pos.z = mov.tileZ + mov.bumpDz * offset;
+        }
+        continue;
+      }
+
       if (!mov.moving) {
         // Auto-correct idle local entities to tile position if drifted
         if (Math.abs(pos.x - mov.tileX) > 0.01 || Math.abs(pos.z - mov.tileZ) > 0.01) {
@@ -45,8 +64,10 @@ export class MovementSystem {
         continue;
       }
 
-      // Advance interpolation
-      mov.progress += mov.speed * dt;
+      // Advance interpolation — slow diagonal moves by 1/√2 so all directions feel equal speed
+      const diagonal = mov.targetX !== mov.tileX && mov.targetZ !== mov.tileZ;
+      const speed = diagonal ? mov.speed * 0.7071 : mov.speed;
+      mov.progress += speed * dt;
 
       if (mov.progress >= 1) {
         // Arrived at target tile
@@ -99,6 +120,14 @@ export class MovementSystem {
     return true;
   }
 
+  startBump(mov: MovementComponent, dx: number, dz: number) {
+    if (mov.bumping || mov.moving) return;
+    mov.bumping = true;
+    mov.bumpDx = dx;
+    mov.bumpDz = dz;
+    mov.bumpProgress = 0;
+  }
+
   private startMove(pos: PositionComponent, mov: MovementComponent, dx: number, dz: number) {
     const targetX = mov.tileX + dx;
     const targetZ = mov.tileZ + dz;
@@ -121,5 +150,7 @@ export class MovementSystem {
     mov.targetZ = targetZ;
     mov.progress = 0;
     mov.moving = true;
+    mov.facingX = dx;
+    mov.facingZ = dz;
   }
 }

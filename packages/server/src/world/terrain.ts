@@ -2,6 +2,7 @@ import { getWorldMap, getServerNoisePerm } from "./queries.js";
 import { BiomeType } from "./types.js";
 import { CHUNK_SIZE } from "./constants.js";
 import { generateTileHeight } from "./terrain-noise.js";
+import { isInTiledMap, isTiledWalkable } from "./tiled-map.js";
 
 // Biomes that block all movement (player and NPC)
 export const BLOCKING_BIOMES = new Set<number>([
@@ -37,10 +38,15 @@ export function getElevationBand(elevation: number): number {
 
 /**
  * Check if a tile position is walkable.
- * Converts tile coordinates to chunk coordinates for biomeMap lookup.
- * Returns false for out-of-bounds or blocking biome types.
+ * If the tile is within the Tiled map, uses authoritative Tiled collision data.
+ * Otherwise, falls back to procedural world biome checks.
  */
 export function isWalkable(tileX: number, tileZ: number): boolean {
+  // Tiled map area: use authoritative server-side Tiled data
+  if (isInTiledMap(tileX, tileZ)) {
+    return isTiledWalkable(tileX, tileZ);
+  }
+
   const world = getWorldMap();
   if (!world) return false;
 

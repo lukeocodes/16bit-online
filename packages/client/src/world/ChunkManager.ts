@@ -1,11 +1,9 @@
-import type { Scene } from "@babylonjs/core/scene";
 import { CHUNK_SIZE, TILE_SIZE, CHUNK_LOAD_RADIUS, WORLD_WIDTH, WORLD_HEIGHT, ELEVATION_STEP_HEIGHT } from "./WorldConstants";
-import { Chunk } from "./Chunk";
 import { getTileType } from "./TileRegistry";
 
 export class ChunkManager {
-  private chunks = new Map<string, Chunk>();
-  private scene: Scene;
+  /** Tracks which chunks have been loaded (by key) */
+  private loadedChunks = new Set<string>();
   private mapId: number;
 
   // World map data (loaded at startup from server)
@@ -23,9 +21,10 @@ export class ChunkManager {
   private chunkRequestFn: ((cx: number, cz: number) => void) | null = null;
   /** Set of chunk keys already requested (prevents duplicate requests) */
   private pendingChunkRequests = new Set<string>();
+  /** Callback when new chunk data arrives (for terrain renderer invalidation) */
+  private onChunkLoadedFn: (() => void) | null = null;
 
-  constructor(scene: Scene, mapId = 1) {
-    this.scene = scene;
+  constructor(mapId = 1) {
     this.mapId = mapId;
   }
 
@@ -33,10 +32,13 @@ export class ChunkManager {
 
   setChunkRequestFn(fn: (cx: number, cz: number) => void) { this.chunkRequestFn = fn; }
 
+  setOnChunkLoaded(fn: () => void): void { this.onChunkLoadedFn = fn; }
+
   setChunkHeights(cx: number, cz: number, heights: Float32Array): void {
     const key = `${cx}:${cz}`;
     this.chunkHeights.set(key, heights);
     this.pendingChunkRequests.delete(key);
+    this.onChunkLoadedFn?.();
   }
 
   setWorldData(biomeMap: Uint8Array, elevationBands: Uint8Array, regionMap?: Uint16Array, regionBiomes?: Uint8Array) {
@@ -46,21 +48,38 @@ export class ChunkManager {
     if (regionBiomes) this.regionBiomes = regionBiomes;
   }
 
-  /** Get terrain Y position in world units for a given tile position (server-provided per-tile heights) */
-  getTerrainY(worldX: number, worldZ: number): number {
-    const chunkX = Math.floor(worldX / (CHUNK_SIZE * TILE_SIZE));
-    const chunkZ = Math.floor(worldZ / (CHUNK_SIZE * TILE_SIZE));
+  /** Raw per-tile height from server data (no smoothing) */
+  getRawTileY(worldX: number, worldZ: number): number {
+    const tx = Math.floor(worldX);
+    const tz = Math.floor(worldZ);
+    const chunkX = Math.floor(tx / CHUNK_SIZE);
+    const chunkZ = Math.floor(tz / CHUNK_SIZE);
     const key = `${chunkX}:${chunkZ}`;
     const heights = this.chunkHeights.get(key);
     if (heights) {
-      const localX = Math.floor(worldX) - chunkX * CHUNK_SIZE;
-      const localZ = Math.floor(worldZ) - chunkZ * CHUNK_SIZE;
+      const localX = tx - chunkX * CHUNK_SIZE;
+      const localZ = tz - chunkZ * CHUNK_SIZE;
       const clampedX = Math.max(0, Math.min(CHUNK_SIZE - 1, localX));
       const clampedZ = Math.max(0, Math.min(CHUNK_SIZE - 1, localZ));
       return heights[clampedZ * CHUNK_SIZE + clampedX];
     }
-    // Fallback: use elevation band * step height if heights not yet loaded
     return this.getChunkElevationBand(chunkX, chunkZ) * ELEVATION_STEP_HEIGHT;
+  }
+
+  /**
+   * Get terrain Y matching the heightmap mesh surface exactly.
+   * Uses the same 4-corner averaging as TilePool vertices:
+   * each corner = avg of 4 tiles, center = avg of 4 corners.
+   * Result: 3x3 weighted kernel [1,2,1; 2,4,2; 1,2,1] / 16.
+   */
+  getTerrainY(worldX: number, worldZ: number): number {
+    const tx = Math.floor(worldX);
+    const tz = Math.floor(worldZ);
+    return (
+      this.getRawTileY(tx - 1, tz - 1) + 2 * this.getRawTileY(tx, tz - 1) + this.getRawTileY(tx + 1, tz - 1) +
+      2 * this.getRawTileY(tx - 1, tz) + 4 * this.getRawTileY(tx, tz) + 2 * this.getRawTileY(tx + 1, tz) +
+      this.getRawTileY(tx - 1, tz + 1) + 2 * this.getRawTileY(tx, tz + 1) + this.getRawTileY(tx + 1, tz + 1)
+    ) / 16;
   }
 
   /** Get the region's biome for a chunk coordinate (consistent across entire region) */
@@ -85,49 +104,37 @@ export class ChunkManager {
     const chunkX = Math.floor(worldX / (CHUNK_SIZE * TILE_SIZE));
     const chunkY = Math.floor(worldZ / (CHUNK_SIZE * TILE_SIZE));
 
-    // Load chunks in radius
+    // Request chunk heights in radius
     for (let dx = -CHUNK_LOAD_RADIUS; dx <= CHUNK_LOAD_RADIUS; dx++) {
       for (let dy = -CHUNK_LOAD_RADIUS; dy <= CHUNK_LOAD_RADIUS; dy++) {
         const cx = chunkX + dx;
         const cy = chunkY + dy;
-        const key = `${this.mapId}:${cx}:${cy}:0`;
-        if (!this.chunks.has(key)) {
-          this.loadChunk(cx, cy, 0);
-        }
-        // Request per-tile heights from server if not already cached
-        const hkey = `${cx}:${cy}`;
-        if (!this.chunkHeights.has(hkey) && !this.pendingChunkRequests.has(hkey) && this.chunkRequestFn) {
-          this.pendingChunkRequests.add(hkey);
+        const key = `${cx}:${cy}`;
+        this.loadedChunks.add(`${this.mapId}:${cx}:${cy}:0`);
+        if (!this.chunkHeights.has(key) && !this.pendingChunkRequests.has(key) && this.chunkRequestFn) {
+          this.pendingChunkRequests.add(key);
           this.chunkRequestFn(cx, cy);
         }
       }
     }
 
     // Unload chunks outside radius + 1 buffer
-    for (const [key, chunk] of this.chunks) {
-      const dist = Math.max(
-        Math.abs(chunk.chunkX - chunkX),
-        Math.abs(chunk.chunkY - chunkY),
-      );
+    for (const loadedKey of this.loadedChunks) {
+      const parts = loadedKey.split(":");
+      const cx = Number(parts[1]);
+      const cy = Number(parts[2]);
+      const dist = Math.max(Math.abs(cx - chunkX), Math.abs(cy - chunkY));
       if (dist > CHUNK_LOAD_RADIUS + 1) {
-        chunk.dispose();
-        this.chunks.delete(key);
-        const hkey = `${chunk.chunkX}:${chunk.chunkY}`;
+        this.loadedChunks.delete(loadedKey);
+        const hkey = `${cx}:${cy}`;
         this.chunkHeights.delete(hkey);
         this.pendingChunkRequests.delete(hkey);
       }
     }
   }
 
-  getChunk(chunkX: number, chunkY: number, chunkZ = 0): Chunk | undefined {
-    return this.chunks.get(`${this.mapId}:${chunkX}:${chunkY}:${chunkZ}`);
-  }
-
   dispose() {
-    for (const chunk of this.chunks.values()) {
-      chunk.dispose();
-    }
-    this.chunks.clear();
+    this.loadedChunks.clear();
     this.chunkHeights.clear();
     this.pendingChunkRequests.clear();
   }
@@ -164,11 +171,4 @@ export class ChunkManager {
     return 0; // deep ocean fallback
   }
 
-  private loadChunk(chunkX: number, chunkY: number, chunkZ: number) {
-    const biome = this.getChunkBiome(chunkX, chunkY);
-    const baseY = this.getChunkElevationBand(chunkX, chunkY) * ELEVATION_STEP_HEIGHT;
-    const chunk = new Chunk(this.mapId, chunkX, chunkY, chunkZ, biome, baseY);
-    chunk.buildMesh(this.scene);
-    this.chunks.set(chunk.key, chunk);
-  }
 }

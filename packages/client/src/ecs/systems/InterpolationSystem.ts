@@ -11,9 +11,7 @@ export class InterpolationSystem {
   }
 
   update(dt: number) {
-    const entities = this.entityManager.getEntitiesWithComponents("position");
-
-    for (const entity of entities) {
+    for (const entity of this.entityManager.iterEntitiesWithComponents("position")) {
       const pos = entity.components.get("position") as PositionComponent;
       if (!pos.isRemote) continue;
 

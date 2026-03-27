@@ -40,7 +40,11 @@ export interface NPCTemplate {
   flees: boolean;         // runs from combat
   wanders: boolean;       // moves randomly in spawn area
   canTalk: boolean;       // interactive NPC
-  wanderSpeed: number;    // tiles per second when wandering
+
+  // Movement (all NPC speeds relative to player base speed)
+  speedModifier: number;  // fraction of player base speed (0.0-1.0)
+  wanderChance: number;   // probability per tick of starting a wander (0.0-1.0)
+  wanderSteps: number;    // max tiles moved per wander burst
 }
 
 // --- Base defaults by category ---
@@ -54,7 +58,9 @@ const WILDLIFE_BASE: Partial<NPCTemplate> = {
   flees: true,
   wanders: true,
   canTalk: false,
-  wanderSpeed: 1,
+  speedModifier: 0.2,
+  wanderChance: 0.04,   // wanders frequently
+  wanderSteps: 2,
 };
 
 const MONSTER_BASE: Partial<NPCTemplate> = {
@@ -63,7 +69,9 @@ const MONSTER_BASE: Partial<NPCTemplate> = {
   flees: false,
   wanders: true,
   canTalk: false,
-  wanderSpeed: 0.5,
+  speedModifier: 0.1,
+  wanderChance: 0.02,   // patrols slowly
+  wanderSteps: 1,
 };
 
 const INTERACTIVE_BASE: Partial<NPCTemplate> = {
@@ -75,7 +83,9 @@ const INTERACTIVE_BASE: Partial<NPCTemplate> = {
   flees: false,
   wanders: false,
   canTalk: true,
-  wanderSpeed: 0,
+  speedModifier: 0.0,
+  wanderChance: 0.0,
+  wanderSteps: 0,
 };
 
 // --- Template builder ---
@@ -96,7 +106,9 @@ function template(base: Partial<NPCTemplate>, overrides: Partial<NPCTemplate> & 
     flees: false,
     wanders: true,
     canTalk: false,
-    wanderSpeed: 0.5,
+    speedModifier: 0.1,
+    wanderChance: 0.02,
+    wanderSteps: 1,
     ...base,
     ...overrides,
   } as NPCTemplate;
@@ -259,7 +271,9 @@ export const NPC_TEMPLATES: Record<string, NPCTemplate> = {
     str: { min: 1, max: 2 },
     dex: { min: 8, max: 12 },
     int: { min: 1, max: 2 },
-    wanderSpeed: 2,
+    speedModifier: 0.4,
+    wanderChance: 0.06,  // hops frequently
+    wanderSteps: 3,      // quick bursts
   }),
 
   // --- Interactive ---
@@ -269,7 +283,9 @@ export const NPC_TEMPLATES: Record<string, NPCTemplate> = {
     canTalk: true,
     wanders: true,
     flees: false,
-    wanderSpeed: 0.5,
+    speedModifier: 0.1,
+    wanderChance: 0.01,  // royal pace
+    wanderSteps: 1,
   }, {
     id: "king-rabbit",
     name: "King Rabbit",

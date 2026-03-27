@@ -13,6 +13,16 @@ export interface MovementComponent {
   // Queued direction for responsive chaining
   queuedDx: number;
   queuedDz: number;
+
+  // Facing direction (last movement direction, for sprite facing)
+  facingX: number; // -1, 0, 1
+  facingZ: number; // -1, 0, 1
+
+  // Wall bump feedback
+  bumping: boolean;
+  bumpDx: number;
+  bumpDz: number;
+  bumpProgress: number; // 0→1 out, 1→0 back
 }
 
 export function createMovement(speed = 5.0, startTileX = 0, startTileZ = 0): MovementComponent {
@@ -27,5 +37,11 @@ export function createMovement(speed = 5.0, startTileX = 0, startTileZ = 0): Mov
     moving: false,
     queuedDx: 0,
     queuedDz: 0,
+    facingX: 0,
+    facingZ: 1,
+    bumping: false,
+    bumpDx: 0,
+    bumpDz: 0,
+    bumpProgress: 0,
   };
 }

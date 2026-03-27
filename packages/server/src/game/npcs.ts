@@ -1,25 +1,49 @@
 /**
- * NPC initialization — sets up spawn points for the game world.
- * All NPC management is now handled by spawn-points.ts.
+ * NPC initialization — reads spawn points from the Tiled map.
+ * All NPC management is handled by spawn-points.ts.
  */
 
 import { addSpawnPoint, cleanup as cleanupSpawnPoints, handleNPCDeath as spHandleDeath, getSpawnPointTemplate, isSpawnedNPC, tickWandering, getAllSpawnPoints, type SpawnPoint } from "./spawn-points.js";
 import type { NPCTemplate } from "./npc-templates.js";
+import { getTiledSpawnPoints, getZoneSpawnPoints } from "../world/tiled-map.js";
+import { getAllZones } from "./zone-registry.js";
 
 export function spawnInitialNpcs() {
-  // Skeleton spawn point near origin
-  addSpawnPoint({
-    id: "sp-skeletons-1",
-    x: 0,
-    z: 0,
-    mapId: 1,
-    npcIds: ["skeleton-warrior", "skeleton-archer", "skeleton-mage", "skeleton-lord"],
-    distance: 8,
-    maxCount: 4,
-    frequency: 5,
-  });
+  // Spawn NPCs from all loaded zone maps
+  let totalPoints = 0;
+  for (const zone of getAllZones()) {
+    const zoneSpawns = getZoneSpawnPoints(zone.id);
+    for (let i = 0; i < zoneSpawns.length; i++) {
+      const sp = zoneSpawns[i];
+      addSpawnPoint({
+        id: `sp-${zone.id}-${sp.name || `spawn-${i}`}`,
+        x: sp.tileX,
+        z: sp.tileZ,
+        mapId: zone.id === "human-meadows" ? 1 : 2, // TODO: proper mapId mapping
+        npcIds: sp.npcIds,
+        distance: sp.distance,
+        maxCount: sp.maxCount,
+        frequency: sp.frequency,
+      });
+      totalPoints++;
+    }
+  }
 
-  console.log(`[NPCs] Spawn points initialized: ${getAllSpawnPoints().length} points`);
+  // Fallback: if no zone spawns loaded, use legacy default
+  if (totalPoints === 0) {
+    const tiledSpawns = getTiledSpawnPoints();
+    for (let i = 0; i < tiledSpawns.length; i++) {
+      const sp = tiledSpawns[i];
+      addSpawnPoint({
+        id: `sp-${sp.name || `tiled-${i}`}`,
+        x: sp.tileX, z: sp.tileZ, mapId: 1,
+        npcIds: sp.npcIds, distance: sp.distance,
+        maxCount: sp.maxCount, frequency: sp.frequency,
+      });
+    }
+  }
+
+  console.log(`[NPCs] Spawn points initialized: ${getAllSpawnPoints().length} points across ${getAllZones().length} zones`);
 }
 
 export function handleNpcDeath(entityId: string) {

@@ -22,7 +22,7 @@ export interface CombatState {
 }
 
 export interface DamageEvent { attackerId: string; targetId: string; damage: number; weaponType: string }
-export interface DeathEvent { entityId: string }
+export interface DeathEvent { entityId: string; killerId: string }
 
 const states = new Map<string, CombatState>();
 
@@ -58,9 +58,13 @@ export function disengage(entityId: string) {
   s.windingUp = false;
 }
 
+// Reusable arrays — cleared each tick, avoids allocation
+const _damage: DamageEvent[] = [];
+const _deaths: DeathEvent[] = [];
+
 export function tick(dt: number): { damage: DamageEvent[]; deaths: DeathEvent[] } {
-  const damage: DamageEvent[] = [];
-  const deaths: DeathEvent[] = [];
+  _damage.length = 0;
+  _deaths.length = 0;
 
   for (const [entityId, s] of states) {
     const entity = entityStore.get(entityId);
@@ -93,12 +97,18 @@ export function tick(dt: number): { damage: DamageEvent[]; deaths: DeathEvent[] 
     if (s.windingUp) {
       s.windUpTimer -= dt;
       if (s.windUpTimer <= 0) {
-        ts.hp = Math.max(0, ts.hp - s.weaponDamage);
+        let dmg = s.weaponDamage;
+        // Defend ability halves damage for 5s
+        const target = entityStore.get(s.targetId);
+        if (target && (target as any)._defendUntil && Date.now() < (target as any)._defendUntil) {
+          dmg = Math.floor(dmg * 0.5);
+        }
+        ts.hp = Math.max(0, ts.hp - dmg);
         s.inCombat = true; s.combatTimer = COMBAT_DECAY;
         ts.inCombat = true; ts.combatTimer = COMBAT_DECAY;
         if (!ts.autoAttacking) { ts.autoAttacking = true; ts.targetId = entityId; ts.attackTimer = 0; }
-        damage.push({ attackerId: entityId, targetId: s.targetId, damage: s.weaponDamage, weaponType: s.weaponType });
-        if (ts.hp <= 0) deaths.push({ entityId: s.targetId });
+        _damage.push({ attackerId: entityId, targetId: s.targetId, damage: dmg, weaponType: s.weaponType });
+        if (ts.hp <= 0) _deaths.push({ entityId: s.targetId, killerId: entityId });
         s.windingUp = false;
         s.attackTimer = s.attackSpeed;
       }
@@ -109,5 +119,5 @@ export function tick(dt: number): { damage: DamageEvent[]; deaths: DeathEvent[] 
     if (s.attackTimer <= 0) { s.windingUp = true; s.windUpTimer = s.windUpTime; }
   }
 
-  return { damage, deaths };
+  return { damage: _damage, deaths: _deaths };
 }

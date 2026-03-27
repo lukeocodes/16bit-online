@@ -7,13 +7,17 @@
 ## File Map
 - `src/main.ts` — Boot: WebRTC check, router setup, game lifecycle, disconnect handling
 - `src/engine/Game.ts` — Orchestrator: connects systems, handles input, manages HUD
-- `src/engine/SceneManager.ts` — Babylon.js Engine + Scene + lighting
-- `src/engine/IsometricCamera.ts` — Orthographic camera at 35.264° elevation, 45° Y rotation
 - `src/engine/Loop.ts` — Fixed 20Hz tick + variable render loop
 - `src/engine/InputManager.ts` — WASD + click + Caps Lock handlers
+- `src/renderer/PixiApp.ts` — PixiJS Application wrapper, world container, resize handling
+- `src/renderer/IsoCamera.ts` — 2D isometric camera (container translate + scale with smooth follow)
+- `src/renderer/EntityRenderer.ts` — PixiJS sprite-based entity rendering, damage flash, attack lines, target ring
+- `src/renderer/TerrainRenderer.ts` — Procedural terrain fallback (reads ChunkManager data)
+- `src/renderer/TiledMapRenderer.ts` — Loads and renders Tiled JSON maps with tileset sprites
+- `src/renderer/IsometricRenderer.ts` — Isometric projection math (worldToScreen, screenToWorld)
 - `src/ecs/EntityManager.ts` — Entity store + spatial grid (clean up empty cells!)
 - `src/ecs/components/` — Position, Movement, Renderable, Identity, Stats, Combat
-- `src/ecs/systems/` — Movement, Render, Animation, Interpolation, Combat (client-side removed)
+- `src/ecs/systems/` — Movement, Animation, Interpolation
 - `src/net/NetworkManager.ts` — WebRTC connection via HTTP signaling, no WebSocket
 - `src/net/StateSync.ts` — Server → client entity sync, numeric ID hash mapping
 - `src/net/Protocol.ts` — Opcodes, binary pack/unpack
@@ -21,14 +25,25 @@
 - `src/ui/screens/` — LoginScreen, OnboardingScreen, CharacterCreateScreen, CharacterSelectScreen, GameHUD, LoadingScreen
 - `src/dev/PlaywrightAPI.ts` — Dev-only `window.__game` testing interface
 
-## Babylon.js Deep Imports
-ALWAYS use specific paths. Never `from "@babylonjs/core"`.
+## PixiJS Rendering
+The client uses **PixiJS v8** for 2D isometric rendering (replaced Babylon.js 3D).
 ```typescript
-import { Vector3 } from "@babylonjs/core/Maths/math.vector";
-import { MeshBuilder } from "@babylonjs/core/Meshes/meshBuilder";
-import "@babylonjs/core/Culling/ray"; // Side-effect import for scene.pick()
+import { Container, Sprite, Graphics, Texture } from "pixi.js";
 ```
-This reduced the bundle from 5MB to 1.4MB.
+- World container has `sortableChildren = true` — set `zIndex` for depth sorting
+- Isometric projection: `sx = (tx - tz) * 32`, `sy = (tx + tz) * 16 - elevation * 16`
+- Entity picking: screen click → inverse iso projection → spatial grid query
+- Render loop: PixiJS auto-render disabled, `app.render()` called from Loop.ts
+
+## Tiled Map System
+Maps are hand-crafted in Tiled editor format and loaded client-side.
+- Map JSON files: `public/maps/` (served by Vite)
+- Tileset images + TSJ: `public/tilesets/`
+- Generator scripts: `scripts/generate-tileset.ts`, `scripts/generate-starter-map.ts`
+- `TiledMapRenderer` loads map JSON, parses tileset, renders tile sprites
+- Collision from tile properties (`walkable: bool` per tile type)
+- Object layer defines spawn points, safe zones, player spawn
+- Falls back to procedural terrain if no Tiled map loads
 
 ## Adding ECS Components
 1. Create `src/ecs/components/MyComponent.ts` with interface + factory
@@ -44,3 +59,17 @@ This reduced the bundle from 5MB to 1.4MB.
 
 ## Remote Entity Interpolation
 Remote entities don't snap to server positions. `InterpolationSystem` lerps toward `remoteTargetX/Z` each frame at `LERP_SPEED * dt`. Position component has `isRemote` flag.
+
+## Renderable Component
+Uses PixiJS `Container` (not Babylon Mesh):
+```typescript
+interface RenderableComponent {
+  type: "renderable";
+  displayObject: Container | null;  // PixiJS container
+  meshType: string;
+  bodyColor: string;
+  skinColor: string;
+  hairColor: string;
+  visible: boolean;
+}
+```

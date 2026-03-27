@@ -31,6 +31,10 @@ export class InputManager {
   private onRightClick: ((screenX: number, screenY: number) => void) | null = null;
   private onLeftClick: ((screenX: number, screenY: number) => void) | null = null;
   private onToggleAutoAttack: (() => void) | null = null;
+  private onTabTarget: (() => void) | null = null;
+  private onAbilityUse: ((slot: number) => void) | null = null;
+  private mouseX = 0;
+  private mouseY = 0;
 
   constructor(canvas: HTMLCanvasElement) {
     this.bindings = { ...DEFAULT_BINDINGS };
@@ -40,6 +44,12 @@ export class InputManager {
 
     // Reset all keys when window loses focus
     window.addEventListener("blur", () => this.resetAll());
+
+    // Track mouse position
+    canvas.addEventListener("pointermove", (e) => {
+      this.mouseX = e.offsetX;
+      this.mouseY = e.offsetY;
+    });
 
     // Left-click on canvas
     canvas.addEventListener("click", (e) => {
@@ -81,17 +91,46 @@ export class InputManager {
     this.onToggleAutoAttack = handler;
   }
 
+  setOnTabTarget(handler: () => void) {
+    this.onTabTarget = handler;
+  }
+
+  setOnAbilityUse(handler: (slot: number) => void) {
+    this.onAbilityUse = handler;
+  }
+
+  getMousePosition(): { x: number; y: number } {
+    return { x: this.mouseX, y: this.mouseY };
+  }
+
   rebind(code: string, action: KeyAction) {
     this.bindings[code] = action;
   }
 
   private onKey(e: KeyboardEvent, pressed: boolean) {
     if (!this.enabled) return;
+    // Don't capture input when typing in a text field (chat, etc.)
+    const tag = (document.activeElement as HTMLElement)?.tagName;
+    if (tag === "INPUT" || tag === "TEXTAREA") return;
 
     // Caps Lock toggles auto-attack (fire on keydown only)
     if (e.code === "CapsLock" && pressed) {
       e.preventDefault();
       if (this.onToggleAutoAttack) this.onToggleAutoAttack();
+      return;
+    }
+
+    // Number keys 2-6 for ability slots (on keydown only)
+    if (pressed && e.code >= "Digit2" && e.code <= "Digit6") {
+      const slot = parseInt(e.code.charAt(5)) - 1; // 2→1, 3→2, etc.
+      if (this.onAbilityUse) this.onAbilityUse(slot);
+      return;
+    }
+
+    // Tab cycles through nearby targets
+    if (e.code === "Tab" && pressed) {
+      e.preventDefault();
+      if (this.onTabTarget) this.onTabTarget();
       return;
     }
 

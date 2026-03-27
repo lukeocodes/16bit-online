@@ -106,28 +106,34 @@ export const CONTINENTAL_SCALE = 8.0;
  * - Water/beach/swamp: stay flat (0.05-0.2)
  */
 export const BIOME_TERRAIN_PROFILES: Record<number, TerrainProfile> = {
-  0:  { amplitude: 0.05, frequency: 0.04, octaves: 1 },  // DEEP_OCEAN
-  1:  { amplitude: 0.1,  frequency: 0.04, octaves: 1 },  // SHALLOW_OCEAN
-  2:  { amplitude: 0.15, frequency: 0.05, octaves: 2 },  // BEACH
-  3:  { amplitude: 0.7,  frequency: 0.06, octaves: 2 },  // TEMPERATE_GRASSLAND
-  4:  { amplitude: 0.9,  frequency: 0.07, octaves: 2 },  // TEMPERATE_FOREST
-  5:  { amplitude: 1.1,  frequency: 0.09, octaves: 3 },  // DENSE_FOREST
-  6:  { amplitude: 1.0,  frequency: 0.08, octaves: 2 },  // BOREAL_FOREST
-  7:  { amplitude: 3.5,  frequency: 0.12, octaves: 4 },  // MOUNTAIN
-  8:  { amplitude: 4.5,  frequency: 0.14, octaves: 4 },  // SNOW_PEAK
-  9:  { amplitude: 0.6,  frequency: 0.06, octaves: 2 },  // TUNDRA
-  10: { amplitude: 0.5,  frequency: 0.05, octaves: 2 },  // DESERT
-  11: { amplitude: 0.7,  frequency: 0.07, octaves: 2 },  // SCRUBLAND
-  12: { amplitude: 0.2,  frequency: 0.04, octaves: 1 },  // SWAMP
-  13: { amplitude: 1.4,  frequency: 0.10, octaves: 3 },  // HIGHLAND
-  14: { amplitude: 0.7,  frequency: 0.06, octaves: 2 },  // MEADOW
-  15: { amplitude: 0.2,  frequency: 0.05, octaves: 1 },  // RIVER_VALLEY
-  16: { amplitude: 0.05, frequency: 0.04, octaves: 1 },  // RIVER
-  17: { amplitude: 0.1,  frequency: 0.04, octaves: 1 },  // LAKE
+  0:  { amplitude: 0.1,  frequency: 0.04, octaves: 1 },  // DEEP_OCEAN — subtle waves
+  1:  { amplitude: 0.2,  frequency: 0.04, octaves: 1 },  // SHALLOW_OCEAN
+  2:  { amplitude: 0.4,  frequency: 0.05, octaves: 2 },  // BEACH — gentle dunes
+  3:  { amplitude: 1.5,  frequency: 0.05, octaves: 3 },  // TEMPERATE_GRASSLAND — rolling hills
+  4:  { amplitude: 1.8,  frequency: 0.06, octaves: 3 },  // TEMPERATE_FOREST — moderate hills
+  5:  { amplitude: 2.2,  frequency: 0.07, octaves: 3 },  // DENSE_FOREST — hilly with ravines
+  6:  { amplitude: 2.0,  frequency: 0.06, octaves: 3 },  // BOREAL_FOREST
+  7:  { amplitude: 4.0,  frequency: 0.10, octaves: 4 },  // MOUNTAIN — steep ridges
+  8:  { amplitude: 5.0,  frequency: 0.12, octaves: 4 },  // SNOW_PEAK — extreme
+  9:  { amplitude: 1.2,  frequency: 0.05, octaves: 2 },  // TUNDRA — wide gentle rolls
+  10: { amplitude: 1.0,  frequency: 0.04, octaves: 2 },  // DESERT — dunes and flats
+  11: { amplitude: 1.4,  frequency: 0.06, octaves: 2 },  // SCRUBLAND
+  12: { amplitude: 0.4,  frequency: 0.04, octaves: 1 },  // SWAMP — mostly flat with pools
+  13: { amplitude: 2.5,  frequency: 0.08, octaves: 3 },  // HIGHLAND — rolling plateaus
+  14: { amplitude: 1.5,  frequency: 0.05, octaves: 3 },  // MEADOW — gentle rolling
+  15: { amplitude: 0.5,  frequency: 0.04, octaves: 2 },  // RIVER_VALLEY — gentle slopes
+  16: { amplitude: 0.1,  frequency: 0.04, octaves: 1 },  // RIVER — flat water
+  17: { amplitude: 0.15, frequency: 0.04, octaves: 1 },  // LAKE — flat water
 };
 
 /** Fallback profile for unknown biome IDs */
 export const DEFAULT_TERRAIN_PROFILE: TerrainProfile = { amplitude: 0.3, frequency: 0.06, octaves: 2 };
+
+/** Biome IDs that use peak-focused generation (mountain, snow_peak, highland) */
+const PEAK_BIOMES = new Set([7, 8, 13]);
+
+/** Max radius (in tiles) that the peak influence extends */
+const PEAK_RADIUS = 300;
 
 /**
  * Compute per-tile terrain height combining three layers:
@@ -135,11 +141,17 @@ export const DEFAULT_TERRAIN_PROFILE: TerrainProfile = { amplitude: 0.3, frequen
  * 2. Regional noise: biome-specific fBm (remapped to [0,1] per octave)
  * 3. Fine detail: high-frequency noise at amplitude 0.1
  *
+ * For mountain/snow/highland biomes, the noise amplitude is shaped by
+ * distance to the region center — creating a single dominant peak
+ * with slopes radiating outward.
+ *
  * @param tileX - World-space tile X coordinate
  * @param tileZ - World-space tile Z coordinate
  * @param continentalElev - Continental elevation 0.0-1.0 from worldMap.elevation
  * @param biomeId - BiomeType enum value
  * @param perm - Permutation table from initServerNoise()
+ * @param peakX - Region center X in tile coords (peak location)
+ * @param peakZ - Region center Z in tile coords (peak location)
  * @returns Combined height in world units
  */
 export function generateTileHeight(
@@ -148,6 +160,8 @@ export function generateTileHeight(
   continentalElev: number,
   biomeId: number,
   perm: Uint8Array,
+  peakX = 0,
+  peakZ = 0,
 ): number {
   // Layer 1: Continental base
   const base = continentalElev * CONTINENTAL_SCALE;
@@ -162,6 +176,20 @@ export function generateTileHeight(
     regional += (n + 1) * 0.5 * amp; // Remap [-1,1] to [0,1] per octave
     freq *= 2;
     amp *= 0.5;
+  }
+
+  // Peak shaping for mountain/snow/highland biomes:
+  // Height scales with proximity to region center — closer = taller
+  if (PEAK_BIOMES.has(biomeId) && PEAK_RADIUS > 0) {
+    const dx = tileX - peakX;
+    const dz = tileZ - peakZ;
+    const dist = Math.sqrt(dx * dx + dz * dz);
+    // Smooth falloff: 1.0 at center, 0.0 at PEAK_RADIUS
+    const proximity = Math.max(0, 1.0 - dist / PEAK_RADIUS);
+    // Squared falloff for steeper peak, gentler foothills
+    const peakFactor = proximity * proximity;
+    // Scale regional noise by peak factor — center gets full amplitude, edges get less
+    regional *= 0.3 + 0.7 * peakFactor;
   }
 
   // Layer 3: Fine detail noise

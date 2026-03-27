@@ -8,15 +8,12 @@ export default defineConfig({
     },
   },
   build: {
-    chunkSizeWarningLimit: 1500, // Babylon.js engine chunk is ~1.4MB
     rollupOptions: {
       output: {
         manualChunks(id) {
-          // Split Babylon.js into its own chunk
-          if (id.includes("@babylonjs")) {
-            return "babylon";
+          if (id.includes("pixi")) {
+            return "pixi";
           }
-          // Split audio libraries into their own chunk
           if (
             id.includes("tone") ||
             id.includes("standardized-audio-context")

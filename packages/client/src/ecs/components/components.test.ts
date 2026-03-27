@@ -172,9 +172,9 @@ describe("ECS component factories", () => {
       expect(r.hairColor).toBe("#2c1b0e");
     });
 
-    it("starts with no mesh and visible", () => {
+    it("starts with no display object and visible", () => {
       const r = createRenderable();
-      expect(r.mesh).toBeNull();
+      expect(r.displayObject).toBeNull();
       expect(r.visible).toBe(true);
     });
 

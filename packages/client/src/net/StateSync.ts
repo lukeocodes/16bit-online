@@ -15,6 +15,12 @@ export type DeathCallback = (entityId: string) => void;
 export type CombatStateCallback = (entityId: string, inCombat: boolean, autoAttacking: boolean, targetId: string | null) => void;
 export type EnemyNearbyCallback = (entityIds: string[], nearby: boolean) => void;
 export type ZoneMusicTagCallback = (musicState: string) => void;
+export type XpGainCallback = (xpGained: number, totalXp: number, xpToNext: number, level: number) => void;
+export type LevelUpCallback = (newLevel: number, hpBonus: number, manaBonus: number, staminaBonus: number) => void;
+export type RespawnCallback = (x: number, y: number, z: number, hp: number, maxHp: number) => void;
+export type ChatCallback = (senderId: string, senderName: string, text: string) => void;
+export type ZoneChangeCallback = (zoneId: string, zoneName: string, mapFile: string, spawnX: number, spawnZ: number, levelRange: [number, number], musicTag: string) => void;
+export type AbilityCooldownCallback = (abilityId: string, remaining: number) => void;
 export type ChunkDataCallback = (cx: number, cz: number, heights: Float32Array) => void;
 
 export class StateSync {
@@ -27,6 +33,12 @@ export class StateSync {
   private onCombatState: CombatStateCallback | null = null;
   private onEnemyNearby: EnemyNearbyCallback | null = null;
   private onZoneMusicTag: ZoneMusicTagCallback | null = null;
+  private onXpGain: XpGainCallback | null = null;
+  private onLevelUp: LevelUpCallback | null = null;
+  private onRespawn: RespawnCallback | null = null;
+  private onChat: ChatCallback | null = null;
+  private onZoneChange: ZoneChangeCallback | null = null;
+  private onAbilityCooldown: AbilityCooldownCallback | null = null;
   private onChunkDataCb: ChunkDataCallback | null = null;
   private terrainYResolver: ((x: number, z: number) => number) | null = null;
 
@@ -58,6 +70,12 @@ export class StateSync {
   setOnCombatState(handler: CombatStateCallback) { this.onCombatState = handler; }
   setOnEnemyNearby(handler: EnemyNearbyCallback) { this.onEnemyNearby = handler; }
   setOnZoneMusicTag(handler: ZoneMusicTagCallback) { this.onZoneMusicTag = handler; }
+  setOnXpGain(handler: XpGainCallback) { this.onXpGain = handler; }
+  setOnLevelUp(handler: LevelUpCallback) { this.onLevelUp = handler; }
+  setOnRespawn(handler: RespawnCallback) { this.onRespawn = handler; }
+  setOnZoneChange(handler: ZoneChangeCallback) { this.onZoneChange = handler; }
+  setOnAbilityCooldown(handler: AbilityCooldownCallback) { this.onAbilityCooldown = handler; }
+  setOnChat(handler: ChatCallback) { this.onChat = handler; }
   setOnChunkData(handler: ChunkDataCallback) { this.onChunkDataCb = handler; }
 
   handleChunkData(data: ArrayBuffer): void {
@@ -163,6 +181,21 @@ export class StateSync {
           this.onZoneMusicTag(data.musicState);
         }
         break;
+      case Opcode.PLAYER_RESPAWN:
+        if (this.onRespawn) {
+          this.onRespawn(data.x, data.y, data.z, data.hp, data.maxHp);
+        }
+        break;
+      case Opcode.XP_GAIN:
+        if (this.onXpGain) {
+          this.onXpGain(data.xpGained, data.totalXp, data.xpToNext, data.level);
+        }
+        break;
+      case Opcode.LEVEL_UP:
+        if (this.onLevelUp) {
+          this.onLevelUp(data.newLevel, data.hpBonus, data.manaBonus, data.staminaBonus);
+        }
+        break;
       case Opcode.SPAWN_POINT:
         this.spawnPoints.push({
           id: data.id, x: data.x, z: data.z,
@@ -170,8 +203,23 @@ export class StateSync {
           maxCount: data.maxCount, frequency: data.frequency,
         });
         break;
+      case Opcode.CHAT_MESSAGE:
+        if (this.onChat && data.senderName && data.text) {
+          this.onChat(data.senderId, data.senderName, data.text);
+        }
+        break;
       case Opcode.SYSTEM_MESSAGE:
         console.log("[System]", data.message);
+        break;
+      case Opcode.ABILITY_COOLDOWN:
+        if (this.onAbilityCooldown) {
+          this.onAbilityCooldown(data.abilityId, data.remaining);
+        }
+        break;
+      case Opcode.ZONE_CHANGE:
+        if (this.onZoneChange) {
+          this.onZoneChange(data.zoneId, data.zoneName, data.mapFile, data.spawnX, data.spawnZ, data.levelRange, data.musicTag);
+        }
         break;
     }
   }
