@@ -99,6 +99,10 @@ export class MiniMap {
   }
 
   render(): HTMLElement {
+    // Wrapper holds the circle + the buttons that straddle its bottom border
+    const wrapper = document.createElement("div");
+    wrapper.style.cssText = "position: relative; display: inline-block;";
+
     const container = document.createElement("div");
     container.style.cssText = `
       background: #0a0a14; border: 2px solid #333; border-radius: 50%;
@@ -121,27 +125,30 @@ export class MiniMap {
       font-size: 10px; color: #888; font-weight: 600;
     `;
     container.appendChild(north);
+    wrapper.appendChild(container);
 
-    // Zoom controls
+    // Zoom buttons sit on the wrapper, centred at the bottom border of the circle
     const btnStyle = `
       width: 20px; height: 20px; border-radius: 50%; border: 1px solid #555;
-      background: rgba(20, 20, 30, 0.8); color: #aaa; font-size: 14px;
+      background: rgba(20, 20, 30, 0.9); color: #aaa; font-size: 14px;
       cursor: pointer; display: flex; align-items: center; justify-content: center;
-      pointer-events: auto; line-height: 1;
+      pointer-events: auto; line-height: 1; position: absolute; bottom: -10px;
     `;
-    const zoomIn = document.createElement("div");
-    zoomIn.textContent = "+";
-    zoomIn.style.cssText = `position: absolute; bottom: 6px; right: 6px; ${btnStyle}`;
-    zoomIn.onclick = () => { this.zoomIndex = Math.min(this.zoomIndex + 1, ZOOM_LEVELS.length - 1); };
-    container.appendChild(zoomIn);
-
     const zoomOut = document.createElement("div");
     zoomOut.textContent = "-";
-    zoomOut.style.cssText = `position: absolute; bottom: 6px; right: 30px; ${btnStyle}`;
+    // Left of centre along the bottom arc
+    zoomOut.style.cssText = `${btnStyle} left: calc(50% - 24px);`;
     zoomOut.onclick = () => { this.zoomIndex = Math.max(this.zoomIndex - 1, 0); };
-    container.appendChild(zoomOut);
+    wrapper.appendChild(zoomOut);
 
-    return container;
+    const zoomIn = document.createElement("div");
+    zoomIn.textContent = "+";
+    // Right of centre along the bottom arc
+    zoomIn.style.cssText = `${btnStyle} left: calc(50% + 4px);`;
+    zoomIn.onclick = () => { this.zoomIndex = Math.min(this.zoomIndex + 1, ZOOM_LEVELS.length - 1); };
+    wrapper.appendChild(zoomIn);
+
+    return wrapper;
   }
 
   // Reusable ImageData to avoid 102KB allocation every frame
