@@ -12,6 +12,7 @@ import "./offhand/index";
 import "./armor/index";
 import "./headgear/index";
 import "./hair/index";
+import "./structures/index";
 
 // Re-export public API
 export { registry } from "./registry";

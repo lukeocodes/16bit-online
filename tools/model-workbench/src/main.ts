@@ -4,6 +4,8 @@ import type { CompositeConfig, AttachmentSlot, ModelPalette } from "./models/typ
 import { computePalette } from "./models/palette";
 import { renderComposite, renderModel } from "./models/composite";
 import { registry } from "./models/registry";
+import { computeHumanoidSkeleton } from "./models/skeleton";
+import type { Direction } from "./models/types";
 import { createModelNav } from "./ModelNav";
 import { createConfigPanel } from "./ConfigPanel";
 import {
@@ -95,6 +97,31 @@ async function main() {
     modelNav.refresh();
     configPanel.rebuild();
   });
+
+  // ─── URL routing — restore model from ?model=<id> on load ───────────
+  {
+    const params = new URLSearchParams(window.location.search);
+    const modelId = params.get("model");
+    if (modelId) {
+      const model = api.listModels().find(m => m.id === modelId);
+      if (model) {
+        if (model.slot === "root" && model.category !== "construction") {
+          state.compositeConfig.baseModelId = modelId;
+          // Drop attachments for slots the new base doesn't have
+          const sk = computeHumanoidSkeleton(0 as Direction, 0);
+          const available = new Set(Object.keys(registry.get(modelId)?.getAttachmentPoints(sk) ?? {}));
+          state.compositeConfig.attachments = state.compositeConfig.attachments.filter(
+            a => available.has(a.slot)
+          );
+          api.setView("composite");
+        } else {
+          api.setView("individual", modelId);
+        }
+        modelNav.refresh();
+        configPanel.rebuild();
+      }
+    }
+  }
 
   // ─── Display objects ────────────
 

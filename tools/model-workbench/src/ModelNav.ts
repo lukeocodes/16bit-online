@@ -1,5 +1,7 @@
 import type { WorkbenchState, WorkbenchAPI } from "./WorkbenchAPI";
 import { registry } from "./models/registry";
+import { computeHumanoidSkeleton } from "./models/skeleton";
+import type { Direction } from "./models/types";
 
 const CATEGORY_ORDER = ["body", "hair", "headgear", "shoulders", "armor", "gauntlets", "legs", "feet", "weapon", "offhand", "npc", "construction"];
 const CATEGORY_LABELS: Record<string, string> = {
@@ -16,6 +18,17 @@ const CATEGORY_LABELS: Record<string, string> = {
   npc: "NPCs",
   construction: "Construction",
 };
+
+/** Remove attachments for slots that the given base model does not expose. */
+function filterAttachmentsForBase(state: WorkbenchState, baseModelId: string): void {
+  const model = registry.get(baseModelId);
+  if (!model) return;
+  const skeleton = computeHumanoidSkeleton(0 as Direction, 0);
+  const available = new Set(Object.keys(model.getAttachmentPoints(skeleton)));
+  state.compositeConfig.attachments = state.compositeConfig.attachments.filter(
+    a => available.has(a.slot)
+  );
+}
 
 /**
  * Left nav panel — model browser grouped by category.
@@ -65,15 +78,19 @@ export function createModelNav(
         btn.addEventListener("click", () => {
           if (isRootModel) {
             // Root models (bodies + NPCs) show composite view so slots are visible.
-            // Switching to a different body clears all linked attachments.
+            // When switching body, drop attachments for slots the new body doesn't have.
             if (state.compositeConfig.baseModelId !== model.id) {
-              state.compositeConfig.attachments = [];
+              state.compositeConfig.baseModelId = model.id;
+              filterAttachmentsForBase(state, model.id);
             }
             api.setView("composite");
-            state.compositeConfig.baseModelId = model.id;
           } else {
             api.setView("individual", model.id);
           }
+          // Sync model ID to URL so it can be bookmarked / linked
+          const url = new URL(window.location.href);
+          url.searchParams.set("model", model.id);
+          history.replaceState(null, "", url.toString());
           refresh();
           onSelect();
         });
