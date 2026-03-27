@@ -19,9 +19,14 @@ export class InterpolationSystem {
 
       const t = Math.min(1, LERP_SPEED * dt);
 
-      pos.x += (pos.remoteTargetX - pos.x) * t;
-      pos.y += (pos.remoteTargetY - pos.y) * t;
-      pos.z += (pos.remoteTargetZ - pos.z) * t;
+      const dx = pos.remoteTargetX - pos.x;
+      const dy = pos.remoteTargetY - pos.y;
+      const dz = pos.remoteTargetZ - pos.z;
+
+      // Snap to target once close enough to avoid floating between tiles
+      pos.x = Math.abs(dx) < 0.01 ? pos.remoteTargetX : pos.x + dx * t;
+      pos.y = Math.abs(dy) < 0.01 ? pos.remoteTargetY : pos.y + dy * t;
+      pos.z = Math.abs(dz) < 0.01 ? pos.remoteTargetZ : pos.z + dz * t;
 
       // Interpolate rotation (handle wraparound)
       let rotDiff = pos.remoteTargetRotation - pos.rotation;

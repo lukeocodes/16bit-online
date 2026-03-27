@@ -126,6 +126,7 @@ export class TiledMapRenderer {
 
   private lastCenterX = -Infinity;
   private lastCenterZ = -Infinity;
+  private lastRenderRadius = -1;
   private decoSprites = new Map<string, Graphics>();
 
   /** Tile name lookup (local ID -> name) for decoration placement */
@@ -281,9 +282,10 @@ export class TiledMapRenderer {
     const cx = Math.floor(centerX);
     const cz = Math.floor(centerZ);
 
-    if (cx === this.lastCenterX && cz === this.lastCenterZ) return;
+    if (cx === this.lastCenterX && cz === this.lastCenterZ && this.renderRadius === this.lastRenderRadius) return;
     this.lastCenterX = cx;
     this.lastCenterZ = cz;
+    this.lastRenderRadius = this.renderRadius;
 
     const visibleKeys = new Set<string>();
     const r = this.renderRadius;
@@ -512,9 +514,7 @@ export class TiledMapRenderer {
         const pieces = makeHouse(tileX, tileZ, bw, bd, mat, door, undefined, floors as 1 | 2);
         this.wallPieces.push(...pieces);
         for (const p of pieces) {
-          // Don't block stair tiles, floor tiles, or doors at any elevation
           if (!p.type.includes("door") && p.type !== "stair_left" && p.type !== "stair_right" && p.type !== "floor") {
-            // Only block ground-floor walls in the movement system
             if ((p.elevation ?? 0) === 0) this.blockedByWall.add(`${p.tileX},${p.tileZ}`);
           }
           if (p.type === "stair_left" || p.type === "stair_right") {

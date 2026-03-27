@@ -27,6 +27,10 @@ export type InventorySyncCallback = (items: Array<{ id: string; itemId: string; 
 export type DungeonMapCallback = (data: { instanceId: string; width: number; height: number; ground: number[]; collision: number[]; spawnX: number; spawnZ: number }) => void;
 export type DungeonExitCallback = (exitX: number, exitZ: number, message: string) => void;
 export type QuestUpdateCallback = (quests: Array<{ questId: string; name: string; objectives: Array<{ description: string; current: number; target: number }>; completed: boolean }>) => void;
+export type WorldItemData = { id: string; zoneId: string; tileX: number; tileZ: number; itemId: string; quantity: number; name: string; icon: string };
+export type WorldItemsSyncCallback = (items: WorldItemData[]) => void;
+export type WorldItemSpawnCallback = (item: WorldItemData) => void;
+export type WorldItemDespawnCallback = (id: string) => void;
 
 export class StateSync {
   private entityManager: EntityManager;
@@ -50,6 +54,9 @@ export class StateSync {
   private onDungeonMap: DungeonMapCallback | null = null;
   private onDungeonExit: DungeonExitCallback | null = null;
   private onQuestUpdate: QuestUpdateCallback | null = null;
+  private onWorldItemsSync: WorldItemsSyncCallback | null = null;
+  private onWorldItemSpawn: WorldItemSpawnCallback | null = null;
+  private onWorldItemDespawn: WorldItemDespawnCallback | null = null;
   private terrainYResolver: ((x: number, z: number) => number) | null = null;
 
   // Spawn points (for dev mode rendering)
@@ -92,6 +99,9 @@ export class StateSync {
   setOnDungeonMap(handler: DungeonMapCallback) { this.onDungeonMap = handler; }
   setOnDungeonExit(handler: DungeonExitCallback) { this.onDungeonExit = handler; }
   setOnQuestUpdate(handler: QuestUpdateCallback) { this.onQuestUpdate = handler; }
+  setOnWorldItemsSync(handler: WorldItemsSyncCallback) { this.onWorldItemsSync = handler; }
+  setOnWorldItemSpawn(handler: WorldItemSpawnCallback) { this.onWorldItemSpawn = handler; }
+  setOnWorldItemDespawn(handler: WorldItemDespawnCallback) { this.onWorldItemDespawn = handler; }
 
   handleChunkData(data: ArrayBuffer): void {
     // Format: [opcode:u8] [cx:i16LE] [cz:i16LE] [heights:2048 bytes Float16]
@@ -158,8 +168,9 @@ export class StateSync {
   }
 
   private static WEAPON_TYPES = ["melee", "ranged", "magic", "fire", "ice", "shock"];
+  private static ABILITY_IDS = ["defend", "heal", "fire", "ice", "shock"];
 
-  /** Handle binary combat messages (opcodes 50, 51, 52) */
+  /** Handle binary reliable messages */
   handleBinaryReliable(data: ArrayBuffer): void {
     const view = new DataView(data);
     const op = view.getUint8(0);
@@ -189,6 +200,53 @@ export class StateSync {
       if (entityId) {
         this.updateEntityState({ entityId, hp, maxHp });
       }
+    } else if (op === Opcode.COMBAT_STATE && data.byteLength >= 11) {
+      const entityHash = view.getUint32(1, true);
+      const flags = view.getUint8(5);
+      const targetHash = view.getUint32(6, true);
+      const hasTarget = view.getUint8(10) === 1;
+      const entityId = this.numericIdMap.get(entityHash) ?? "";
+      if (entityId) {
+        const inCombat = (flags & 1) !== 0;
+        const autoAttacking = (flags & 2) !== 0;
+        const targetId = hasTarget ? (this.numericIdMap.get(targetHash) ?? null) : null;
+        this.updateCombatState({ entityId, inCombat, autoAttacking, targetId });
+        if (this.onCombatState) this.onCombatState(entityId, inCombat, autoAttacking, targetId);
+      }
+    } else if (op === Opcode.ENEMY_NEARBY && data.byteLength >= 7) {
+      const nearby = view.getUint8(5) === 1;
+      const count = view.getUint8(6);
+      const entityIds: string[] = [];
+      for (let i = 0; i < count && 7 + i * 4 + 4 <= data.byteLength; i++) {
+        const hash = view.getUint32(7 + i * 4, true);
+        const id = this.numericIdMap.get(hash);
+        if (id) entityIds.push(id);
+      }
+      if (this.onEnemyNearby) this.onEnemyNearby(entityIds, nearby);
+    } else if (op === Opcode.ABILITY_COOLDOWN && data.byteLength >= 6) {
+      const abilityIdx = view.getUint8(1);
+      const remaining = view.getFloat32(2, true);
+      const abilityId = StateSync.ABILITY_IDS[abilityIdx] ?? "unknown";
+      if (this.onAbilityCooldown) this.onAbilityCooldown(abilityId, remaining);
+    } else if (op === Opcode.XP_GAIN && data.byteLength >= 14) {
+      const xpGained = view.getUint16(5, true);
+      const totalXp = view.getUint32(7, true);
+      const xpToNext = view.getUint16(11, true);
+      const level = view.getUint8(13);
+      if (this.onXpGain) this.onXpGain(xpGained, totalXp, xpToNext, level);
+    } else if (op === Opcode.LEVEL_UP && data.byteLength >= 8) {
+      const newLevel = view.getUint8(1);
+      const hpBonus = view.getUint16(2, true);
+      const manaBonus = view.getUint16(4, true);
+      const staminaBonus = view.getUint16(6, true);
+      if (this.onLevelUp) this.onLevelUp(newLevel, hpBonus, manaBonus, staminaBonus);
+    } else if (op === Opcode.PLAYER_RESPAWN && data.byteLength >= 21) {
+      const x = view.getFloat32(5, true);
+      const y = view.getFloat32(9, true);
+      const z = view.getFloat32(13, true);
+      const hp = view.getUint16(17, true);
+      const maxHp = view.getUint16(19, true);
+      if (this.onRespawn) this.onRespawn(x, y, z, hp, maxHp);
     }
   }
 
@@ -215,37 +273,16 @@ export class StateSync {
           this.onDeath(data.entityId);
         }
         break;
-      case Opcode.COMBAT_STATE:
-        this.updateCombatState(data);
-        if (this.onCombatState) {
-          this.onCombatState(data.entityId, data.inCombat, data.autoAttacking, data.targetId);
-        }
-        break;
-      case Opcode.ENEMY_NEARBY:
-        if (this.onEnemyNearby) {
-          this.onEnemyNearby(data.entityIds || [], data.nearby);
-        }
-        break;
+      case Opcode.COMBAT_STATE: break; // handled in handleBinaryReliable
+      case Opcode.ENEMY_NEARBY: break; // handled in handleBinaryReliable
       case Opcode.ZONE_MUSIC_TAG:
         if (this.onZoneMusicTag) {
           this.onZoneMusicTag(data.musicState);
         }
         break;
-      case Opcode.PLAYER_RESPAWN:
-        if (this.onRespawn) {
-          this.onRespawn(data.x, data.y, data.z, data.hp, data.maxHp);
-        }
-        break;
-      case Opcode.XP_GAIN:
-        if (this.onXpGain) {
-          this.onXpGain(data.xpGained, data.totalXp, data.xpToNext, data.level);
-        }
-        break;
-      case Opcode.LEVEL_UP:
-        if (this.onLevelUp) {
-          this.onLevelUp(data.newLevel, data.hpBonus, data.manaBonus, data.staminaBonus);
-        }
-        break;
+      case Opcode.PLAYER_RESPAWN: break; // handled in handleBinaryReliable
+      case Opcode.XP_GAIN: break; // handled in handleBinaryReliable
+      case Opcode.LEVEL_UP: break; // handled in handleBinaryReliable
       case Opcode.SPAWN_POINT:
         this.spawnPoints.push({
           id: data.id, x: data.x, z: data.z,
@@ -261,11 +298,7 @@ export class StateSync {
       case Opcode.SYSTEM_MESSAGE:
         console.log("[System]", data.message);
         break;
-      case Opcode.ABILITY_COOLDOWN:
-        if (this.onAbilityCooldown) {
-          this.onAbilityCooldown(data.abilityId, data.remaining);
-        }
-        break;
+      case Opcode.ABILITY_COOLDOWN: break; // handled in handleBinaryReliable
       case Opcode.ZONE_CHANGE:
         if (this.onZoneChange) {
           this.onZoneChange(data.zoneId, data.zoneName, data.mapFile, data.spawnX, data.spawnZ, data.levelRange, data.musicTag);
@@ -285,6 +318,15 @@ export class StateSync {
         if (this.onQuestUpdate && data.quests) {
           this.onQuestUpdate(data.quests);
         }
+        break;
+      case Opcode.WORLD_ITEMS_SYNC:
+        if (this.onWorldItemsSync && data.items) this.onWorldItemsSync(data.items);
+        break;
+      case Opcode.WORLD_ITEM_SPAWN:
+        if (this.onWorldItemSpawn) this.onWorldItemSpawn(data as WorldItemData);
+        break;
+      case Opcode.WORLD_ITEM_DESPAWN:
+        if (this.onWorldItemDespawn && data.id) this.onWorldItemDespawn(data.id);
         break;
       case Opcode.DUNGEON_MAP:
         if (this.onDungeonMap) {

@@ -20,6 +20,7 @@ Keep API request size small. Context bloat causes failures. Follow these rules s
 - @AGENTS-SERVER.md — Server file map, adding NPCs/spawn points, protocol format
 - @AGENTS-CLIENT.md — Client file map, PixiJS rendering, ECS patterns, UI screens
 - @AGENTS-TESTING.md — Playwright automated testing strategy, combat test loop, multi-tab testing
+- @AGENTS-PERFORMANCE.md — Binary protocol rules, message format reference, how to add new binary messages
 
 ## Project Structure
 Bun workspace monorepo with three packages:

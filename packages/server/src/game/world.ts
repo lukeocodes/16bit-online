@@ -3,13 +3,15 @@ import { entityStore } from "./entities.js";
 import { handleNpcDeath, tickWandering, tickRespawns, getNpcTemplate } from "./npcs.js";
 import { connectionManager } from "../ws/connections.js";
 import {
-  packPosition, packDamageEvent, packEntityDeath,
-  packEntityDespawn, packEntityState, packCombatState,
-  packEnemyNearby, packXpGain, packLevelUp, packPlayerRespawn,
+  Opcode, packReliable,
+  packPosition, packEntityDespawn, packEntityState,
   packBinaryDamage, packBinaryDeath, packBinaryState,
+  packBinaryCombatState, packBinaryEnemyNearby, packBinaryXpGain, packBinaryLevelUp,
+  packBinaryRespawn,
 } from "./protocol.js";
 import { xpForKill, processXpGain, xpToNextLevel, totalXpForLevel } from "./experience.js";
-import { rollAndGiveLoot } from "./inventory.js";
+import { rollAndGetLoot } from "./inventory.js";
+import { dropItem as dropWorldItem, getZoneItems } from "./world-items.js";
 import { onDungeonNpcDeath } from "./dungeon.js";
 import { onQuestKill } from "./quests.js";
 import { config } from "../config.js";
@@ -44,10 +46,10 @@ export function handleKill(killerId: string, deadEntityId: string) {
 
       const xpNeeded = xpToNextLevel(prog.level);
       const xpIntoLevel = prog.xp - totalXpForLevel(prog.level);
-      connectionManager.sendReliable(killerId, packXpGain(killerId, xpGained, xpIntoLevel, xpNeeded, prog.level));
+      connectionManager.sendReliable(killerId, packBinaryXpGain(killerId, xpGained, xpIntoLevel, xpNeeded, prog.level));
 
       for (const lu of result.levelUps) {
-        connectionManager.sendReliable(killerId, packLevelUp(killerId, lu.newLevel, lu.hpBonus, lu.manaBonus, lu.staminaBonus));
+        connectionManager.sendReliable(killerId, packBinaryLevelUp(lu.newLevel, lu.hpBonus, lu.manaBonus, lu.staminaBonus));
         const killerCombat = getCombatState(killerId);
         if (killerCombat) {
           killerCombat.maxHp += lu.hpBonus;
@@ -60,7 +62,19 @@ export function handleKill(killerId: string, deadEntityId: string) {
   // NPC death → loot drop + quest progress + remove + schedule respawn
   if (deadEntity?.entityType === "npc") {
     if (killerEntity?.entityType === "player") {
-      rollAndGiveLoot(killerId, deadEntityId);
+      const drops = rollAndGetLoot(deadEntityId);
+      const npcZoneId = String(deadEntity.mapId ?? 1);
+      for (const drop of drops) {
+        dropWorldItem(npcZoneId, Math.round(deadEntity.x), Math.round(deadEntity.z), drop.itemId, drop.quantity)
+          .then(wi => {
+            if (wi) {
+              connectionManager.broadcastReliable(
+                packReliable(Opcode.WORLD_ITEM_SPAWN, { id: wi.id, zoneId: wi.zoneId, tileX: wi.tileX, tileZ: wi.tileZ, itemId: wi.itemId, quantity: wi.quantity, name: wi.name, icon: wi.icon }),
+              );
+            }
+          })
+          .catch(err => console.error("[WorldItems] drop failed:", err));
+      }
       // Quest progress — use NPC group ID for matching
       const npcTemplate = getNpcTemplate(deadEntityId);
       if (npcTemplate) onQuestKill(killerId, npcTemplate.groupId);
@@ -85,7 +99,7 @@ export function handleKill(killerId: string, deadEntityId: string) {
       combat.autoAttacking = false;
       combat.targetId = null;
       combat.combatTimer = 0;
-      connectionManager.sendReliable(playerId, packPlayerRespawn(playerId, entity.x, 0, entity.z, combat.hp, combat.maxHp));
+      connectionManager.sendReliable(playerId, packBinaryRespawn(playerId, entity.x, 0, entity.z, combat.hp, combat.maxHp));
       connectionManager.broadcastBinary(packBinaryState(playerId, combat.hp, combat.maxHp), playerId);
       console.log(`[Respawn] Player ${playerId} respawned at town`);
     }, 3000);
@@ -249,7 +263,7 @@ function checkEnemyProximity() {
       enemyNearbyState.set(conn.entityId, isNearby);
       connectionManager.sendReliable(
         conn.entityId,
-        packEnemyNearby(conn.entityId, isNearby ? nearbyNpcIds : [], isNearby),
+        packBinaryEnemyNearby(conn.entityId, isNearby ? nearbyNpcIds : [], isNearby),
       );
     }
   }
@@ -298,7 +312,7 @@ function broadcastState() {
     const ownCombat = getCombatState(conn.entityId);
     if (ownCombat) {
       connectionManager.sendReliable(conn.entityId,
-        packCombatState(conn.entityId, ownCombat.inCombat, ownCombat.autoAttacking, ownCombat.targetId));
+        packBinaryCombatState(conn.entityId, ownCombat.inCombat, ownCombat.autoAttacking, ownCombat.targetId));
 
       // Delta check for own entity state
       const ownKey = conn.entityId + ":" + conn.entityId;

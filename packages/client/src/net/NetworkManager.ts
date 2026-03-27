@@ -86,8 +86,11 @@ export class NetworkManager {
                 if (this.onChunkData) this.onChunkData(e.data);
                 return;
               }
-              // Binary combat messages (50=DAMAGE, 51=DEATH, 52=STATE)
-              if (firstByte === 50 || firstByte === 51 || firstByte === 52) {
+              // Binary reliable messages: combat (50-52), combat state (53), enemy nearby (70),
+              // ability cooldown (32), xp/level (80-81), respawn (82)
+              if (firstByte === 50 || firstByte === 51 || firstByte === 52 ||
+                  firstByte === 53 || firstByte === 70 || firstByte === 32 ||
+                  firstByte === 80 || firstByte === 81 || firstByte === 82) {
                 if (this.onBinaryReliable) this.onBinaryReliable(e.data);
                 return;
               }

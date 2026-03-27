@@ -60,6 +60,19 @@ export const chunkData = pgTable("chunk_data", {
   primaryKey({ columns: [table.mapId, table.chunkX, table.chunkY, table.chunkZ] }),
 ]);
 
+// World items — items sitting on the ground in a zone
+export const worldItems = pgTable("world_items", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  zoneId: varchar("zone_id", { length: 50 }).notNull(),
+  tileX: integer("tile_x").notNull(),
+  tileZ: integer("tile_z").notNull(),
+  itemId: varchar("item_id", { length: 50 }).notNull(),
+  quantity: integer("quantity").default(1).notNull(),
+  source: varchar("source", { length: 10 }).notNull().default("drop"), // "map" | "drop"
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  expiresAt: timestamp("expires_at", { withTimezone: true }), // null = permanent
+});
+
 // Character inventory — items owned by a character
 export const characterInventory = pgTable("character_inventory", {
   id: uuid("id").primaryKey().defaultRandom(),

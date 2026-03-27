@@ -90,6 +90,7 @@ interface ZoneMapData {
   spawnPoints: TiledSpawnPoint[];
   safeZones: TiledSafeZone[];
   playerSpawn: { x: number; z: number };
+  mapItems: Array<{ tileX: number; tileZ: number; itemId: string; quantity: number }>;
 }
 
 const zoneMaps = new Map<string, ZoneMapData>();
@@ -128,6 +129,10 @@ export function getZoneMapData(zoneId: string): ZoneMapData | undefined {
 /** Get spawn points for a specific zone */
 export function getZoneSpawnPoints(zoneId: string): TiledSpawnPoint[] {
   return zoneMaps.get(zoneId)?.spawnPoints ?? [];
+}
+
+export function getZoneMapItems(zoneId: string): Array<{ tileX: number; tileZ: number; itemId: string; quantity: number }> {
+  return zoneMaps.get(zoneId)?.mapItems ?? [];
 }
 
 /** Check walkability in a specific zone */
@@ -184,6 +189,7 @@ function parseTiledMap(mapPath: string): ZoneMapData {
     spawnPoints: [],
     safeZones: [],
     playerSpawn: { x: 64, z: 64 },
+    mapItems: [],
   };
 
   // Load tileset(s) for walkability properties
@@ -238,6 +244,10 @@ function parseObjectsInto(data: ZoneMapData, objects: TiledObject[], tileW: numb
           frequency: typeof props.frequency === "number" ? props.frequency : 10,
         });
       }
+    } else if (obj.type === "item") {
+      const itemId = props.itemId as string;
+      const quantity = typeof props.quantity === "number" ? props.quantity : 1;
+      if (itemId) data.mapItems.push({ tileX, tileZ, itemId, quantity });
     } else if (obj.type === "safe_zone") {
       data.safeZones.push({
         name: obj.name, tileX, tileZ,

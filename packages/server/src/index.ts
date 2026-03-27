@@ -6,8 +6,9 @@ import { connectRedis, disconnectRedis } from "./db/redis.js";
 import { spawnInitialNpcs, cleanup as cleanupNpcs } from "./game/npcs.js";
 import { startGameLoop, stopGameLoop } from "./game/world.js";
 import { initWorldMap, cacheWorldMapToRedis } from "./world/queries.js";
-import { loadTiledMap, loadZoneMap } from "./world/tiled-map.js";
+import { loadTiledMap, loadZoneMap, getZoneMapItems } from "./world/tiled-map.js";
 import { getAllZones } from "./game/zone-registry.js";
+import { loadMapItems, loadDbItems } from "./game/world-items.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -23,6 +24,8 @@ async function main() {
   for (const zone of getAllZones()) {
     try {
       loadZoneMap(zone.id, resolve(mapsDir, zone.mapFile));
+      loadMapItems(zone.id, getZoneMapItems(zone.id));
+      await loadDbItems(zone.id);
     } catch (e) {
       console.warn(`[Boot] Could not load zone "${zone.id}" (${zone.mapFile}):`, (e as Error).message);
     }

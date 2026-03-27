@@ -11,7 +11,9 @@ import { isInSafeZone } from "../game/zones.js";
 import { getZone } from "../game/zone-registry.js";
 import { isWalkable } from "../world/terrain.js";
 import { startLingering, cancelLingering, isLingering } from "../game/linger.js";
-import { Opcode, packEntitySpawn, packEntityDespawn, packReliable, packSpawnPoint, packChunkData, packDamageEvent, packEntityDeath, packEntityState, packBinaryDamage, packBinaryState } from "../game/protocol.js";
+import { Opcode, packEntitySpawn, packEntityDespawn, packReliable, packSpawnPoint, packChunkData, packBinaryAbilityCooldown, packBinaryDamage, packBinaryState, packBinaryDeath } from "../game/protocol.js";
+import { getZoneItems, pickupItem } from "../game/world-items.js";
+import { giveItem } from "../game/inventory.js";
 import { getServerNoisePerm, getCachedWorldMapGzip, getWorldMap } from "../world/queries.js";
 import { getOrGenerateChunkHeights } from "../world/chunk-cache.js";
 import { generateTileHeight, CONTINENTAL_SCALE } from "../world/terrain-noise.js";
@@ -187,7 +189,7 @@ export async function rtcRoutes(app: FastifyInstance) {
       });
 
       // Reliable channel messages
-      reliableChannel.onMessage.subscribe((msg: Buffer) => {
+      reliableChannel.onMessage.subscribe(async (msg: Buffer) => {
         let parsed: any;
         try { parsed = JSON.parse(msg.toString()); } catch { return; }
         console.log(`[WebRTC] Reliable msg from ${entityId}:`, parsed);
@@ -213,7 +215,7 @@ export async function rtcRoutes(app: FastifyInstance) {
           if (now - lastUsed < cooldownMs) {
             const remaining = Math.ceil((cooldownMs - (now - lastUsed)) / 1000);
             if (reliableChannel.readyState === "open") {
-              reliableChannel.send(packReliable(Opcode.ABILITY_COOLDOWN, { abilityId, remaining }));
+              reliableChannel.send(packBinaryAbilityCooldown(abilityId, remaining));
             }
             return;
           }
@@ -227,7 +229,7 @@ export async function rtcRoutes(app: FastifyInstance) {
             (entity as any)._defendUntil = now + 5000;
             console.log(`[Ability] ${entity.name} used Defend (5s)`);
             if (reliableChannel.readyState === "open") {
-              reliableChannel.send(packReliable(Opcode.ABILITY_COOLDOWN, { abilityId, remaining: cdSec }));
+              reliableChannel.send(packBinaryAbilityCooldown(abilityId, cdSec));
             }
           } else if (abilityId === "heal") {
             const selfCombat = getCombatState(entityId);
@@ -238,7 +240,7 @@ export async function rtcRoutes(app: FastifyInstance) {
             if (reliableChannel.readyState === "open") {
               const stateBuf = packBinaryState(entityId, selfCombat.hp, selfCombat.maxHp);
               reliableChannel.send(stateBuf);
-              reliableChannel.send(packReliable(Opcode.ABILITY_COOLDOWN, { abilityId, remaining: cdSec }));
+              reliableChannel.send(packBinaryAbilityCooldown(abilityId, cdSec));
               connectionManager.broadcastBinary(stateBuf, entityId);
             }
           } else if (abilityId === "fire" || abilityId === "ice" || abilityId === "shock") {
@@ -295,7 +297,7 @@ export async function rtcRoutes(app: FastifyInstance) {
             // Broadcast damage (binary)
             connectionManager.broadcastBinary(packBinaryDamage(entityId, targetId, damage, weaponType));
             if (reliableChannel.readyState === "open") {
-              reliableChannel.send(packReliable(Opcode.ABILITY_COOLDOWN, { abilityId, remaining: cdSec }));
+              reliableChannel.send(packBinaryAbilityCooldown(abilityId, cdSec));
             }
 
             // Handle kill (XP, respawn, etc.)
@@ -333,6 +335,15 @@ export async function rtcRoutes(app: FastifyInstance) {
           const rewards = turnInQuest(entityId, parsed.questId);
           if (rewards) {
             console.log(`[Quest] ${entity.name} turned in quest ${parsed.questId}, reward: ${rewards.xp} XP`);
+          }
+        } else if (parsed.op === Opcode.ITEM_PICKUP_REQUEST && parsed.worldItemId) {
+          const wi = await pickupItem(parsed.worldItemId);
+          if (wi) {
+            giveItem(entityId, wi.itemId, wi.quantity);
+            // Broadcast despawn to all players in zone
+            connectionManager.broadcastReliable(
+              packReliable(Opcode.WORLD_ITEM_DESPAWN, { id: wi.id }),
+            );
           }
         } else if (parsed.op === Opcode.DUNGEON_ENTER) {
           // Create a dungeon instance for this player
@@ -459,6 +470,13 @@ export async function rtcRoutes(app: FastifyInstance) {
               sp.id, sp.x, sp.z, sp.distance, sp.npcIds, sp.maxCount, sp.frequency
             )));
           }
+          // Send world items for this zone
+          const zoneId = selfMapId === 1 ? "human-meadows" : `zone-${selfMapId}`;
+          const worldItems = getZoneItems(zoneId);
+          if (worldItems.length > 0) {
+            reliableChannel.send(Buffer.from(packReliable(Opcode.WORLD_ITEMS_SYNC, { items: worldItems })));
+          }
+
           reliableChannel.send(Buffer.from(packReliable(Opcode.WORLD_READY, {})));
 
           // Send inventory after world is ready

@@ -9,10 +9,14 @@ This project uses Playwright MCP tools for autonomous integration testing. The `
 2. Use **regular Chrome** — ungoogled Chromium blocks WebRTC
 3. The API is only available in dev mode (`import.meta.env.DEV`)
 
+### Login Credentials
+- **Username:** `lukeocodes`
+- **Password:** *(leave blank)*
+
 ### Login Flow
 ```
 browser_navigate → http://localhost:5173
-browser_fill_form → username
+browser_fill_form → username: lukeocodes, password: (empty)
 browser_click → "Sign In"
 browser_click → "Continue" (×3 for onboarding, skip if returning user)
 browser_click → "Create Character" or "Play"

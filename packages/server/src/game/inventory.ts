@@ -68,55 +68,48 @@ export function sendInventory(entityId: string): void {
     packReliable(Opcode.INVENTORY_SYNC, { items }));
 }
 
-/** Roll loot for a killed NPC and add to killer's inventory */
-export function rollAndGiveLoot(killerEntityId: string, npcEntityId: string): void {
+/**
+ * Roll loot for a killed NPC and return drops for world placement.
+ * Caller is responsible for dropping items to the world at the NPC's tile.
+ */
+export function rollAndGetLoot(npcEntityId: string): Array<{ itemId: string; quantity: number }> {
+  const template = getSpawnPointTemplate(npcEntityId);
+  const templateId = template?.id;
+  if (!templateId) return [];
+  return rollLoot(templateId).map(d => ({ itemId: d.itemId, quantity: d.qty }));
+}
+
+/** Add a world-picked-up item directly to a player's inventory and sync. */
+export function giveItem(killerEntityId: string, itemId: string, quantity: number): void {
   const charId = entityToCharacter.get(killerEntityId);
   if (!charId) return;
 
-  const template = getSpawnPointTemplate(npcEntityId);
-  const templateId = template?.id;
-  if (!templateId) return;
-
-  const drops = rollLoot(templateId);
-  if (drops.length === 0) return;
+  const item = getItem(itemId);
+  if (!item) return;
 
   const inventory = inventories.get(charId);
   if (!inventory) return;
 
-  const lootItems: Array<{ itemId: string; name: string; icon: string; qty: number }> = [];
-
-  for (const drop of drops) {
-    const item = getItem(drop.itemId);
-    if (!item) continue;
-
-    // Stack with existing if possible
-    if (item.stackLimit > 1) {
-      const existing = inventory.find(s => s.itemId === drop.itemId && !s.equipped);
-      if (existing && existing.quantity + drop.qty <= item.stackLimit) {
-        existing.quantity += drop.qty;
-        lootItems.push({ itemId: drop.itemId, name: item.name, icon: item.icon, qty: drop.qty });
-        continue;
-      }
+  if (item.stackLimit > 1) {
+    const existing = inventory.find(s => s.itemId === itemId && !s.equipped);
+    if (existing && existing.quantity + quantity <= item.stackLimit) {
+      existing.quantity += quantity;
+      sendInventory(killerEntityId);
+      return;
     }
-
-    // New slot
-    const newSlot: InventorySlot = {
-      id: crypto.randomUUID(),
-      itemId: drop.itemId,
-      quantity: drop.qty,
-      equipped: false,
-      slot: null,
-    };
-    inventory.push(newSlot);
-    lootItems.push({ itemId: drop.itemId, name: item.name, icon: item.icon, qty: drop.qty });
   }
 
-  if (lootItems.length > 0) {
-    connectionManager.sendReliable(killerEntityId,
-      packReliable(Opcode.LOOT_DROP, { items: lootItems }));
-    // Also send full inventory sync so UI panel updates
-    sendInventory(killerEntityId);
-  }
+  inventory.push({ id: crypto.randomUUID(), itemId, quantity, equipped: false, slot: null });
+  sendInventory(killerEntityId);
+}
+
+/** @deprecated Use rollAndGetLoot + world drop instead */
+export function rollAndGiveLoot(killerEntityId: string, npcEntityId: string): void {
+  // Kept for backward compatibility; new code uses rollAndGetLoot
+  const charId = entityToCharacter.get(killerEntityId);
+  if (!charId) return;
+  const drops = rollAndGetLoot(npcEntityId);
+  for (const drop of drops) giveItem(killerEntityId, drop.itemId, drop.quantity);
 }
 
 /** Save inventory to DB (call on disconnect) */

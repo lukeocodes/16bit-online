@@ -27,6 +27,10 @@ export const Opcode = {
   EQUIP_ITEM: 37,
   UNEQUIP_ITEM: 38,
   USE_ITEM: 39,
+  WORLD_ITEMS_SYNC: 45,
+  WORLD_ITEM_SPAWN: 46,
+  WORLD_ITEM_DESPAWN: 47,
+  ITEM_PICKUP_REQUEST: 48,
   DUNGEON_ENTER: 85,
   DUNGEON_MAP: 86,
   DUNGEON_EXIT: 87,
@@ -160,6 +164,89 @@ export function packBinaryDeath(entityId: string): Buffer {
   const buf = Buffer.alloc(5);
   buf.writeUInt8(Opcode.ENTITY_DEATH, 0);
   buf.writeUInt32LE(hashEntityId(entityId), 1);
+  return buf;
+}
+
+const ABILITY_ID_MAP: Record<string, number> = { defend: 0, heal: 1, fire: 2, ice: 3, shock: 4 };
+export const ABILITY_ID_REV = ["defend", "heal", "fire", "ice", "shock"];
+
+/** Binary ABILITY_COOLDOWN: 6 bytes [op:u8][abilityId:u8][remaining:f32LE] */
+export function packBinaryAbilityCooldown(abilityId: string, remaining: number): Buffer {
+  const buf = Buffer.alloc(6);
+  buf.writeUInt8(Opcode.ABILITY_COOLDOWN, 0);
+  buf.writeUInt8(ABILITY_ID_MAP[abilityId] ?? 255, 1);
+  buf.writeFloatLE(remaining, 2);
+  return buf;
+}
+
+/** Binary XP_GAIN: 18 bytes [op:u8][entityHash:u32][xpGained:u16][totalXp:u32][xpToNext:u16][level:u8] */
+export function packBinaryXpGain(entityId: string, xpGained: number, totalXp: number, xpToNext: number, level: number): Buffer {
+  const buf = Buffer.alloc(14);
+  buf.writeUInt8(Opcode.XP_GAIN, 0);
+  buf.writeUInt32LE(hashEntityId(entityId), 1);
+  buf.writeUInt16LE(Math.min(65535, xpGained), 5);
+  buf.writeUInt32LE(Math.min(0xffffffff, totalXp), 7);
+  buf.writeUInt16LE(Math.min(65535, xpToNext), 11);
+  buf.writeUInt8(Math.min(255, level), 13);
+  return buf;
+}
+
+/** Binary LEVEL_UP: 10 bytes [op:u8][level:u8][hpBonus:u16][manaBonus:u16][staminaBonus:u16][pad:u8] */
+export function packBinaryLevelUp(newLevel: number, hpBonus: number, manaBonus: number, staminaBonus: number): Buffer {
+  const buf = Buffer.alloc(8);
+  buf.writeUInt8(Opcode.LEVEL_UP, 0);
+  buf.writeUInt8(Math.min(255, newLevel), 1);
+  buf.writeUInt16LE(Math.min(65535, hpBonus), 2);
+  buf.writeUInt16LE(Math.min(65535, manaBonus), 4);
+  buf.writeUInt16LE(Math.min(65535, staminaBonus), 6);
+  return buf;
+}
+
+/** Binary PLAYER_RESPAWN: 21 bytes [op:u8][entityHash:u32][x:f32][y:f32][z:f32][hp:u16][maxHp:u16] */
+export function packBinaryRespawn(entityId: string, x: number, y: number, z: number, hp: number, maxHp: number): Buffer {
+  const buf = Buffer.alloc(21);
+  buf.writeUInt8(Opcode.PLAYER_RESPAWN, 0);
+  buf.writeUInt32LE(hashEntityId(entityId), 1);
+  buf.writeFloatLE(x, 5);
+  buf.writeFloatLE(y, 9);
+  buf.writeFloatLE(z, 13);
+  buf.writeUInt16LE(Math.min(65535, hp), 17);
+  buf.writeUInt16LE(Math.min(65535, maxHp), 19);
+  return buf;
+}
+
+/** Binary COMBAT_STATE: 15 bytes [op:u8][entityHash:u32][flags:u8][targetHash:u32][pad:u40] */
+export function packBinaryCombatState(entityId: string, inCombat: boolean, autoAttacking: boolean, targetId: string | null): Buffer {
+  const buf = Buffer.alloc(11);
+  buf.writeUInt8(Opcode.COMBAT_STATE, 0);
+  buf.writeUInt32LE(hashEntityId(entityId), 1);
+  buf.writeUInt8((inCombat ? 1 : 0) | (autoAttacking ? 2 : 0), 5);
+  buf.writeUInt32LE(targetId ? hashEntityId(targetId) : 0, 6);
+  buf.writeUInt8(targetId ? 1 : 0, 10); // hasTarget flag
+  return buf;
+}
+
+/** Binary ENEMY_NEARBY: 7+4N bytes [op:u8][entityHash:u32][nearby:u8][count:u8][npcHash:u32 × N] */
+export function packBinaryEnemyNearby(entityId: string, npcIds: string[], nearby: boolean): Buffer {
+  const buf = Buffer.alloc(7 + npcIds.length * 4);
+  buf.writeUInt8(Opcode.ENEMY_NEARBY, 0);
+  buf.writeUInt32LE(hashEntityId(entityId), 1);
+  buf.writeUInt8(nearby ? 1 : 0, 5);
+  buf.writeUInt8(Math.min(255, npcIds.length), 6);
+  for (let i = 0; i < npcIds.length; i++) {
+    buf.writeUInt32LE(hashEntityId(npcIds[i]), 7 + i * 4);
+  }
+  return buf;
+}
+
+/** Binary ZONE_MUSIC_TAG: 6 bytes [op:u8][entityHash:u32][tag:u8] */
+const MUSIC_TAG_MAP: Record<string, number> = { town: 0, field: 1, dungeon: 2, battle: 3, boss: 4, peaceful: 5 };
+export const MUSIC_TAG_REV = ["town", "field", "dungeon", "battle", "boss", "peaceful"];
+export function packBinaryZoneMusicTag(entityId: string, musicState: string): Buffer {
+  const buf = Buffer.alloc(6);
+  buf.writeUInt8(Opcode.ZONE_MUSIC_TAG, 0);
+  buf.writeUInt32LE(hashEntityId(entityId), 1);
+  buf.writeUInt8(MUSIC_TAG_MAP[musicState] ?? 255, 5);
   return buf;
 }
 
