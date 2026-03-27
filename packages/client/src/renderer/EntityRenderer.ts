@@ -79,6 +79,7 @@ export class EntityRenderer {
   private floatingTexts: FloatingText[] = [];
   private chatBubbles: ChatBubble[] = [];
   private hpBars = new Map<string, Graphics>();
+  private lastHpDrawn = new Map<string, number>(); // entity -> hp value last drawn
   private ringRotation = 0;
 
   // Derived facing for remote entities (no Movement component)
@@ -104,6 +105,7 @@ export class EntityRenderer {
       this.prevPositions.delete(id);
       this.derivedFacing.delete(id);
       this.spawnAnims.delete(id);
+      this.lastHpDrawn.delete(id);
 
       const hpBar = this.hpBars.get(id);
       if (hpBar) {
@@ -424,26 +426,29 @@ export class EntityRenderer {
 
         let hpBar = this.hpBars.get(entity.id);
         if (showBar) {
+          const lastHp = this.lastHpDrawn.get(entity.id) ?? -1;
           if (!hpBar) {
             hpBar = new Graphics();
             render.displayObject.addChild(hpBar);
             this.hpBars.set(entity.id, hpBar);
           }
-          hpBar.clear();
-          // Background (dark)
-          hpBar.roundRect(-HP_BAR_WIDTH / 2, HP_BAR_Y_OFFSET, HP_BAR_WIDTH, HP_BAR_HEIGHT, 1);
-          hpBar.fill({ color: 0x222222, alpha: 0.8 });
-          // HP fill
-          const fillWidth = Math.max(1, HP_BAR_WIDTH * hpRatio);
-          const barColor = hpRatio > 0.6 ? 0x44cc44 : hpRatio > 0.3 ? 0xcccc22 : 0xcc2222;
-          hpBar.roundRect(-HP_BAR_WIDTH / 2, HP_BAR_Y_OFFSET, fillWidth, HP_BAR_HEIGHT, 1);
-          hpBar.fill(barColor);
-          // Border
-          hpBar.roundRect(-HP_BAR_WIDTH / 2, HP_BAR_Y_OFFSET, HP_BAR_WIDTH, HP_BAR_HEIGHT, 1);
-          hpBar.stroke({ width: 0.5, color: 0x000000, alpha: 0.5 });
+          // Only redraw when HP actually changed
+          if (stats.hp !== lastHp) {
+            this.lastHpDrawn.set(entity.id, stats.hp);
+            hpBar.clear();
+            hpBar.roundRect(-HP_BAR_WIDTH / 2, HP_BAR_Y_OFFSET, HP_BAR_WIDTH, HP_BAR_HEIGHT, 1);
+            hpBar.fill({ color: 0x222222, alpha: 0.8 });
+            const fillWidth = Math.max(1, HP_BAR_WIDTH * hpRatio);
+            const barColor = hpRatio > 0.6 ? 0x44cc44 : hpRatio > 0.3 ? 0xcccc22 : 0xcc2222;
+            hpBar.roundRect(-HP_BAR_WIDTH / 2, HP_BAR_Y_OFFSET, fillWidth, HP_BAR_HEIGHT, 1);
+            hpBar.fill(barColor);
+            hpBar.roundRect(-HP_BAR_WIDTH / 2, HP_BAR_Y_OFFSET, HP_BAR_WIDTH, HP_BAR_HEIGHT, 1);
+            hpBar.stroke({ width: 0.5, color: 0x000000, alpha: 0.5 });
+          }
           hpBar.visible = true;
         } else if (hpBar) {
           hpBar.visible = false;
+          this.lastHpDrawn.delete(entity.id);
         }
       }
     }

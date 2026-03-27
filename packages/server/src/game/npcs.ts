@@ -3,7 +3,7 @@
  * All NPC management is handled by spawn-points.ts.
  */
 
-import { addSpawnPoint, cleanup as cleanupSpawnPoints, handleNPCDeath as spHandleDeath, getSpawnPointTemplate, isSpawnedNPC, tickWandering, getAllSpawnPoints, type SpawnPoint } from "./spawn-points.js";
+import { addSpawnPoint, cleanup as cleanupSpawnPoints, handleNPCDeath as spHandleDeath, getSpawnPointTemplate, isSpawnedNPC, tickWandering, tickRespawns, getAllSpawnPoints, type SpawnPoint } from "./spawn-points.js";
 import type { NPCTemplate } from "./npc-templates.js";
 import { getTiledSpawnPoints, getZoneSpawnPoints } from "../world/tiled-map.js";
 import { getAllZones } from "./zone-registry.js";
@@ -58,7 +58,7 @@ export function getNpcIds(): string[] {
   return []; // No longer tracked globally
 }
 
-export { isSpawnedNPC, tickWandering };
+export { isSpawnedNPC, tickWandering, tickRespawns };
 
 export function cleanup() {
   cleanupSpawnPoints();

@@ -1,6 +1,6 @@
 import { tick as combatTick, getCombatState } from "./combat.js";
 import { entityStore } from "./entities.js";
-import { handleNpcDeath, tickWandering, getNpcTemplate } from "./npcs.js";
+import { handleNpcDeath, tickWandering, tickRespawns, getNpcTemplate } from "./npcs.js";
 import { connectionManager } from "../ws/connections.js";
 import {
   packPosition, packDamageEvent, packEntityDeath,
@@ -160,7 +160,8 @@ function gameTick() {
   // Pre-compute awake set once per tick (avoids O(N*cells) per NPC)
   entityStore.refreshAwakeSet(tickCounter);
 
-  // NPC wandering
+  // NPC respawns + wandering
+  tickRespawns();
   tickWandering(dt);
 
   // Combat

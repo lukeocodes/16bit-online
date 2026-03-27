@@ -2,7 +2,7 @@
 
 Read this file at the start of each conversation to understand where the project is and what to work on next. Update it after completing significant work.
 
-## Current State (2026-03-26)
+## Current State (2026-03-27)
 
 **Status:** Playable alpha with polish. Full game loop works: login -> character select -> world -> combat -> XP -> leveling. Click-to-move, NPC-specific sprites, terrain decorations, walk animations. ~60+ files uncommitted on top of phase 3 completion.
 
@@ -121,13 +121,15 @@ Read this file at the start of each conversation to understand where the project
 
 Priority order (game designer perspective):
 
-1. **Commit the uncommitted work** — 70+ files now. Massive body of work needs to be committed.
+1. ~~Commit the uncommitted work~~ — DONE (7024efb). 125 files, 14k lines.
 2. **Entity art** — Being handled in a separate session. NOT using sprite sheets. `EntitySpriteSheet.ts` disabled. Entities use PixiJS Graphics mode (body+head+eyes).
-3. ~~More abilities~~ — DONE. All 5 work: Defend (2, 15s CD, 50% DR 5s), Heal (3, 10s, +20 HP), Fire (4, 8s, 15-20 dmg), Ice (5, 12s, 10-13 dmg), Shock (6, 6s, 8-10 dmg). Element-colored damage numbers + flash. HUD cooldown overlays. `handleKill()` extracted for shared XP/death handling.
-4. **Equipment/inventory/loot** — Combat works but no loot drops. Needs server DB schema + client UI.
-5. **More zones** — Elf and Orc starter zones (256x256 each), Crossroads convergence zone. Generator scripts ready to adapt.
-6. **Structure pieces (walls/buildings)** — Composite containers for buildings. Tiled object tiles for larger structures.
-7. **Dungeon instances** — Procedural dungeons as instanced zones with boss encounters.
+3. ~~More abilities~~ — DONE. All 5 work: Defend/Heal/Fire/Ice/Shock with cooldowns, element-colored damage, HUD overlays.
+4. ~~Performance pass (critical)~~ — DONE (793f3a7, ae6ff33). Entity cleanup leak, delta broadcasts, awake set cache, particle swap-and-pop, spawn/death RAF→game loop, lerp speed tuning, tick rate alignment.
+5. **Performance pass (high)** — HP bar dirty flags, binary protocol for combat messages, respawn timer priority queue, zone sharding architecture.
+6. **Equipment/inventory/loot** — Item registry created (`items.ts`), loot tables per NPC. Needs: DB inventory table, drop-on-kill, client inventory UI, equip protocol.
+7. **More zones** — Elf and Orc starter zones (256x256 each), Crossroads convergence zone.
+8. **Structure pieces (walls/buildings)** — Composite containers for buildings.
+9. **Dungeon instances** — Procedural dungeons as instanced zones with boss encounters.
 
 ## Known Issues
 - Hover cursor position uses synthetic pointermove which doesn't work with Playwright (works with real mouse)

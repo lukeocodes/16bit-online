@@ -23,6 +23,7 @@ import {
   isSpawnedNPC,
   getSpawnPointTemplate,
   tickWandering,
+  tickRespawns,
   cleanup,
   type SpawnPoint,
 } from "./spawn-points.js";
@@ -158,8 +159,11 @@ describe("spawn-points", () => {
       handleNPCDeath(deadId);
       expect(entityStore.getByType("npc").length).toBe(0);
 
-      // Advance past respawn timer
-      vi.advanceTimersByTime(5 * 1000);
+      // Advance past respawn timer — tickRespawns uses Date.now()
+      const origNow = Date.now;
+      Date.now = () => origNow() + 5 * 1000;
+      tickRespawns();
+      Date.now = origNow;
       expect(entityStore.getByType("npc").length).toBe(1);
 
       // Should be a new entity, not the dead one
@@ -174,7 +178,10 @@ describe("spawn-points", () => {
       handleNPCDeath(npc.entityId);
       removeSpawnPoint("sp-test");
 
-      vi.advanceTimersByTime(5 * 1000);
+      const origNow = Date.now;
+      Date.now = () => origNow() + 5 * 1000;
+      tickRespawns();
+      Date.now = origNow;
       expect(entityStore.getByType("npc").length).toBe(0);
     });
 
@@ -197,7 +204,10 @@ describe("spawn-points", () => {
       expect(entityStore.get(survivor.entityId)).toBeDefined();
 
       // Advance past respawn — countAlive sees 1 alive < maxCount 2, spawns replacement
-      vi.advanceTimersByTime(5 * 1000);
+      const origNow = Date.now;
+      Date.now = () => origNow() + 5 * 1000;
+      tickRespawns();
+      Date.now = origNow;
       expect(entityStore.getByType("npc").length).toBe(2);
       // Survivor is still the same entity
       expect(entityStore.get(survivor.entityId)).toBeDefined();

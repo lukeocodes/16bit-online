@@ -39,7 +39,11 @@ interface SpawnedNPC {
 const spawnPoints = new Map<string, SpawnPoint>();
 const spawnedNPCs = new Map<string, SpawnedNPC>(); // entityId -> SpawnedNPC
 const spawnPointNPCs = new Map<string, Set<string>>(); // spawnPointId -> Set<entityId>
-const pendingTimers = new Set<ReturnType<typeof setTimeout>>();
+
+// Respawn queue replaces individual setTimeout calls — checked once per game tick
+interface RespawnEntry { entityId: string; spawnPointId: string; respawnAt: number }
+const respawnQueue: RespawnEntry[] = [];
+
 let nextEntityId = 0;
 
 // --- Public API ---
@@ -80,23 +84,12 @@ export function handleNPCDeath(entityId: string) {
   const point = spawnPoints.get(spawned.spawnPointId);
   if (!point) return;
 
-  // Schedule respawn
-  const timer = setTimeout(() => {
-    pendingTimers.delete(timer);
-    // Remove dead NPC tracking
-    spawnedNPCs.delete(entityId);
-    spawnPointNPCs.get(spawned.spawnPointId)?.delete(entityId);
-
-    // Spawn replacement if point still exists
-    const currentPoint = spawnPoints.get(spawned.spawnPointId);
-    if (currentPoint) {
-      const aliveCount = countAlive(spawned.spawnPointId);
-      if (aliveCount < currentPoint.maxCount) {
-        spawnNPCForPoint(currentPoint);
-      }
-    }
-  }, point.frequency * 1000);
-  pendingTimers.add(timer);
+  // Queue respawn — processed by tickRespawns() in game loop
+  respawnQueue.push({
+    entityId,
+    spawnPointId: spawned.spawnPointId,
+    respawnAt: Date.now() + point.frequency * 1000,
+  });
 }
 
 export function getSpawnPointTemplate(entityId: string): NPCTemplate | undefined {
@@ -111,6 +104,34 @@ export function getAllSpawnPoints(): SpawnPoint[] {
 
 export function isSpawnedNPC(entityId: string): boolean {
   return spawnedNPCs.has(entityId);
+}
+
+/** Process respawn queue — call once per game tick */
+export function tickRespawns(): void {
+  const now = Date.now();
+  let i = 0;
+  while (i < respawnQueue.length) {
+    const entry = respawnQueue[i];
+    if (now < entry.respawnAt) { i++; continue; }
+
+    // Remove from queue (swap-and-pop)
+    const last = respawnQueue.length - 1;
+    if (i < last) respawnQueue[i] = respawnQueue[last];
+    respawnQueue.length = last;
+
+    // Clean up dead NPC tracking
+    spawnedNPCs.delete(entry.entityId);
+    spawnPointNPCs.get(entry.spawnPointId)?.delete(entry.entityId);
+
+    // Spawn replacement
+    const point = spawnPoints.get(entry.spawnPointId);
+    if (point) {
+      const aliveCount = countAlive(entry.spawnPointId);
+      if (aliveCount < point.maxCount) {
+        spawnNPCForPoint(point);
+      }
+    }
+  }
 }
 
 /** Tick wandering for all alive NPCs */
@@ -264,8 +285,7 @@ function countAlive(spawnPointId: string): number {
 }
 
 export function cleanup() {
-  for (const t of pendingTimers) clearTimeout(t);
-  pendingTimers.clear();
+  respawnQueue.length = 0;
   spawnedNPCs.clear();
   spawnPointNPCs.clear();
   spawnPoints.clear();
