@@ -24,7 +24,7 @@
 import { Container, Graphics } from "pixi.js";
 import { worldToScreen, TILE_WIDTH_HALF, TILE_HEIGHT_HALF } from "./IsometricRenderer";
 
-const WALL_H    = 52;
+const WALL_H    = 78;  // 52 * 1.5 — one storey height
 const WALL_DEPTH = 4;
 
 export const FLOOR_ELEVATION = WALL_H / 16; // = 3.25 — world units per storey
