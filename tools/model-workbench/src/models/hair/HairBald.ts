@@ -16,7 +16,7 @@ export class HairBald implements Model {
     const { skeleton, palette, facingCamera } = ctx;
     const head = skeleton.joints.head;
     const wf = skeleton.wf;
-    const r = 7 * (ctx.bodyWidth ?? 1);
+    const r = 7 * (ctx.slotParams.size);
 
     return [
       {

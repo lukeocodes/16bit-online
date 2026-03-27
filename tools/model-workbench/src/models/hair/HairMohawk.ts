@@ -25,7 +25,7 @@ export class HairMohawk implements Model {
     const sideView = Math.abs(iso.x) > 0.3;
     const hair = palette.hair;
     const hairDk = darken(hair, 0.2);
-    const r = 7 * (ctx.bodyWidth ?? 1);
+    const r = 7 * (ctx.slotParams.size);
 
     const calls: DrawCall[] = [];
 

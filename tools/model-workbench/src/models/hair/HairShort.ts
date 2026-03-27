@@ -20,7 +20,7 @@ export class HairShort implements Model {
     const iso = skeleton.iso;
     const sideView = Math.abs(iso.x) > 0.3;
     const hairColor = palette.hair;
-    const r = 7 * (ctx.bodyWidth ?? 1);
+    const r = 7 * (ctx.slotParams.size);
 
     const calls: DrawCall[] = [];
 

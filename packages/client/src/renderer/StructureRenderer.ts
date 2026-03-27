@@ -111,7 +111,87 @@ function faceLeft(c: Container, pal: typeof PALETTES.stone, type: string) {
   ]);
   g.fill(pal.top);
 
-  // Outline
+  if (type === "wall_left_door") {
+    // Door: draw only the frame — two posts + lintel, opening is empty
+    const frameW = 3; // post thickness in pixels
+    // Left post
+    g.poly([
+      { x: -hw, y: 0 }, { x: -hw + frameW, y: -frameW * 0.5 },
+      { x: -hw + frameW, y: -WALL_H }, { x: -hw, y: -WALL_H },
+    ]);
+    g.fill(pal.face);
+    // Right post (near top-center)
+    g.poly([
+      { x: -frameW * 2, y: -hh + frameW }, { x: 0, y: -hh },
+      { x: 0, y: -WALL_H }, { x: -frameW * 2, y: -WALL_H + frameW },
+    ]);
+    g.fill(pal.face);
+    // Lintel (top bar)
+    g.poly([
+      { x: -hw, y: -WALL_H }, { x: 0, y: -hh - WALL_H },
+      { x: 0, y: -hh - WALL_H + frameW * 2 }, { x: -hw, y: -WALL_H + frameW * 2 },
+    ]);
+    g.fill(pal.face);
+    // Top cap
+    g.poly([
+      { x: -hw, y: -WALL_H }, { x: 0, y: -hh - WALL_H },
+      { x: WALL_DEPTH, y: -hh - WALL_H + WALL_DEPTH }, { x: -hw + WALL_DEPTH, y: -WALL_H + WALL_DEPTH },
+    ]);
+    g.fill(pal.top);
+    c.addChild(g);
+    return;
+  } else if (type === "wall_left_win") {
+    // Window: draw wall in segments above, below and beside the hole
+    const winTop = WALL_H * 0.6;   // how high the bottom of window is from base
+    const winBot = WALL_H * 0.25;  // gap from bottom
+    const winL = 0.3;  // left edge fraction along wall
+    const winR = 0.7;  // right edge fraction along wall
+    // Lerp helper: position along the left-face diagonal
+    const lerpX = (t: number) => -hw + hw * t;
+    const lerpY = (t: number) => -hh * t;
+    // Bottom section (below window)
+    g.poly([
+      { x: -hw, y: 0 }, { x: 0, y: -hh },
+      { x: 0, y: -hh - winBot }, { x: -hw, y: -winBot },
+    ]);
+    g.fill(pal.face);
+    // Top section (above window)
+    g.poly([
+      { x: -hw, y: -winTop }, { x: 0, y: -hh - winTop },
+      { x: 0, y: -hh - WALL_H }, { x: -hw, y: -WALL_H },
+    ]);
+    g.fill(pal.face);
+    // Left section (to the left of window)
+    g.poly([
+      { x: -hw, y: -winBot }, { x: lerpX(winL), y: lerpY(winL) - winBot },
+      { x: lerpX(winL), y: lerpY(winL) - winTop }, { x: -hw, y: -winTop },
+    ]);
+    g.fill(pal.face);
+    // Right section
+    g.poly([
+      { x: lerpX(winR), y: lerpY(winR) - winBot }, { x: 0, y: -hh - winBot },
+      { x: 0, y: -hh - winTop }, { x: lerpX(winR), y: lerpY(winR) - winTop },
+    ]);
+    g.fill(pal.face);
+    // Window frame (thin border around hole)
+    g.moveTo(lerpX(winL), lerpY(winL) - winBot);
+    g.lineTo(lerpX(winR), lerpY(winR) - winBot);
+    g.lineTo(lerpX(winR), lerpY(winR) - winTop);
+    g.lineTo(lerpX(winL), lerpY(winL) - winTop);
+    g.lineTo(lerpX(winL), lerpY(winL) - winBot);
+    g.stroke({ width: 1.5, color: pal.trim });
+    // Top cap
+    g.poly([
+      { x: -hw, y: -WALL_H }, { x: 0, y: -hh - WALL_H },
+      { x: WALL_DEPTH, y: -hh - WALL_H + WALL_DEPTH }, { x: -hw + WALL_DEPTH, y: -WALL_H + WALL_DEPTH },
+    ]);
+    g.fill(pal.top);
+    addDetail(g, pal, "left");
+    c.addChild(g);
+    return;
+  }
+
+  // Solid wall outline
   g.moveTo(-hw, 0);
   g.lineTo(0, -hh);
   g.lineTo(0, -hh - WALL_H);
@@ -121,29 +201,6 @@ function faceLeft(c: Container, pal: typeof PALETTES.stone, type: string) {
 
   // Brick/plank detail
   addDetail(g, pal, "left");
-
-  // Opening
-  if (type === "wall_left_door") {
-    // Door: bottom of wall, 60% width, 75% height
-    const dw = hw * 0.5, dh = WALL_H * 0.75;
-    g.poly([
-      { x: -hw * 0.7,       y: 0 },
-      { x: -hw * 0.7 + dw * 0.45, y: -hh * 0.35 },
-      { x: -hw * 0.7 + dw * 0.45, y: -hh * 0.35 - dh },
-      { x: -hw * 0.7,       y: -dh },
-    ]);
-    g.fill(0x1a1008);
-  } else if (type === "wall_left_win") {
-    // Window: mid-height, 40% width
-    const wx = -hw * 0.65, wy = -WALL_H * 0.35;
-    g.poly([
-      { x: wx,             y: wy },
-      { x: wx + hw * 0.35, y: wy - hh * 0.28 },
-      { x: wx + hw * 0.35, y: wy - hh * 0.28 - WALL_H * 0.3 },
-      { x: wx,             y: wy - WALL_H * 0.3 },
-    ]);
-    g.fill(0x88bbdd);
-  }
 
   c.addChild(g);
 }
@@ -176,7 +233,85 @@ function faceRight(c: Container, pal: typeof PALETTES.stone, type: string) {
   ]);
   g.fill(pal.top);
 
-  // Outline
+  if (type === "wall_right_door") {
+    // Frame only: two posts + lintel, no fill in opening
+    const frameW = 3;
+    // Left post (near top-center)
+    g.poly([
+      { x: 0, y: -hh }, { x: frameW * 2, y: -hh + frameW },
+      { x: frameW * 2, y: -WALL_H + frameW }, { x: 0, y: -WALL_H },
+    ]);
+    g.fill(pal.side);
+    // Right post
+    g.poly([
+      { x: hw - frameW, y: -frameW * 0.5 }, { x: hw, y: 0 },
+      { x: hw, y: -WALL_H }, { x: hw - frameW, y: -WALL_H },
+    ]);
+    g.fill(pal.side);
+    // Lintel
+    g.poly([
+      { x: 0, y: -hh - WALL_H }, { x: hw, y: -WALL_H },
+      { x: hw, y: -WALL_H + frameW * 2 }, { x: 0, y: -hh - WALL_H + frameW * 2 },
+    ]);
+    g.fill(pal.side);
+    // Top cap
+    g.poly([
+      { x: 0, y: -hh - WALL_H }, { x: hw, y: -WALL_H },
+      { x: hw - WALL_DEPTH, y: -WALL_H + WALL_DEPTH }, { x: -WALL_DEPTH, y: -hh - WALL_H + WALL_DEPTH },
+    ]);
+    g.fill(pal.top);
+    c.addChild(g);
+    return;
+  } else if (type === "wall_right_win") {
+    const winTop = WALL_H * 0.6;
+    const winBot = WALL_H * 0.25;
+    const winL = 0.3;
+    const winR = 0.7;
+    const lerpX = (t: number) => hw * t;
+    const lerpY = (t: number) => -hh * t;
+    // Bottom section
+    g.poly([
+      { x: 0, y: -hh }, { x: hw, y: 0 },
+      { x: hw, y: -winBot }, { x: 0, y: -hh - winBot },
+    ]);
+    g.fill(pal.side);
+    // Top section
+    g.poly([
+      { x: 0, y: -hh - winTop }, { x: hw, y: -winTop },
+      { x: hw, y: -WALL_H }, { x: 0, y: -hh - WALL_H },
+    ]);
+    g.fill(pal.side);
+    // Left section
+    g.poly([
+      { x: 0, y: -hh - winBot }, { x: lerpX(winL), y: lerpY(winL) - winBot },
+      { x: lerpX(winL), y: lerpY(winL) - winTop }, { x: 0, y: -hh - winTop },
+    ]);
+    g.fill(pal.side);
+    // Right section
+    g.poly([
+      { x: lerpX(winR), y: lerpY(winR) - winBot }, { x: hw, y: -winBot },
+      { x: hw, y: -winTop }, { x: lerpX(winR), y: lerpY(winR) - winTop },
+    ]);
+    g.fill(pal.side);
+    // Window frame border
+    g.moveTo(lerpX(winL), lerpY(winL) - winBot);
+    g.lineTo(lerpX(winR), lerpY(winR) - winBot);
+    g.lineTo(lerpX(winR), lerpY(winR) - winTop);
+    g.lineTo(lerpX(winL), lerpY(winL) - winTop);
+    g.lineTo(lerpX(winL), lerpY(winL) - winBot);
+    g.stroke({ width: 1.5, color: pal.trim });
+    // Top cap
+    g.poly([
+      { x: 0, y: -hh - WALL_H }, { x: hw, y: -WALL_H },
+      { x: hw - WALL_DEPTH, y: -WALL_H + WALL_DEPTH }, { x: -WALL_DEPTH, y: -hh - WALL_H + WALL_DEPTH },
+    ]);
+    g.fill(pal.top);
+    addDetail(g, pal, "right");
+    c.addChild(g);
+    return;
+  }
+
+  // Solid wall outline
   g.moveTo(0, -hh);
   g.lineTo(hw, 0);
   g.lineTo(hw, -WALL_H);
@@ -185,26 +320,6 @@ function faceRight(c: Container, pal: typeof PALETTES.stone, type: string) {
   g.stroke({ width: 1, color: pal.trim, alpha: 0.6 });
 
   addDetail(g, pal, "right");
-
-  if (type === "wall_right_door") {
-    const dw = hw * 0.5, dh = WALL_H * 0.75;
-    g.poly([
-      { x: hw * 0.3,       y: -hh * 0.3 + hh * 0.35 },
-      { x: hw * 0.3 + dw * 0.45, y: 0 },
-      { x: hw * 0.3 + dw * 0.45, y: -dh },
-      { x: hw * 0.3,       y: -hh * 0.3 + hh * 0.35 - dh },
-    ]);
-    g.fill(0x1a1008);
-  } else if (type === "wall_right_win") {
-    const wx = hw * 0.3, wy = -WALL_H * 0.35;
-    g.poly([
-      { x: wx,             y: wy + hh * 0.25 },
-      { x: wx + hw * 0.35, y: wy },
-      { x: wx + hw * 0.35, y: wy - WALL_H * 0.3 },
-      { x: wx,             y: wy + hh * 0.25 - WALL_H * 0.3 },
-    ]);
-    g.fill(0x88bbdd);
-  }
 
   c.addChild(g);
 }

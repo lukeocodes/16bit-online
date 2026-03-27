@@ -113,6 +113,7 @@ export class TiledMapRenderer {
   public zoneExits: Array<{ name: string; tileX: number; tileZ: number; tileWidth: number; tileHeight: number; exitId: string }> = [];
   public dungeonEntrances: Array<{ name: string; tileX: number; tileZ: number; tileWidth: number; tileHeight: number; difficulty: number; dungeonName: string }> = [];
   public wallPieces: WallPiece[] = [];
+  private blockedByWall = new Set<string>(); // "x,z" tiles blocked by wall pieces
   public playerSpawn = { x: 32, z: 32 }; // default center
 
   private lastCenterX = -Infinity;
@@ -247,6 +248,9 @@ export class TiledMapRenderer {
       const colGid = this.collisionData[tileZ * this.mapWidth + tileX];
       if (colGid !== 0) return false; // Collision tile present
     }
+
+    // Wall pieces block movement (except door tiles which are passable)
+    if (this.blockedByWall.has(`${tileX},${tileZ}`)) return false;
 
     return true;
   }
@@ -500,21 +504,20 @@ export class TiledMapRenderer {
           exitId: (props.exitId as string) || obj.name,
         });
       } else if (obj.type === "wall") {
-        // Single wall piece — one tile, one piece
-        const type = (props.type as WallPiece["type"]) || "wall_n";
-        this.wallPieces.push({
-          tileX, tileZ,
-          type,
-          material: (props.material as WallPiece["material"]) || "stone",
-        });
+        const type = (props.type as WallPiece["type"]) || "wall_left";
+        const piece: WallPiece = { tileX, tileZ, type, material: (props.material as WallPiece["material"]) || "stone" };
+        this.wallPieces.push(piece);
+        if (!type.includes("door")) this.blockedByWall.add(`${tileX},${tileZ}`);
       } else if (obj.type === "building") {
-        // Building shorthand — generates exact wall pieces via makeHouse, no overlaps
         const bw = (props.width as number) || 4;
         const bd = (props.depth as number) || 4;
         const mat = ((props.material as string) || "stone") as WallPiece["material"];
         const door = ((props.door as string) || "s") as "n" | "e" | "s" | "w";
         const pieces = makeHouse(tileX, tileZ, bw, bd, mat, door);
         this.wallPieces.push(...pieces);
+        for (const p of pieces) {
+          if (!p.type.includes("door")) this.blockedByWall.add(`${p.tileX},${p.tileZ}`);
+        }
       } else if (obj.type === "dungeon_entrance") {
         this.dungeonEntrances.push({
           name: obj.name,

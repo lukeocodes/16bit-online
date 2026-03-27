@@ -14,12 +14,12 @@ export class HelmetPlate implements Model {
   readonly slot = "head-top" as const;
 
   getDrawCalls(ctx: RenderContext): DrawCall[] {
-    const { skeleton, palette, facingCamera, bodyWidth } = ctx;
+    const { skeleton, palette, facingCamera} = ctx;
     const head = skeleton.joints.head;
     const wf = skeleton.wf;
     const iso = skeleton.iso;
     const sideView = Math.abs(iso.x) > 0.3;
-    const r = 7 * (bodyWidth ?? 1);
+    const r = 7 * (ctx.slotParams.size);
 
     return [
       {
