@@ -29,6 +29,11 @@ class ConnectionManager {
   get(entityId: string) { return this.connections.get(entityId); }
   getAll(): PlayerConnection[] { return Array.from(this.connections.values()); }
 
+  /** Zero-alloc iterator over all connections */
+  *iterAll(): IterableIterator<PlayerConnection> {
+    yield* this.connections.values();
+  }
+
   sendReliable(entityId: string, data: string) {
     const conn = this.connections.get(entityId);
     if (conn?.reliableChannel?.readyState === "open") {

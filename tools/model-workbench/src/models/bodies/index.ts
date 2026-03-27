@@ -39,3 +39,6 @@ registry.register(new ElderBear());
 
 import { GnomeBody } from "./GnomeBody";
 registry.register(new GnomeBody());
+
+import { WitchBody } from "./WitchBody";
+registry.register(new WitchBody());

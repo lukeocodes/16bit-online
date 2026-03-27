@@ -11,6 +11,7 @@ import {
 import { xpForKill, processXpGain, xpToNextLevel, totalXpForLevel } from "./experience.js";
 import { rollAndGiveLoot } from "./inventory.js";
 import { onDungeonNpcDeath } from "./dungeon.js";
+import { onQuestKill } from "./quests.js";
 import { config } from "../config.js";
 import { db } from "../db/postgres.js";
 import { characters } from "../db/schema.js";
@@ -56,10 +57,13 @@ export function handleKill(killerId: string, deadEntityId: string) {
     }
   }
 
-  // NPC death → loot drop + remove + schedule respawn
+  // NPC death → loot drop + quest progress + remove + schedule respawn
   if (deadEntity?.entityType === "npc") {
     if (killerEntity?.entityType === "player") {
       rollAndGiveLoot(killerId, deadEntityId);
+      // Quest progress — use NPC group ID for matching
+      const npcTemplate = getNpcTemplate(deadEntityId);
+      if (npcTemplate) onQuestKill(killerId, npcTemplate.groupId);
     }
     // Check if this is a dungeon NPC (boss check)
     onDungeonNpcDeath(deadEntityId);
@@ -221,7 +225,7 @@ function gameTick() {
 }
 
 function checkEnemyProximity() {
-  for (const conn of connectionManager.getAll()) {
+  for (const conn of connectionManager.iterAll()) {
     const player = entityStore.get(conn.entityId);
     if (!player) continue;
 
@@ -252,7 +256,7 @@ function checkEnemyProximity() {
 }
 
 function broadcastPositions() {
-  for (const conn of connectionManager.getAll()) {
+  for (const conn of connectionManager.iterAll()) {
     const self = entityStore.get(conn.entityId);
     if (!self) continue;
 
@@ -286,7 +290,7 @@ function broadcastPositions() {
 }
 
 function broadcastState() {
-  for (const conn of connectionManager.getAll()) {
+  for (const conn of connectionManager.iterAll()) {
     const self = entityStore.get(conn.entityId);
     if (!self) continue;
 

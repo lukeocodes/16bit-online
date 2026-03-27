@@ -12,7 +12,7 @@ Read this file at the start of each model workbench session. Update after signif
 - **Palette** — `computePalette(skin, hair, eyes, primary, secondary, armorType)` generates full color set from base colors + armor material.
 - **Attachment slots** — `root`, `head-top`, `hand-R`, `hand-L`, `torso`, `torso-back`, `legs`, `feet-L`, `feet-R`
 
-## Current State (2026-03-27, session 13)
+## Current State (2026-03-27, session 15)
 
 ### Workbench UI
 - [x] 3-panel layout: left nav (model browser), center (PixiJS canvas), right (config panel)
@@ -33,6 +33,7 @@ Read this file at the start of each model workbench session. Update after signif
 - [x] Human Body — full humanoid with torso, pelvis, glutes, legs, feet, arms, head, eyes, ears, mouth, eyebrows. Walk cycle with arm swing, leg stride, bob.
 - [x] Elf Body — slimmer (0.85x width), pointed ears with inner detail, almond eyes, angular jaw, longer neck, delicate limbs
 - [x] Dwarf Body — wider (1.25x width), barrel chest, thick limbs, prominent brow ridge, broad nose, round ears, bigger head, knobbly knees
+- [x] Gnome Body — small (0.8x width), big head relative to body, small pointed ears, large bright eyes with highlights, button nose, thin limbs. Playable race.
 
 #### Hair
 - [x] Short hair
@@ -146,6 +147,7 @@ Read this file at the start of each model workbench session. Update after signif
 - [x] Goblin Chieftain — DONE. 1.35x width, war-painted face, feathered headdress (3 feathers), bigger tusks, bigger pointed ears
 - [x] Imp Overlord — DONE. 1.3x scale, deeper red, bigger wings, crown of 4 horns, flaming tail tip, fire aura, fire glow around eyes
 - [x] Elder Bear — DONE. 1.35x scale, darker brown, silver-tipped shoulder fur, battle scars (body + face), torn ear, glowing amber eyes
+- [x] Witch — DONE. Robed spellcaster, pointed hat with brim/buckle, pale greenish skin, glowing green eyes, hooked nose, long robe skirt with tattered hem, flared sleeves, green amulet pendant, magic aura. Can hold weapons.
 
 ### Legacy Files
 - ~~`src/CharacterModel.ts`~~ — DELETED
@@ -178,4 +180,4 @@ Priority for each session (tackle 1-2 items per run):
 
 ## Status: COMPLETE
 
-All goals from the original spec have been implemented and exceeded. The workbench is production-ready with 74 models, full game integration adapter, JSON export/import, and comprehensive documentation.
+All goals from the original spec have been implemented and exceeded. The workbench is production-ready with 71 models (4 races, 14 NPCs, 32 armor pieces, 12 weapons, 5 offhands, 6 hair, 6 headgear), full game integration adapter, JSON export/import, and comprehensive documentation.

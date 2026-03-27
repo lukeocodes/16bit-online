@@ -36,6 +36,7 @@ const WEAPON_HOLDERS = new Set([
   "human-body", "elf-body", "dwarf-body",
   "skeleton-body", "goblin-body", "imp-body", "ogre-body", "wraith-body",
   "skeleton-lord", "goblin-chieftain", "imp-overlord",
+  "gnome-body", "witch-body",
 ]);
 
 /**
