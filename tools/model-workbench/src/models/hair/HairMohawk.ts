@@ -5,6 +5,7 @@ import type {
   DrawCall,
   AttachmentPoint,
 } from "../types";
+import { DEPTH_HEAD } from "../types";
 import { darken } from "../palette";
 
 /**
@@ -32,7 +33,7 @@ export class HairMohawk implements Model {
     // Mohawk ridge — visible from all angles
     // Depth 55 so it's always on top of the head
     calls.push({
-      depth: 53,
+      depth: DEPTH_HEAD + 1,
       draw: (g: Graphics, s: number) => {
         const ridgeHeight = 7;
         const ridgeW = 2.2; // narrow ridge width

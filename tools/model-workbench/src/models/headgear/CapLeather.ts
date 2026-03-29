@@ -1,5 +1,6 @@
 import type { Graphics } from "pixi.js";
 import type { Model, RenderContext, DrawCall, AttachmentPoint } from "../types";
+import { DEPTH_HEAD } from "../types";
 import { darken } from "../palette";
 
 /**
@@ -21,7 +22,7 @@ export class CapLeather implements Model {
 
     return [
       {
-        depth: 52,
+        depth: DEPTH_HEAD + 1,
         draw: (g: Graphics, s: number) => {
           // Cap dome (rounded top)
           g.ellipse(

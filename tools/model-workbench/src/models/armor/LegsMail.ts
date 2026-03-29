@@ -1,5 +1,6 @@
 import type { Graphics } from "pixi.js";
 import type { Model, RenderContext, DrawCall, AttachmentPoint, V } from "../types";
+import { DEPTH_FAR_LIMB, DEPTH_BODY } from "../types";
 import { drawTaperedLimb } from "../draw-helpers";
 
 /**
@@ -17,14 +18,15 @@ export class LegsMail implements Model {
     const j = skeleton.joints;
     const calls: DrawCall[] = [];
 
+    const sz = ctx.slotParams.size;
     for (const side of [farSide, nearSide]) {
-      const d = side === farSide ? 10.5 : 12.5;
-      calls.push({ depth: d, draw: (g, s) => this.drawLeg(g, j, palette, s, side) });
+      const d = side === farSide ? DEPTH_FAR_LIMB + 0 : DEPTH_FAR_LIMB + 2;
+      calls.push({ depth: d, draw: (g, s) => this.drawLeg(g, j, palette, s, side, sz) });
     }
 
     // Waist mail skirt
     calls.push({
-      depth: 33,
+      depth: DEPTH_BODY + 3,
       draw: (g, s) => {
         const { hipL, hipR, crotch } = j;
         const skirtY = crotch.y + 1;
@@ -57,23 +59,23 @@ export class LegsMail implements Model {
     return calls;
   }
 
-  private drawLeg(g: Graphics, j: Record<string, V>, p: any, s: number, side: "L" | "R"): void {
+  private drawLeg(g: Graphics, j: Record<string, V>, p: any, s: number, side: "L" | "R", sz = 1): void {
     const hip = j[`hip${side}`];
     const knee = j[`knee${side}`];
     const ankle = j[`ankle${side}`];
     const legTop: V = { x: hip.x * 0.5, y: hip.y };
 
     // Mail-covered thigh
-    drawTaperedLimb(g, legTop, knee, 6.5, 5, p.body, p.bodyDk, p.outline, s);
+    drawTaperedLimb(g, legTop, knee, 6.5 * sz, 5 * sz, p.body, p.bodyDk, p.outline, s);
 
     // Knee cop (metal plate over mail)
-    g.roundRect((knee.x - 3) * s, (knee.y - 2) * s, 6 * s, 4 * s, 1.5 * s);
+    g.roundRect((knee.x - 3 * sz) * s, (knee.y - 2 * sz) * s, 6 * sz * s, 4 * sz * s, 1.5 * s);
     g.fill(p.bodyLt);
     g.roundRect((knee.x - 3) * s, (knee.y - 2) * s, 6 * s, 4 * s, 1.5 * s);
     g.stroke({ width: s * 0.4, color: p.outline, alpha: 0.4 });
 
     // Mail-covered calf
-    drawTaperedLimb(g, knee, ankle, 5, 3.8, p.body, p.bodyDk, p.outline, s);
+    drawTaperedLimb(g, knee, ankle, 5 * sz, 3.8 * sz, p.body, p.bodyDk, p.outline, s);
 
     // Ring pattern (small circles along the thigh)
     const midX = (legTop.x + knee.x) / 2;

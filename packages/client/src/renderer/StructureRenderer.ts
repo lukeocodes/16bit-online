@@ -56,9 +56,9 @@ export interface WallPiece {
 }
 
 const PALETTES = {
-  stone:   { face: 0x8a8a8a, inner: 0x757575, side: 0x636363, top: 0xb0b0b0, trim: 0x3a3a3a, mortar: 0x555555 },
-  wood:    { face: 0x7a5c1e, inner: 0x6a4c0e, side: 0x5a3c0e, top: 0x9a7c2e, trim: 0x3a2010, mortar: 0x4a3010 },
-  plaster: { face: 0xcfbc96, inner: 0xbfac86, side: 0xaf9c76, top: 0xdfcc96, trim: 0x7a6848, mortar: 0x8a7848 },
+  stone:   { face: 0x8a8a8a, inner: 0x757575, side: 0x636363, top: 0xb0b0b0, trim: 0x3a3a3a },
+  wood:    { face: 0x7a5c1e, inner: 0x6a4c0e, side: 0x5a3c0e, top: 0x9a7c2e, trim: 0x3a2010 },
+  plaster: { face: 0xcfbc96, inner: 0xbfac86, side: 0xaf9c76, top: 0xdfcc96, trim: 0x7a6848 },
 };
 type Pal = typeof PALETTES.stone;
 
@@ -154,7 +154,6 @@ function drawLeft(c: Container, pal: Pal, type: string, flip: boolean) {
     g.moveTo(lx(wL), ly(wL)-wB); g.lineTo(lx(wR), ly(wR)-wB); g.lineTo(lx(wR), ly(wR)-wT); g.lineTo(lx(wL), ly(wL)-wT); g.lineTo(lx(wL), ly(wL)-wB);
     g.stroke({ width: 1.5, color: pal.trim });
     topLeft(g, pal, dx, dy);
-    detail(g, pal, "left");
     c.addChild(g); return;
   }
 
@@ -162,15 +161,15 @@ function drawLeft(c: Container, pal: Pal, type: string, flip: boolean) {
   // Outer face
   g.poly([{ x: -hw, y: 0 }, { x: 0, y: -hh }, { x: 0, y: -hh-WALL_H }, { x: -hw, y: -WALL_H }]);
   g.fill(pal.face);
+  g.poly([{ x: -hw, y: 0 }, { x: 0, y: -hh }, { x: 0, y: -hh-WALL_H }, { x: -hw, y: -WALL_H }]);
+  g.stroke({ width: 0.5, color: pal.trim, alpha: 0.25 });
   // Top face (depth strip, going toward interior)
   topLeft(g, pal, dx, dy);
   // Inner face (visible from inside the building)
   g.poly([{ x: -hw+dx, y: dy }, { x: dx, y: -hh+dy }, { x: dx, y: -hh-WALL_H+dy }, { x: -hw+dx, y: -WALL_H+dy }]);
   g.fill(pal.inner);
-  // Outer edge
-  g.moveTo(-hw, 0); g.lineTo(0, -hh); g.lineTo(0, -hh-WALL_H); g.lineTo(-hw, -WALL_H); g.lineTo(-hw, 0);
-  g.stroke({ width: 1, color: pal.trim, alpha: 0.5 });
-  detail(g, pal, "left");
+  g.poly([{ x: -hw+dx, y: dy }, { x: dx, y: -hh+dy }, { x: dx, y: -hh-WALL_H+dy }, { x: -hw+dx, y: -WALL_H+dy }]);
+  g.stroke({ width: 0.5, color: pal.trim, alpha: 0.25 });
   c.addChild(g);
 }
 
@@ -201,19 +200,19 @@ function drawRight(c: Container, pal: Pal, type: string, flip: boolean) {
     g.moveTo(lx(wL), ly(wL)-wB); g.lineTo(lx(wR), ly(wR)-wB); g.lineTo(lx(wR), ly(wR)-wT); g.lineTo(lx(wL), ly(wL)-wT); g.lineTo(lx(wL), ly(wL)-wB);
     g.stroke({ width: 1.5, color: pal.trim });
     topRight(g, pal, dx, dy);
-    detail(g, pal, "right");
     c.addChild(g); return;
   }
 
   // Solid 3D wall
   g.poly([{ x: 0, y: -hh }, { x: hw, y: 0 }, { x: hw, y: -WALL_H }, { x: 0, y: -hh-WALL_H }]);
   g.fill(pal.side);
+  g.poly([{ x: 0, y: -hh }, { x: hw, y: 0 }, { x: hw, y: -WALL_H }, { x: 0, y: -hh-WALL_H }]);
+  g.stroke({ width: 0.5, color: pal.trim, alpha: 0.25 });
   topRight(g, pal, dx, dy);
   g.poly([{ x: dx, y: -hh+dy }, { x: hw+dx, y: dy }, { x: hw+dx, y: -WALL_H+dy }, { x: dx, y: -hh-WALL_H+dy }]);
   g.fill(pal.inner);
-  g.moveTo(0, -hh); g.lineTo(hw, 0); g.lineTo(hw, -WALL_H); g.lineTo(0, -hh-WALL_H); g.lineTo(0, -hh);
-  g.stroke({ width: 1, color: pal.trim, alpha: 0.5 });
-  detail(g, pal, "right");
+  g.poly([{ x: dx, y: -hh+dy }, { x: hw+dx, y: dy }, { x: hw+dx, y: -WALL_H+dy }, { x: dx, y: -hh-WALL_H+dy }]);
+  g.stroke({ width: 0.5, color: pal.trim, alpha: 0.25 });
   c.addChild(g);
 }
 
@@ -275,23 +274,6 @@ function topRight(g: Graphics, pal: Pal, dx: number, dy: number) {
     { x: hw+dx, y: -WALL_H+dy   }, { x: dx,     y: -hh-WALL_H+dy },
   ]);
   g.fill(pal.top);
-}
-
-function detail(g: Graphics, pal: Pal, side: "left" | "right") {
-  if (pal === PALETTES.stone) {
-    for (let i = 1; i <= 3; i++) {
-      const y = -(WALL_H * i) / 4;
-      if (side === "left") { g.moveTo(-hw, y); g.lineTo(0, y - hh); }
-      else                 { g.moveTo(0, y - hh); g.lineTo(hw, y); }
-      g.stroke({ width: 0.5, color: pal.mortar, alpha: 0.4 });
-    }
-  } else if (pal === PALETTES.wood) {
-    for (let i = 1; i <= 3; i++) {
-      const x = side === "left" ? -hw + (hw * i) / 4 : (hw * i) / 4;
-      g.moveTo(x, 0); g.lineTo(x, -WALL_H);
-      g.stroke({ width: 0.5, color: pal.mortar, alpha: 0.4 });
-    }
-  }
 }
 
 // ─── Stairs ───────────────────────────────────────────────────────────────────

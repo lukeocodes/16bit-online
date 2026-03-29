@@ -71,10 +71,18 @@ export function renderComposite(
     calls.push(...baseModel.getDrawCalls(baseCtx));
   }
 
+  // Check if any equipped weapon is two-handed (blocks offhand slot)
+  const hasTwoHanded = config.attachments.some(
+    (att) => registry.get(att.modelId)?.twoHanded === true
+  );
+
   // Attached model draw calls — each gets resolved slot params
   for (const att of config.attachments) {
     const childModel = registry.get(att.modelId);
     if (!childModel) continue;
+
+    // Two-handed weapon in main hand blocks the left hand (offhand) slot
+    if (att.slot === "hand-L" && hasTwoHanded) continue;
 
     // Skip if the body has no attachment point for this slot
     const bodyAP = bodyAttachments[att.slot];

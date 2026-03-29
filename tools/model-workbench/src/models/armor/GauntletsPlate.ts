@@ -1,5 +1,6 @@
 import type { Graphics } from "pixi.js";
 import type { Model, RenderContext, DrawCall, AttachmentPoint, V } from "../types";
+import { DEPTH_FAR_LIMB, DEPTH_NEAR_LIMB } from "../types";
 import { drawTaperedLimb } from "../draw-helpers";
 
 /**
@@ -17,24 +18,25 @@ export class GauntletsPlate implements Model {
     const j = skeleton.joints;
     const calls: DrawCall[] = [];
 
+    const sz = ctx.slotParams.size;
     calls.push({
-      depth: facingCamera ? 21 : 46,
-      draw: (g, s) => this.drawGauntlet(g, j, palette, s, farSide),
+      depth: facingCamera ? DEPTH_FAR_LIMB + 4 : DEPTH_NEAR_LIMB + 0,
+      draw: (g, s) => this.drawGauntlet(g, j, palette, s, farSide, sz),
     });
     calls.push({
-      depth: facingCamera ? 60 : 24,
-      draw: (g, s) => this.drawGauntlet(g, j, palette, s, nearSide),
+      depth: facingCamera ? DEPTH_NEAR_LIMB + 5 : DEPTH_FAR_LIMB + 5,
+      draw: (g, s) => this.drawGauntlet(g, j, palette, s, nearSide, sz),
     });
 
     return calls;
   }
 
-  private drawGauntlet(g: Graphics, j: Record<string, V>, p: any, s: number, side: "L" | "R"): void {
+  private drawGauntlet(g: Graphics, j: Record<string, V>, p: any, s: number, side: "L" | "R", sz = 1): void {
     const elbow = j[`elbow${side}`];
     const wrist = j[`wrist${side}`];
 
     // Plate vambrace (thicker coverage)
-    drawTaperedLimb(g, elbow, wrist, 4.5, 4, p.body, p.bodyDk, p.outline, s);
+    drawTaperedLimb(g, elbow, wrist, 4.5 * sz, 4 * sz, p.body, p.bodyDk, p.outline, s);
 
     const dx = wrist.x - elbow.x;
     const dy = wrist.y - elbow.y;

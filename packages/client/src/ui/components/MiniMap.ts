@@ -138,14 +138,14 @@ export class MiniMap {
     zoomOut.textContent = "-";
     // Left of centre along the bottom arc
     zoomOut.style.cssText = `${btnStyle} left: calc(50% - 24px);`;
-    zoomOut.onclick = () => { this.zoomIndex = Math.max(this.zoomIndex - 1, 0); };
+    zoomOut.onclick = () => { this.zoomIndex = Math.min(this.zoomIndex + 1, ZOOM_LEVELS.length - 1); };
     wrapper.appendChild(zoomOut);
 
     const zoomIn = document.createElement("div");
     zoomIn.textContent = "+";
     // Right of centre along the bottom arc
     zoomIn.style.cssText = `${btnStyle} left: calc(50% + 4px);`;
-    zoomIn.onclick = () => { this.zoomIndex = Math.min(this.zoomIndex + 1, ZOOM_LEVELS.length - 1); };
+    zoomIn.onclick = () => { this.zoomIndex = Math.max(this.zoomIndex - 1, 0); };
     wrapper.appendChild(zoomIn);
 
     return wrapper;

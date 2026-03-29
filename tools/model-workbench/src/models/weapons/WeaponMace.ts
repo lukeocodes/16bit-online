@@ -1,5 +1,6 @@
 import type { Graphics } from "pixi.js";
 import type { Model, RenderContext, DrawCall, Skeleton, AttachmentPoint } from "../types";
+import { DEPTH_FAR_LIMB, DEPTH_NEAR_LIMB } from "../types";
 
 export class WeaponMace implements Model {
   readonly id = "weapon-mace";
@@ -15,11 +16,12 @@ export class WeaponMace implements Model {
     const armAngle = Math.atan2(wrist.y - elbow.y, wrist.x - elbow.x);
 
     return [{
-      depth: facingCamera ? 57 : 23,
+      depth: facingCamera ? DEPTH_NEAR_LIMB + 3 : DEPTH_FAR_LIMB + 3,
       draw: (g: Graphics, s: number) => {
+        const sz = ctx.slotParams.size;
         const hand = wrist;
         const angle = armAngle;
-        const len = 13;
+        const len = 13 * sz;
         const ca = Math.cos(angle);
         const sa = Math.sin(angle);
         const topX = hand.x + ca * len;
@@ -31,9 +33,9 @@ export class WeaponMace implements Model {
         g.stroke({ width: 2 * s, color: 0x886633 });
 
         // Mace head
-        g.circle(topX * s, topY * s, 4 * s);
+        g.circle(topX * s, topY * s, 4 * sz * s);
         g.fill(0x888899);
-        g.circle(topX * s, topY * s, 4 * s);
+        g.circle(topX * s, topY * s, 4 * sz * s);
         g.stroke({ width: s * 0.7, color: 0x444455 });
 
         // Flanges

@@ -1,5 +1,6 @@
 import type { Graphics } from "pixi.js";
 import type { Model, RenderContext, DrawCall, AttachmentPoint } from "../types";
+import { DEPTH_HEAD } from "../types";
 import { lighten } from "../palette";
 
 /**
@@ -20,7 +21,7 @@ export class HairBald implements Model {
 
     return [
       {
-        depth: 53,
+        depth: DEPTH_HEAD + 1,
         draw: (g: Graphics, s: number) => {
           // Subtle scalp highlight (shiny bald head)
           if (facingCamera) {

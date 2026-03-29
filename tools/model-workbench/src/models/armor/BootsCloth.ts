@@ -1,5 +1,6 @@
 import type { Graphics } from "pixi.js";
 import type { Model, RenderContext, DrawCall, AttachmentPoint, V } from "../types";
+import { DEPTH_FAR_LIMB } from "../types";
 import { darken } from "../palette";
 
 /**
@@ -17,19 +18,20 @@ export class BootsCloth implements Model {
     const iso = skeleton.iso;
     const calls: DrawCall[] = [];
 
+    const sz = ctx.slotParams.size;
     for (const side of [farSide, nearSide]) {
-      const d = side === farSide ? 11.5 : 13.5;
-      calls.push({ depth: d, draw: (g, s) => this.drawBoot(g, j, iso, palette, s, side) });
+      const d = side === farSide ? DEPTH_FAR_LIMB + 0 : DEPTH_FAR_LIMB + 2;
+      calls.push({ depth: d, draw: (g, s) => this.drawBoot(g, j, iso, palette, s, side, sz) });
     }
     return calls;
   }
 
-  private drawBoot(g: Graphics, j: Record<string, V>, iso: V, p: any, s: number, side: "L" | "R"): void {
+  private drawBoot(g: Graphics, j: Record<string, V>, iso: V, p: any, s: number, side: "L" | "R", sz = 1): void {
     const ankle = j[`ankle${side}`];
     const color = p.body;
     const dk = p.bodyDk;
 
-    const footLen = 4.2;
+    const footLen = 4.2 * sz;
     const fwdX = iso.x * footLen;
     const fwdY = iso.y * footLen * 0.5;
     const tipX = ankle.x + fwdX;
@@ -40,8 +42,8 @@ export class BootsCloth implements Model {
     const flen = Math.sqrt(fdx * fdx + fdy * fdy) || 1;
     const pnx = -fdy / flen;
     const pny = fdx / flen;
-    const hw = 2.2;
-    const tw = 1.4;
+    const hw = 2.2 * sz;
+    const tw = 1.4 * sz;
 
     // Boot shape
     g.moveTo((ankle.x + pnx * hw) * s, (ankle.y + pny * hw) * s);

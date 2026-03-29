@@ -1,5 +1,6 @@
 import type { Graphics } from "pixi.js";
 import type { Model, RenderContext, DrawCall, AttachmentPoint } from "../types";
+import { DEPTH_HEAD } from "../types";
 import { darken, lighten } from "../palette";
 
 /**
@@ -21,7 +22,7 @@ export class HelmHorned implements Model {
 
     return [
       {
-        depth: 54,
+        depth: DEPTH_HEAD + 1,
         draw: (g: Graphics, s: number) => {
           const cx = head.x;
           const helmColor = palette.body;

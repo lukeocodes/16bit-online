@@ -6,6 +6,7 @@ import type {
   Skeleton,
   AttachmentPoint,
 } from "../types";
+import { DEPTH_HEAD } from "../types";
 
 export class HairShort implements Model {
   readonly id = "hair-short";
@@ -27,7 +28,7 @@ export class HairShort implements Model {
     // Back hair (depth 40) — visible when facing away from camera
     if (!facingCamera) {
       calls.push({
-        depth: 53,
+        depth: DEPTH_HEAD + 1,
         draw: (g: Graphics, s: number) => {
           g.ellipse(
             head.x * s,
@@ -43,7 +44,7 @@ export class HairShort implements Model {
     // Front hair / bangs (depth 55) — visible when facing camera or side view
     if (facingCamera || sideView) {
       calls.push({
-        depth: 53,
+        depth: DEPTH_HEAD + 1,
         draw: (g: Graphics, s: number) => {
           // Bangs
           g.ellipse(
@@ -54,8 +55,8 @@ export class HairShort implements Model {
           );
           g.fill(hairColor);
 
-          // Side hair (when viewed from side)
-          if (sideView) {
+          // Side hair (when viewed from side but not facing camera — SW/SE already have bangs)
+          if (sideView && !facingCamera) {
             const hx = head.x + iso.x * 2;
             g.ellipse(
               hx * s,
@@ -70,7 +71,7 @@ export class HairShort implements Model {
     } else {
       // From behind — full hair coverage on top
       calls.push({
-        depth: 53,
+        depth: DEPTH_HEAD + 1,
         draw: (g: Graphics, s: number) => {
           g.ellipse(
             head.x * s,

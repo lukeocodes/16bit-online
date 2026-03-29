@@ -32,13 +32,24 @@ const MODEL_SCALE   = TILE_SCALE * QUALITY;           // ≈ 2.909
 const DISPLAY_SCALE = 1 / QUALITY;                   // 0.5
 
 // Frame dimensions at MODEL_SCALE (walls at TILE_SCALE fit exactly, × QUALITY for crisp textures)
-const FRAME_W  = Math.ceil(T * 2 * MODEL_SCALE + 24);            // ~152px — full tile width + depth margin
-const FRAME_H  = Math.ceil((H2 + STORY_H) * MODEL_SCALE + 24);  // ~248px — full wall height + margins
-const ORIGIN_Y = Math.ceil(STORY_H * MODEL_SCALE + 12);          // y in texture where tile-centre sits
+// Top-cap vertices reach (STORY_H + H2) above tile-centre, so ORIGIN_Y must budget for both.
+const FRAME_W  = Math.ceil(T * 2 * MODEL_SCALE + 24);
+const ORIGIN_Y = Math.ceil((STORY_H + H2) * MODEL_SCALE + 12);  // y in texture where tile-centre sits
+const FRAME_H  = ORIGIN_Y + Math.ceil(H2 * MODEL_SCALE + 12);   // origin + bottom margin
 
 // Sprite anchor: tile centre is at (FRAME_W/2, ORIGIN_Y) in the texture
 const ANCHOR_X = 0.5;
 const ANCHOR_Y = ORIGIN_Y / FRAME_H;
+
+// Direction depth offset — E < N < S < W, matching DEPTH_E/N/S/W in model types.
+// Applied to sprite.zIndex so corner pieces (two models at same tile) layer correctly.
+const MODEL_DIR_OFFSET: Record<string, number> = {
+  "wall-e":    0,
+  "wall-n":    1,
+  "wall-s":    2,
+  "wall-w":    3,
+  "floor-tile": 0,
+};
 
 // Material → workbench palette primary colour
 const MATERIAL_PRIMARY: Record<string, number> = {
@@ -92,19 +103,17 @@ interface WallSprite {
 }
 
 export class WorkbenchStructureRenderer {
-  public container: Container;
-
   private app: Application;
   private textureCache = new Map<string, RenderTexture>();
   private wallSprites: WallSprite[] = [];
+  private worldContainer: Container | null = null;
 
   constructor(app: Application) {
     this.app = app;
-    this.container = new Container();
-    this.container.sortableChildren = true;
   }
 
-  loadWalls(pieces: WallPiece[]): void {
+  loadWalls(pieces: WallPiece[], worldContainer: Container): void {
+    this.worldContainer = worldContainer;
     for (const piece of pieces) {
       const models = modelsForPiece(piece);
       if (models.length === 0) continue;
@@ -119,9 +128,9 @@ export class WorkbenchStructureRenderer {
         sprite.anchor.set(ANCHOR_X, ANCHOR_Y);
         sprite.scale.set(DISPLAY_SCALE);
         sprite.position.set(sx, sy);
-        sprite.zIndex = zBase;
+        sprite.zIndex = zBase + (MODEL_DIR_OFFSET[modelId] ?? 0);
 
-        this.container.addChild(sprite);
+        worldContainer.addChild(sprite);
         this.wallSprites.push({ sprite, elevation });
       }
     }
@@ -135,9 +144,13 @@ export class WorkbenchStructureRenderer {
   }
 
   dispose(): void {
+    for (const { sprite } of this.wallSprites) {
+      sprite.parent?.removeChild(sprite);
+      sprite.destroy();
+    }
+    this.wallSprites = [];
     for (const rt of this.textureCache.values()) rt.destroy();
     this.textureCache.clear();
-    this.container.destroy({ children: true });
   }
 
   // ─── Private ─────────────────────────────────────────────────────

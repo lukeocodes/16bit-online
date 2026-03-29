@@ -1,14 +1,17 @@
+import type { Model } from "../types";
 import { registry } from "../registry";
-import { HelmetPlate } from "./HelmetPlate";
-import { CoifMail } from "./CoifMail";
-import { HoodCloth } from "./HoodCloth";
-import { CapLeather } from "./CapLeather";
-import { Crown } from "./Crown";
-import { HelmHorned } from "./HelmHorned";
 
-registry.register(new HelmetPlate());
-registry.register(new CoifMail());
-registry.register(new HoodCloth());
-registry.register(new CapLeather());
-registry.register(new Crown());
-registry.register(new HelmHorned());
+const modules = import.meta.glob("./*.ts", { eager: true });
+for (const [path, mod] of Object.entries(modules)) {
+  if (path === "./index.ts") continue;
+  for (const val of Object.values(mod as Record<string, unknown>)) {
+    if (typeof val !== "function") continue;
+    try {
+      const inst = new (val as new () => unknown)();
+      const m = inst as Partial<Model>;
+      if (typeof m.getDrawCalls === "function" && typeof m.id === "string" && m.id) {
+        registry.register(inst as Model);
+      }
+    } catch { /* not a model class */ }
+  }
+}

@@ -1,5 +1,6 @@
 import type { Graphics } from "pixi.js";
 import type { Model, RenderContext, DrawCall, AttachmentPoint, V } from "../types";
+import { DEPTH_BODY } from "../types";
 import { darken, lighten } from "../palette";
 
 /**
@@ -27,7 +28,7 @@ export class ArmorOgreskin implements Model {
 
     return [
       {
-        depth: 33,
+        depth: DEPTH_BODY + 3,
         draw: (g: Graphics, s: number) => {
           const { neckBase, waistL, waistR, hipL, hipR, shoulderL, shoulderR } = j;
           const cx = neckBase.x;

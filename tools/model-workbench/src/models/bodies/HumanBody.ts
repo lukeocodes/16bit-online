@@ -8,6 +8,7 @@ import type {
   V,
   ModelPalette,
 } from "../types";
+import { DEPTH_SHADOW, DEPTH_FAR_LIMB, DEPTH_BODY, DEPTH_HEAD, DEPTH_NEAR_LIMB } from "../types";
 import { darken, lighten } from "../palette";
 import { drawTaperedLimb } from "../draw-helpers";
 
@@ -29,7 +30,7 @@ export class HumanBody implements Model {
 
     // Shadow
     calls.push({
-      depth: 0,
+      depth: DEPTH_SHADOW,
       draw: (g, s) => {
         g.ellipse(0, 2 * s, 13 * s, 5 * s);
         g.fill({ color: 0x000000, alpha: 0.2 });
@@ -37,34 +38,34 @@ export class HumanBody implements Model {
     });
 
     // Both legs (always behind torso)
-    calls.push({ depth: 10, draw: (g, s) => this.drawLeg(g, j, palette, s, farSide) });
-    calls.push({ depth: 11, draw: (g, s) => this.drawFoot(g, j, skeleton, palette, s, farSide) });
-    calls.push({ depth: 12, draw: (g, s) => this.drawLeg(g, j, palette, s, nearSide) });
-    calls.push({ depth: 13, draw: (g, s) => this.drawFoot(g, j, skeleton, palette, s, nearSide) });
+    calls.push({ depth: DEPTH_FAR_LIMB + 0, draw: (g, s) => this.drawLeg(g, j, palette, s, farSide) });
+    calls.push({ depth: DEPTH_FAR_LIMB + 1, draw: (g, s) => this.drawFoot(g, j, skeleton, palette, s, farSide) });
+    calls.push({ depth: DEPTH_FAR_LIMB + 2, draw: (g, s) => this.drawLeg(g, j, palette, s, nearSide) });
+    calls.push({ depth: DEPTH_FAR_LIMB + 3, draw: (g, s) => this.drawFoot(g, j, skeleton, palette, s, nearSide) });
 
-    // Far arm
+    // Far arm — behind torso when facing camera, in front when back to camera
     calls.push({
-      depth: facingCamera ? 20 : 45,
+      depth: facingCamera ? DEPTH_FAR_LIMB + 4 : DEPTH_NEAR_LIMB + 0,
       draw: (g, s) => this.drawArm(g, j, palette, s, farSide),
     });
 
     // Glutes (back views only)
     if (!facingCamera) {
-      calls.push({ depth: 26, draw: (g, s) => this.drawGlutes(g, j, skeleton, palette, s) });
+      calls.push({ depth: DEPTH_BODY - 1, draw: (g, s) => this.drawGlutes(g, j, skeleton, palette, s) });
     }
 
     // Torso
-    calls.push({ depth: 30, draw: (g, s) => this.drawTorso(g, j, palette, s) });
+    calls.push({ depth: DEPTH_BODY + 0, draw: (g, s) => this.drawTorso(g, j, palette, s) });
 
     // Pelvis
-    calls.push({ depth: 32, draw: (g, s) => this.drawPelvis(g, j, palette, s) });
+    calls.push({ depth: DEPTH_BODY + 2, draw: (g, s) => this.drawPelvis(g, j, palette, s) });
 
     // Head (skin, eyes, ears — no hair)
-    calls.push({ depth: 50, draw: (g, s) => this.drawHead(g, j, skeleton, palette, s) });
+    calls.push({ depth: DEPTH_HEAD + 0, draw: (g, s) => this.drawHead(g, j, skeleton, palette, s) });
 
-    // Near arm
+    // Near arm — in front of everything when facing camera, behind torso when back to camera
     calls.push({
-      depth: facingCamera ? 59 : 24,
+      depth: facingCamera ? DEPTH_NEAR_LIMB + 5 : DEPTH_FAR_LIMB + 5,
       draw: (g, s) => this.drawArm(g, j, palette, s, nearSide),
     });
 

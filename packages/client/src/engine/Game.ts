@@ -7,8 +7,13 @@ import { FLOOR_ELEVATION } from "../renderer/StructureRenderer";
 import { WorkbenchStructureRenderer } from "../renderer/WorkbenchStructureRenderer";
 import { WorldItemRenderer } from "../renderer/WorldItemRenderer";
 import { screenToWorld, worldToScreen, TILE_WIDTH_HALF, TILE_HEIGHT_HALF } from "../renderer/IsometricRenderer";
-// Workbench model registration — naked human body only for now
+// Workbench model registration — all categories needed for composite player outfit
 import "../../../../tools/model-workbench/src/models/bodies/index";
+import "../../../../tools/model-workbench/src/models/armor/index";
+import "../../../../tools/model-workbench/src/models/headgear/index";
+import "../../../../tools/model-workbench/src/models/weapons/index";
+import "../../../../tools/model-workbench/src/models/hair/index";
+import "../../../../tools/model-workbench/src/models/offhand/index";
 import { WorkbenchSpriteSheet } from "../../../../tools/model-workbench/src/models/WorkbenchSpriteSheet";
 import { ParticleSystem } from "../renderer/ParticleSystem";
 import { Graphics } from "pixi.js";
@@ -41,6 +46,7 @@ import { WORLD_WIDTH, WORLD_HEIGHT } from "../world/WorldConstants";
 
 const PLAYER_SPEED = 7.0;
 const POSITION_SEND_INTERVAL = 1000 / 20; // Match server tick rate (20Hz)
+
 
 export class Game {
   private pixiApp: PixiApp;
@@ -76,15 +82,17 @@ export class Game {
   private lastPositionSend = 0;
   private initialized = false;
   private currentZoneName: string | null = null;
-  private hoverCursor: Graphics | null = null;
-  private moveMarker: Graphics | null = null;
   private movePath: Array<{ x: number; z: number }> = []; // A* path queue
-  private moveGoal: { x: number; z: number } | null = null; // Final destination for marker
+  private moveGoal: { x: number; z: number } | null = null;
+  private lastCursor = "";
   private followTargetId: string | null = null;
   private particles: ParticleSystem;
   private zoneChangeRequested = false;
   private dungeonExitReady = false;
   private renderTime = 0;
+  // Cache tile position for zone/exit/entrance checks — only re-check on tile change
+  private lastCheckedTileX = -1;
+  private lastCheckedTileZ = -1;
 
   constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas;
@@ -99,7 +107,7 @@ export class Game {
 
     this.chunkManager = new ChunkManager();
     this.terrainRenderer = new TerrainRenderer(this.chunkManager);
-    this.entityRenderer = new EntityRenderer(this.entityManager);
+    this.entityRenderer = new EntityRenderer(this.entityManager, this.pixiApp.worldContainer);
 
     this.particles = new ParticleSystem();
 
@@ -386,7 +394,9 @@ export class Game {
         }
         this.tiledMap = new TiledMapRenderer();
         await this.tiledMap.loadMap(`/maps/${mapFile}`);
-        this.pixiApp.worldContainer.addChildAt(this.tiledMap.container, 0);
+        // Ground tiles always below entities and walls — give a large negative zIndex
+        this.tiledMap.container.zIndex = -100000;
+        this.pixiApp.worldContainer.addChild(this.tiledMap.container);
         // Update walkability resolver
         this.movementSystem.setTerrainResolvers(
           (_x, _z) => 0,
@@ -439,15 +449,19 @@ export class Game {
     if (!this.initialized) {
       await this.pixiApp.init();
 
-      // Wire up workbench sprite sheet — uses registered models for all entities
+      // Wire up workbench sprite sheet — auto-detects quality from devicePixelRatio,
+      // but respects any saved preference from the Graphics settings panel.
       const workbenchSheet = new WorkbenchSpriteSheet(this.pixiApp.app);
       this.entityRenderer.setSpriteSheet(workbenchSheet);
+      // Pre-warm the 5 most common NPC types to avoid first-frame generation stalls
+      workbenchSheet.warmup(["rabbit", "skeleton", "goblin", "wolf", "human"]);
 
       // Try loading a Tiled map (client-side for now)
       try {
         this.tiledMap = new TiledMapRenderer();
         await this.tiledMap.loadMap("/maps/starter.json");
         this.useTiledMap = true;
+        this.tiledMap.container.zIndex = -100000;
         this.pixiApp.worldContainer.addChild(this.tiledMap.container);
 
         // Use Tiled map's player spawn as the spawn position
@@ -459,11 +473,10 @@ export class Game {
           (x, z) => this.tiledMap!.isWalkable(Math.round(x), Math.round(z)),
         );
 
-        // Load structures from map objects
+        // Load structures — wall sprites go directly into worldContainer for correct depth sorting
         if (this.tiledMap.wallPieces.length > 0) {
           this.structureRenderer = new WorkbenchStructureRenderer(this.pixiApp.app);
-          this.structureRenderer.loadWalls(this.tiledMap.wallPieces);
-          this.pixiApp.worldContainer.addChild(this.structureRenderer.container);
+          this.structureRenderer.loadWalls(this.tiledMap.wallPieces, this.pixiApp.worldContainer);
         }
 
         console.log("[Game] Using Tiled map for terrain");
@@ -478,31 +491,6 @@ export class Game {
       this.pixiApp.worldContainer.addChild(this.worldItemRenderer.container);
       this.pixiApp.worldContainer.addChild(this.particles.container);
 
-      // Tile hover cursor — isometric diamond outline
-      this.hoverCursor = new Graphics();
-      this.hoverCursor.poly([
-        { x: 0, y: -TILE_HEIGHT_HALF },
-        { x: TILE_WIDTH_HALF, y: 0 },
-        { x: 0, y: TILE_HEIGHT_HALF },
-        { x: -TILE_WIDTH_HALF, y: 0 },
-      ]);
-      this.hoverCursor.stroke({ width: 1.5, color: 0xffffff, alpha: 0.6 });
-      this.hoverCursor.zIndex = 999990;
-      this.pixiApp.worldContainer.addChild(this.hoverCursor);
-
-      // Click-to-move destination marker
-      this.moveMarker = new Graphics();
-      this.moveMarker.poly([
-        { x: 0, y: -TILE_HEIGHT_HALF },
-        { x: TILE_WIDTH_HALF, y: 0 },
-        { x: 0, y: TILE_HEIGHT_HALF },
-        { x: -TILE_WIDTH_HALF, y: 0 },
-      ]);
-      this.moveMarker.fill({ color: 0x44cc44, alpha: 0.2 });
-      this.moveMarker.stroke({ width: 2, color: 0x44cc44, alpha: 0.7 });
-      this.moveMarker.zIndex = 999989;
-      this.moveMarker.visible = false;
-      this.pixiApp.worldContainer.addChild(this.moveMarker);
 
       this.initialized = true;
     }
@@ -560,47 +548,54 @@ export class Game {
             this.chunkManager.updatePlayerPosition(pos.x, pos.z);
             this.terrainRenderer.update(pos.x, pos.z);
           }
-          // Check zone transitions
-          if (this.hud && this.tiledMap) {
-            const zone = this.tiledMap.safeZones.find((sz) => {
-              const dx = pos.x - sz.tileX;
-              const dz = pos.z - sz.tileZ;
-              return dx >= 0 && dx < sz.tileWidth && dz >= 0 && dz < sz.tileHeight;
-            });
-            const zoneName = zone ? (zone.properties.zoneName as string) ?? zone.name : null;
-            if (zoneName !== this.currentZoneName) {
-              if (zoneName) {
-                this.hud.showZoneNotification(zoneName);
-              } else if (this.currentZoneName) {
-                this.hud.showZoneNotification("Wilderness");
-              }
-              this.currentZoneName = zoneName;
-            }
-          }
-          // Check zone exits
-          if (this.tiledMap) {
-            for (const exit of this.tiledMap.zoneExits) {
-              const dx = pos.x - exit.tileX;
-              const dz = pos.z - exit.tileZ;
-              if (dx >= 0 && dx < exit.tileWidth && dz >= 0 && dz < exit.tileHeight) {
-                if (!this.zoneChangeRequested && this.network?.isConnected()) {
-                  this.zoneChangeRequested = true;
-                  this.network.sendReliable(packReliable(Opcode.ZONE_CHANGE_REQUEST, { exitId: exit.exitId }));
+          // Check zone transitions, exits and dungeon entrances — only when player moves to a new tile
+          const tileX = Math.round(pos.x);
+          const tileZ = Math.round(pos.z);
+          if (tileX !== this.lastCheckedTileX || tileZ !== this.lastCheckedTileZ) {
+            this.lastCheckedTileX = tileX;
+            this.lastCheckedTileZ = tileZ;
+
+            if (this.hud && this.tiledMap) {
+              const zone = this.tiledMap.safeZones.find((sz) => {
+                const dx = tileX - sz.tileX;
+                const dz = tileZ - sz.tileZ;
+                return dx >= 0 && dx < sz.tileWidth && dz >= 0 && dz < sz.tileHeight;
+              });
+              const zoneName = zone ? (zone.properties.zoneName as string) ?? zone.name : null;
+              if (zoneName !== this.currentZoneName) {
+                if (zoneName) {
+                  this.hud.showZoneNotification(zoneName);
+                } else if (this.currentZoneName) {
+                  this.hud.showZoneNotification("Wilderness");
                 }
-                break;
+                this.currentZoneName = zoneName;
               }
             }
-            // Check dungeon entrances
-            for (const entrance of this.tiledMap.dungeonEntrances) {
-              const dx = pos.x - entrance.tileX;
-              const dz = pos.z - entrance.tileZ;
-              if (dx >= 0 && dx < entrance.tileWidth && dz >= 0 && dz < entrance.tileHeight) {
-                if (!this.zoneChangeRequested && this.network?.isConnected()) {
-                  this.zoneChangeRequested = true;
-                  this.network.sendReliable(packReliable(Opcode.DUNGEON_ENTER, {}));
-                  if (this.hud) this.hud.chatBox.addSystemMessage(`Entering ${entrance.dungeonName}...`);
+            // Check zone exits
+            if (this.tiledMap) {
+              for (const exit of this.tiledMap.zoneExits) {
+                const dx = tileX - exit.tileX;
+                const dz = tileZ - exit.tileZ;
+                if (dx >= 0 && dx < exit.tileWidth && dz >= 0 && dz < exit.tileHeight) {
+                  if (!this.zoneChangeRequested && this.network?.isConnected()) {
+                    this.zoneChangeRequested = true;
+                    this.network.sendReliable(packReliable(Opcode.ZONE_CHANGE_REQUEST, { exitId: exit.exitId }));
+                  }
+                  break;
                 }
-                break;
+              }
+              // Check dungeon entrances
+              for (const entrance of this.tiledMap.dungeonEntrances) {
+                const dx = tileX - entrance.tileX;
+                const dz = tileZ - entrance.tileZ;
+                if (dx >= 0 && dx < entrance.tileWidth && dz >= 0 && dz < entrance.tileHeight) {
+                  if (!this.zoneChangeRequested && this.network?.isConnected()) {
+                    this.zoneChangeRequested = true;
+                    this.network.sendReliable(packReliable(Opcode.DUNGEON_ENTER, {}));
+                    if (this.hud) this.hud.chatBox.addSystemMessage(`Entering ${entrance.dungeonName}...`);
+                  }
+                  break;
+                }
               }
             }
           }
@@ -639,29 +634,23 @@ export class Game {
       this.updateHUD();
       this.camera.update(frameDt);
 
-      // Update click-to-move marker
-      if (this.moveMarker) {
-        if (this.moveGoal) {
-          const { sx: msx, sy: msy } = worldToScreen(this.moveGoal.x, this.moveGoal.z, 0);
-          this.moveMarker.position.set(msx, msy);
-          this.moveMarker.visible = true;
-        } else {
-          this.moveMarker.visible = false;
-        }
-      }
-
-      // Update tile hover cursor
-      if (this.hoverCursor) {
+      // Update canvas cursor based on entity under mouse
+      {
         const mouse = this.input.getMousePosition();
-        const wc = this.pixiApp.worldContainer;
-        const zoom = this.camera.getZoom();
-        const worldPxX = (mouse.x - wc.x) / zoom;
-        const worldPxY = (mouse.y - wc.y) / zoom;
-        const { tileX, tileZ } = screenToWorld(worldPxX, worldPxY);
-        const snappedX = Math.round(tileX);
-        const snappedZ = Math.round(tileZ);
-        const { sx, sy } = worldToScreen(snappedX, snappedZ, 0);
-        this.hoverCursor.position.set(sx, sy);
+        const hoveredId = this.pickEntityAt(mouse.x, mouse.y);
+        let newCursor = "default";
+        if (hoveredId) {
+          const identity = this.entityManager.getComponent<IdentityComponent>(hoveredId, "identity");
+          if (identity?.entityType === "npc") {
+            newCursor = "crosshair";
+          } else if (identity?.entityType === "object") {
+            newCursor = "grab";
+          }
+        }
+        if (newCursor !== this.lastCursor) {
+          this.canvas.style.cursor = newCursor;
+          this.lastCursor = newCursor;
+        }
       }
 
       this.pixiApp.render();
@@ -791,6 +780,15 @@ export class Game {
       }
     }
 
+    hud.settingsMenu.setOnQualityChange((quality) => {
+      const sheet = this.entityRenderer.getSpriteSheet();
+      if (sheet && "setQuality" in sheet) {
+        (sheet as WorkbenchSpriteSheet).setQuality(quality);
+        // Re-warm common NPC types at the new quality
+        (sheet as WorkbenchSpriteSheet).warmup(["rabbit", "skeleton", "goblin", "wolf", "human"]);
+      }
+    });
+
     hud.settingsMenu.setOnVolumeChange((master, music, sfx) => {
       this.audioSystem.setPreferences({ masterVolume: master, musicVolume: music, sfxVolume: sfx });
       const token = sessionStorage.getItem("gameJwt") || "";
@@ -816,11 +814,17 @@ export class Game {
         this.hud.worldMap.toggle();
       }
       if (e.code === "Escape") {
-        if (this.hud?.worldMap.isVisible()) {
+        if (this.hud?.settingsMenu.isSettingsOpen()) {
+          this.hud.settingsMenu.closeSettings(); // back to pause menu
+        } else if (this.hud?.settingsMenu.isVisible()) {
+          this.hud.settingsMenu.hide(); // close pause menu
+        } else if (this.hud?.worldMap.isVisible()) {
           this.hud.worldMap.toggle();
         } else if (this.selectedTargetId) {
           this.selectTarget(null);
           this.entityRenderer.setAutoAttacking(false);
+        } else {
+          this.hud?.settingsMenu.show();
         }
       }
     });
@@ -833,6 +837,7 @@ export class Game {
   /** Process WASD input and apply to movement component. Called every render frame for responsiveness. */
   private processInput() {
     if (!this.localEntityId) return;
+    if (this.hud?.settingsMenu.isVisible()) return; // pause menu open — no movement
     const inputState = this.input.getState();
     const movement = this.entityManager.getComponent<MovementComponent>(this.localEntityId, "movement");
     if (!movement) return;

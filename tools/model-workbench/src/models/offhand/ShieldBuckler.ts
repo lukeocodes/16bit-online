@@ -1,5 +1,6 @@
 import type { Graphics } from "pixi.js";
 import type { Model, RenderContext, DrawCall, AttachmentPoint } from "../types";
+import { DEPTH_FAR_LIMB, DEPTH_NEAR_LIMB } from "../types";
 import { darken, lighten } from "../palette";
 
 /**
@@ -21,13 +22,14 @@ export class ShieldBuckler implements Model {
 
     return [
       {
-        depth: facingCamera ? 18 : 48,
+        depth: facingCamera ? DEPTH_FAR_LIMB + 3 : DEPTH_NEAR_LIMB + 3,
         draw: (g: Graphics, s: number) => {
+          const sz = ctx.slotParams.size;
           const ox = iso.x * 3;
           const oy = iso.y * 1.5;
           const cx = wrist.x + ox;
           const cy = wrist.y - 1 + oy;
-          const r = 5 * wf;
+          const r = 5 * sz * wf;
 
           // Small round shield
           g.circle(cx * s, cy * s, r * s);

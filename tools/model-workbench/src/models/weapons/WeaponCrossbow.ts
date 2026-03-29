@@ -1,5 +1,6 @@
 import type { Graphics } from "pixi.js";
 import type { Model, RenderContext, DrawCall, AttachmentPoint } from "../types";
+import { DEPTH_FAR_LIMB, DEPTH_NEAR_LIMB } from "../types";
 import { darken, lighten } from "../palette";
 
 /**
@@ -10,6 +11,7 @@ export class WeaponCrossbow implements Model {
   readonly name = "Crossbow";
   readonly category = "weapon" as const;
   readonly slot = "hand-R" as const;
+  readonly twoHanded = true;
 
   getDrawCalls(ctx: RenderContext): DrawCall[] {
     const { skeleton, facingCamera } = ctx;
@@ -19,15 +21,16 @@ export class WeaponCrossbow implements Model {
     const angle = Math.atan2(wrist.y - elbow.y, wrist.x - elbow.x);
 
     return [{
-      depth: facingCamera ? 57 : 23,
+      depth: facingCamera ? DEPTH_NEAR_LIMB + 3 : DEPTH_FAR_LIMB + 3,
       draw: (g: Graphics, s: number) => {
+        const sz = ctx.slotParams.size;
         const ca = Math.cos(angle);
         const sa = Math.sin(angle);
         const px = -sa; // perpendicular
         const py = ca;
 
         // Stock (wooden body)
-        const stockLen = 14;
+        const stockLen = 14 * sz;
         const stockEndX = wrist.x + ca * stockLen;
         const stockEndY = wrist.y + sa * stockLen;
         g.moveTo(wrist.x * s, wrist.y * s);
@@ -40,7 +43,7 @@ export class WeaponCrossbow implements Model {
         // Prod (bow arms) at the front
         const prodX = wrist.x + ca * stockLen * 0.8;
         const prodY = wrist.y + sa * stockLen * 0.8;
-        const armLen = 7;
+        const armLen = 7 * sz;
 
         // Left arm
         g.moveTo(prodX * s, prodY * s);

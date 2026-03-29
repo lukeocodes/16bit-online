@@ -6,6 +6,7 @@ import type {
   Skeleton,
   AttachmentPoint,
 } from "../types";
+import { DEPTH_HEAD } from "../types";
 
 export class HelmetPlate implements Model {
   readonly id = "helmet-plate";
@@ -24,7 +25,7 @@ export class HelmetPlate implements Model {
     return [
       {
         // Helm dome — fully opaque to completely cover hair/eyes underneath
-        depth: 54,
+        depth: DEPTH_HEAD + 1,
         draw: (g: Graphics, s: number) => {
           g.ellipse(head.x * s, (head.y - 0.5) * s, (r + 1.5) * wf * s, (r + 1) * s);
           g.fill(palette.body); // fully opaque — no alpha
@@ -34,7 +35,7 @@ export class HelmetPlate implements Model {
       },
       {
         // Helm details — nose guard and eye slit drawn on top of dome
-        depth: 55,
+        depth: DEPTH_HEAD + 2,
         draw: (g: Graphics, s: number) => {
           // Highlight ridge on top
           g.moveTo(head.x * s, (head.y - r - 1) * s);

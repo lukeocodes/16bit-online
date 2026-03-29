@@ -13,50 +13,52 @@ import { registry } from "./registry";
  *   - has(entityType: string): boolean
  *   - dispose(): void
  *
- * But renders frames using the workbench model registry instead of hardcoded
- * draw functions. This means all 74+ workbench models are available in-game.
+ * Quality tiers (renderScale):
+ *   Low    = 2  →  96×128px  — minimal memory, low-DPI or low-zoom use
+ *   Medium = 3  → 144×192px  — balanced
+ *   High   = 4  → 192×256px  — crisp at 2× zoom / Retina  (auto-detected default)
+ *   Ultra  = 6  → 288×384px  — crisp at 4× zoom / 4K displays
  *
- * Usage in game client:
- * ```typescript
- * // Import workbench model barrels
- * import "model-workbench/src/models/bodies/index";
- * import "model-workbench/src/models/weapons/index";
- * // ... etc
- *
- * // Create adapter
- * const spriteSheet = new WorkbenchSpriteSheet(app);
- *
- * // Use exactly like EntitySpriteSheet
- * entityRenderer.setSpriteSheet(spriteSheet);
- * ```
- *
- * Entity name → model mapping:
- * The game uses entity names like "Rabbit Burrow", "Skeleton Warrior" etc.
- * This class maps those names to workbench model IDs using substring matching,
- * falling back to "human-body" for unknown types.
+ * Auto-detect default: based on devicePixelRatio so the effective texture coverage
+ * stays roughly constant across displays.
  */
 
-// Render at 2× the workbench's native frame so lines stay crisp at game scale.
-// The sprite is displayed at displayScale (0.5) to keep the visual size consistent.
-const RENDER_SCALE = 2;
 const WALK_PHASES = 8;
-const FRAME_W_RENDER = 48 * RENDER_SCALE;  // 96
-const FRAME_H_RENDER = 64 * RENDER_SCALE;  // 128
+const NATIVE_FRAME_W = 48;
+const NATIVE_FRAME_H = 64;
+
+export type RenderQuality = "low" | "medium" | "high" | "ultra";
+
+const QUALITY_SCALE: Record<RenderQuality, number> = {
+  low:   2,
+  medium: 3,
+  high:  4,
+  ultra: 6,
+};
+
+/**
+ * Pick a sensible default quality based on devicePixelRatio.
+ * Targets an effective coverage of ~8× the native workbench unit.
+ */
+export function autoDetectQuality(): RenderQuality {
+  const dpr = (typeof window !== "undefined" ? window.devicePixelRatio : 1) || 1;
+  if (dpr >= 2.5) return "ultra";
+  if (dpr >= 1.5) return "high";
+  if (dpr >= 1.2) return "medium";
+  return "low";
+}
 
 /**
  * Maps game entity names (substring) to workbench model IDs.
  * Order matters — first match wins.
  */
 const NAME_TO_MODEL: [string, string][] = [
-  // Boss variants (check first — more specific)
   ["king rabbit", "king-rabbit"],
   ["skeleton lord", "skeleton-lord"],
   ["alpha wolf", "alpha-wolf"],
   ["goblin chieftain", "goblin-chieftain"],
   ["imp overlord", "imp-overlord"],
   ["elder bear", "elder-bear"],
-
-  // Base NPCs
   ["rabbit", "rabbit-body"],
   ["skeleton", "skeleton-body"],
   ["goblin", "goblin-body"],
@@ -67,28 +69,21 @@ const NAME_TO_MODEL: [string, string][] = [
   ["bear", "bear-body"],
 ];
 
-/**
- * Default palettes per NPC type (matches the game's existing entity colors).
- */
 const NPC_PALETTES: Record<string, ModelPalette> = {};
 
 function getNpcPalette(modelId: string): ModelPalette {
   if (!NPC_PALETTES[modelId]) {
-    // Default NPC palette — models use their own hardcoded colors anyway
     NPC_PALETTES[modelId] = computePalette(0xf0c8a0, 0x5c3a1e, 0x334455, 0x4466aa, 0x886633, "none");
   }
   return NPC_PALETTES[modelId];
 }
 
-/**
- * Resolve a game entity name to a workbench model ID.
- */
 function resolveModelId(entityName: string): string {
   const lower = entityName.toLowerCase();
   for (const [pattern, modelId] of NAME_TO_MODEL) {
     if (lower.includes(pattern)) return modelId;
   }
-  return "human-body"; // fallback for players
+  return "human-body";
 }
 
 type EntityFrames = Texture[];
@@ -96,20 +91,41 @@ type EntityFrames = Texture[];
 export class WorkbenchSpriteSheet {
   private app: Application;
   private cache = new Map<string, EntityFrames>();
+  private renderScale: number;
 
-  /** Scale sprites by this when adding to the scene to get correct visual size. */
-  readonly displayScale = 1 / RENDER_SCALE;
-  /** Number of walk animation frames per direction. */
+  get displayScale(): number {
+    return (1 / this.renderScale) * 1.5;
+  }
+
+  get displayedFrameHeight(): number {
+    return NATIVE_FRAME_H * this.renderScale * this.displayScale;
+  }
+
   readonly walkPhases = WALK_PHASES;
 
-  constructor(app: Application) {
+  constructor(app: Application, quality: RenderQuality = autoDetectQuality()) {
     this.app = app;
+    this.renderScale = QUALITY_SCALE[quality];
   }
 
   /**
-   * Get a directional + walk-phase texture frame for an entity type.
-   * walkPhaseIndex 0..WALK_PHASES-1 (defaults to 0 = idle pose).
+   * Change render quality at runtime. Flushes the texture cache so all
+   * subsequent getFrame / getCompositeFrame calls regenerate at the new scale.
    */
+  setQuality(quality: RenderQuality): void {
+    const newScale = QUALITY_SCALE[quality];
+    if (newScale === this.renderScale) return;
+    this.dispose();
+    this.renderScale = newScale;
+  }
+
+  getQuality(): RenderQuality {
+    for (const [q, s] of Object.entries(QUALITY_SCALE) as [RenderQuality, number][]) {
+      if (s === this.renderScale) return q;
+    }
+    return "high";
+  }
+
   getFrame(entityType: string, direction: number, walkPhaseIndex = 0): Texture {
     if (!this.cache.has(entityType)) {
       this.cache.set(entityType, this.generateFrames(entityType));
@@ -120,18 +136,11 @@ export class WorkbenchSpriteSheet {
     return frames[dir * WALK_PHASES + phase] ?? frames[0];
   }
 
-  /**
-   * Check if frames exist (or can be generated) for an entity type.
-   */
   has(entityType: string): boolean {
-    // We can always generate — resolve the name to a model
     const modelId = resolveModelId(entityType);
     return registry.has(modelId);
   }
 
-  /**
-   * Get a directional texture for a composite character (player with equipment).
-   */
   getCompositeFrame(config: CompositeConfig, direction: number, walkPhaseIndex = 0): Texture {
     const key = this.compositeKey(config);
     if (!this.cache.has(key)) {
@@ -143,9 +152,6 @@ export class WorkbenchSpriteSheet {
     return frames[dir * WALK_PHASES + phase] ?? frames[0];
   }
 
-  /**
-   * Invalidate composite cache when equipment changes.
-   */
   invalidateComposite(config: CompositeConfig): void {
     const key = this.compositeKey(config);
     const frames = this.cache.get(key);
@@ -157,9 +163,14 @@ export class WorkbenchSpriteSheet {
     }
   }
 
-  /**
-   * Destroy all cached textures.
-   */
+  warmup(entityTypes: string[]): void {
+    for (const type of entityTypes) {
+      if (!this.cache.has(type)) {
+        this.cache.set(type, this.generateFrames(type));
+      }
+    }
+  }
+
   dispose(): void {
     for (const frames of this.cache.values()) {
       for (const f of frames) {
@@ -171,10 +182,16 @@ export class WorkbenchSpriteSheet {
 
   // ─── Private ─────────────────────────────────────────────────────
 
+  private get frameW(): number { return NATIVE_FRAME_W * this.renderScale; }
+  private get frameH(): number { return NATIVE_FRAME_H * this.renderScale; }
+
   private generateFrames(entityType: string): EntityFrames {
     const modelId = resolveModelId(entityType);
     const palette = getNpcPalette(modelId);
     const frames: Texture[] = [];
+    const s = this.renderScale;
+    const fw = this.frameW;
+    const fh = this.frameH;
 
     for (let dir = 0; dir < DIRECTION_COUNT; dir++) {
       for (let p = 0; p < WALK_PHASES; p++) {
@@ -182,22 +199,22 @@ export class WorkbenchSpriteSheet {
         const container = new Container();
         const g = new Graphics();
         container.addChild(g);
-
-        g.position.set(FRAME_W_RENDER / 2, FRAME_H_RENDER - 4 * RENDER_SCALE);
-        renderModel(g, modelId, palette, dir, walkPhase, RENDER_SCALE, false);
-
-        const rt = RenderTexture.create({ width: FRAME_W_RENDER, height: FRAME_H_RENDER });
+        g.position.set(fw / 2, fh - 4 * s);
+        renderModel(g, modelId, palette, dir, walkPhase, s, false);
+        const rt = RenderTexture.create({ width: fw, height: fh });
         this.app.renderer.render({ container, target: rt });
         frames.push(rt);
         container.destroy();
       }
     }
-
     return frames;
   }
 
   private generateCompositeFrames(config: CompositeConfig): EntityFrames {
     const frames: Texture[] = [];
+    const s = this.renderScale;
+    const fw = this.frameW;
+    const fh = this.frameH;
 
     for (let dir = 0; dir < DIRECTION_COUNT; dir++) {
       for (let p = 0; p < WALK_PHASES; p++) {
@@ -205,17 +222,14 @@ export class WorkbenchSpriteSheet {
         const container = new Container();
         const g = new Graphics();
         container.addChild(g);
-
-        g.position.set(FRAME_W_RENDER / 2, FRAME_H_RENDER - 4 * RENDER_SCALE);
-        renderComposite(g, config, dir, walkPhase, RENDER_SCALE);
-
-        const rt = RenderTexture.create({ width: FRAME_W_RENDER, height: FRAME_H_RENDER });
+        g.position.set(fw / 2, fh - 4 * s);
+        renderComposite(g, config, dir, walkPhase, s);
+        const rt = RenderTexture.create({ width: fw, height: fh });
         this.app.renderer.render({ container, target: rt });
         frames.push(rt);
         container.destroy();
       }
     }
-
     return frames;
   }
 

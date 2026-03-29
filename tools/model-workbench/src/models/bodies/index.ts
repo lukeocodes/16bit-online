@@ -1,44 +1,17 @@
+import type { Model } from "../types";
 import { registry } from "../registry";
-import { HumanBody } from "./HumanBody";
-import { ElfBody } from "./ElfBody";
-import { DwarfBody } from "./DwarfBody";
-import { SkeletonBody } from "./SkeletonBody";
-import { GoblinBody } from "./GoblinBody";
-import { RabbitBody } from "./RabbitBody";
-import { ImpBody } from "./ImpBody";
-import { WolfBody } from "./WolfBody";
-import { OgreBody } from "./OgreBody";
-import { WraithBody } from "./WraithBody";
-import { BearBody } from "./BearBody";
-import { KingRabbit } from "./KingRabbit";
-import { SkeletonLord } from "./SkeletonLord";
-import { AlphaWolf } from "./AlphaWolf";
 
-registry.register(new HumanBody());
-registry.register(new ElfBody());
-registry.register(new DwarfBody());
-registry.register(new SkeletonBody());
-registry.register(new GoblinBody());
-registry.register(new RabbitBody());
-registry.register(new ImpBody());
-registry.register(new WolfBody());
-registry.register(new OgreBody());
-registry.register(new WraithBody());
-registry.register(new BearBody());
-registry.register(new KingRabbit());
-registry.register(new SkeletonLord());
-registry.register(new AlphaWolf());
-
-import { GoblinChieftain } from "./GoblinChieftain";
-import { ImpOverlord } from "./ImpOverlord";
-import { ElderBear } from "./ElderBear";
-
-registry.register(new GoblinChieftain());
-registry.register(new ImpOverlord());
-registry.register(new ElderBear());
-
-import { GnomeBody } from "./GnomeBody";
-registry.register(new GnomeBody());
-
-import { WitchBody } from "./WitchBody";
-registry.register(new WitchBody());
+const modules = import.meta.glob("./*.ts", { eager: true });
+for (const [path, mod] of Object.entries(modules)) {
+  if (path === "./index.ts") continue;
+  for (const val of Object.values(mod as Record<string, unknown>)) {
+    if (typeof val !== "function") continue;
+    try {
+      const inst = new (val as new () => unknown)();
+      const m = inst as Partial<Model>;
+      if (typeof m.getDrawCalls === "function" && typeof m.id === "string" && m.id) {
+        registry.register(inst as Model);
+      }
+    } catch { /* not a model class */ }
+  }
+}

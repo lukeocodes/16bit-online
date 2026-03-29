@@ -5,6 +5,7 @@ import type {
   DrawCall,
   AttachmentPoint,
 } from "../types";
+import { DEPTH_HEAD, DEPTH_BODY, DEPTH_FAR_LIMB } from "../types";
 import { darken } from "../palette";
 
 /**
@@ -30,9 +31,9 @@ export class HairPonytail implements Model {
 
     const calls: DrawCall[] = [];
 
-    // Ponytail behind head (depth 22 — behind torso)
+    // Ponytail: behind body when facing camera, above back armor when facing away
     calls.push({
-      depth: 22,
+      depth: facingCamera ? DEPTH_FAR_LIMB - 5 : DEPTH_BODY + 6,
       draw: (g: Graphics, s: number) => {
         // Tie point at back of head
         const tieX = head.x - iso.x * 3;
@@ -85,7 +86,7 @@ export class HairPonytail implements Model {
     // Hair cap on head
     if (!facingCamera) {
       calls.push({
-        depth: 53,
+        depth: DEPTH_HEAD + 1,
         draw: (g: Graphics, s: number) => {
           g.ellipse(
             head.x * s,
@@ -100,7 +101,7 @@ export class HairPonytail implements Model {
 
     // Front bangs (shorter, swept)
     calls.push({
-      depth: 53,
+      depth: DEPTH_HEAD + 1,
       draw: (g: Graphics, s: number) => {
         if (facingCamera || sideView) {
           // Swept bangs
@@ -112,8 +113,8 @@ export class HairPonytail implements Model {
           );
           g.fill(hair);
 
-          // Side coverage
-          if (sideView) {
+          // Side coverage (not when facing camera — SW/SE already have front bangs)
+          if (sideView && !facingCamera) {
             const hx = head.x + iso.x * 2;
             g.ellipse(
               hx * s,

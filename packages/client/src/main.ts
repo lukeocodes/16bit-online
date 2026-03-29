@@ -68,6 +68,16 @@ async function boot() {
       if (hud && game) {
         game.setHUD(hud);
         if (selectedChar) hud.setPlayerName(selectedChar.name);
+
+        hud.settingsMenu.setOnSwitchCharacter(() => {
+          if (game) { game.stop(); game = null; }
+          router.navigateTo("character-select");
+        });
+        hud.settingsMenu.setOnDisconnect(() => {
+          if (game) { game.stop(); game = null; }
+          session.clearSession();
+          router.navigateTo("login");
+        });
       }
 
       // Expose audio dev API for console testing

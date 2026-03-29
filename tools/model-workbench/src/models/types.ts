@@ -1,5 +1,28 @@
 import type { Graphics } from "pixi.js";
 
+// ─── Structural plane depth bases (walls, floors) ────────────────────
+// Assign face depths as DEPTH_X + 0, +1, +2 … (max 9 faces per direction).
+// E < N < S < W ensures correct layering when models share a tile (corners).
+// Range 0–39. Body/character depths start above this range.
+export const DEPTH_E = 0;   // east-facing planes  — furthest from camera
+export const DEPTH_N = 10;  // north-facing planes
+export const DEPTH_S = 20;  // south-facing planes
+export const DEPTH_W = 30;  // west-facing planes  — closest to camera
+
+// ─── Character composite depth layers ────────────────────────────────
+// Used by all body models and their attachments. Starts at 40 so bodies
+// always render above structural elements in a shared composite render.
+// Assign part depths as DEPTH_LAYER + small offset (0–9).
+export const DEPTH_SHADOW    =  0;  // ground shadow (shared with structural base)
+export const DEPTH_FAR_LIMB  = 40;  // limb/appendage away from camera
+export const DEPTH_BODY      = 50;  // torso, pelvis, core
+export const DEPTH_COLLAR    = 58;  // neck/collar pieces — behind face, above torso armor
+export const DEPTH_HEAD      = 60;  // head
+export const DEPTH_NEAR_LIMB = 70;  // limb/appendage toward camera
+// For direction-conditional arm depth use:
+//   far arm:  facingCamera ? DEPTH_FAR_LIMB + x : DEPTH_NEAR_LIMB + x
+//   near arm: facingCamera ? DEPTH_NEAR_LIMB + x : DEPTH_FAR_LIMB + x
+
 // ─── Primitives ─────────────────────────────────────────────────────
 
 export interface V {
@@ -147,6 +170,8 @@ export interface Model {
   readonly slot: AttachmentSlot;
   /** False for props/structures that are never animated. Defaults to true. */
   readonly isAnimated?: boolean;
+  /** Two-handed weapons occupy both hands — the offhand slot is blocked. */
+  readonly twoHanded?: boolean;
   getDrawCalls(ctx: RenderContext): DrawCall[];
   getAttachmentPoints(skeleton: Skeleton): Record<string, AttachmentPoint>;
 }
@@ -169,3 +194,4 @@ export interface CompositeConfig {
   /** Body height multiplier (0.85 = short, 1.0 = normal, 1.15 = tall) */
   height: number;
 }
+

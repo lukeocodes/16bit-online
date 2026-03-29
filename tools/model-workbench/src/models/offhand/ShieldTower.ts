@@ -1,5 +1,6 @@
 import type { Graphics } from "pixi.js";
 import type { Model, RenderContext, DrawCall, AttachmentPoint } from "../types";
+import { DEPTH_FAR_LIMB, DEPTH_NEAR_LIMB } from "../types";
 import { darken, lighten } from "../palette";
 
 /**
@@ -21,14 +22,15 @@ export class ShieldTower implements Model {
 
     return [
       {
-        depth: facingCamera ? 18 : 48,
+        depth: facingCamera ? DEPTH_FAR_LIMB + 3 : DEPTH_NEAR_LIMB + 3,
         draw: (g: Graphics, s: number) => {
+          const sz = ctx.slotParams.size;
           const ox = iso.x * 4;
           const oy = iso.y * 2;
           const cx = wrist.x + ox;
           const cy = wrist.y - 6 + oy;
-          const sw = 8 * wf;
-          const sh = 14;
+          const sw = 8 * sz * wf;
+          const sh = 14 * sz;
 
           // Tall rectangular shield
           g.roundRect((cx - sw) * s, (cy - sh) * s, sw * 2 * s, sh * 2 * s, 2 * s);

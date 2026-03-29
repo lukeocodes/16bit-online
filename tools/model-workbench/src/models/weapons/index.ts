@@ -1,37 +1,17 @@
+import type { Model } from "../types";
 import { registry } from "../registry";
-import { WeaponSword } from "./WeaponSword";
-import { WeaponAxe } from "./WeaponAxe";
-import { WeaponMace } from "./WeaponMace";
-import { WeaponSpear } from "./WeaponSpear";
-import { WeaponBow } from "./WeaponBow";
-import { WeaponStaff } from "./WeaponStaff";
-import { WeaponWand } from "./WeaponWand";
-import { WeaponDagger } from "./WeaponDagger";
-import { WeaponCrossbow } from "./WeaponCrossbow";
-import { WeaponFlail } from "./WeaponFlail";
-import { WeaponHalberd } from "./WeaponHalberd";
-import { WeaponThrowingKnife } from "./WeaponThrowingKnife";
 
-registry.register(new WeaponSword());
-registry.register(new WeaponAxe());
-registry.register(new WeaponMace());
-registry.register(new WeaponSpear());
-registry.register(new WeaponBow());
-registry.register(new WeaponStaff());
-registry.register(new WeaponWand());
-registry.register(new WeaponDagger());
-registry.register(new WeaponCrossbow());
-registry.register(new WeaponFlail());
-registry.register(new WeaponHalberd());
-registry.register(new WeaponThrowingKnife());
-
-export {
-  WeaponSword,
-  WeaponAxe,
-  WeaponMace,
-  WeaponSpear,
-  WeaponBow,
-  WeaponStaff,
-  WeaponWand,
-  WeaponDagger,
-};
+const modules = import.meta.glob("./*.ts", { eager: true });
+for (const [path, mod] of Object.entries(modules)) {
+  if (path === "./index.ts") continue;
+  for (const val of Object.values(mod as Record<string, unknown>)) {
+    if (typeof val !== "function") continue;
+    try {
+      const inst = new (val as new () => unknown)();
+      const m = inst as Partial<Model>;
+      if (typeof m.getDrawCalls === "function" && typeof m.id === "string" && m.id) {
+        registry.register(inst as Model);
+      }
+    } catch { /* not a model class */ }
+  }
+}

@@ -1,5 +1,6 @@
 import type { Graphics } from "pixi.js";
 import type { Model, RenderContext, DrawCall, AttachmentPoint, V } from "../types";
+import { DEPTH_FAR_LIMB, DEPTH_BODY } from "../types";
 
 /**
  * Mail shoulders — chain mail mantlets draped over shoulders.
@@ -15,27 +16,28 @@ export class ShouldersMail implements Model {
     const j = skeleton.joints;
     const calls: DrawCall[] = [];
 
+    const sz = ctx.slotParams.size;
     calls.push({
-      depth: facingCamera ? 28 : 42,
-      draw: (g, s) => this.drawShoulder(g, j, palette, s, farSide),
+      depth: facingCamera ? DEPTH_FAR_LIMB + 8 : DEPTH_BODY + 3,
+      draw: (g, s) => this.drawShoulder(g, j, palette, s, farSide, sz),
     });
     calls.push({
-      depth: facingCamera ? 42 : 28,
-      draw: (g, s) => this.drawShoulder(g, j, palette, s, nearSide),
+      depth: facingCamera ? DEPTH_BODY + 3 : DEPTH_FAR_LIMB + 8,
+      draw: (g, s) => this.drawShoulder(g, j, palette, s, nearSide, sz),
     });
 
     return calls;
   }
 
-  private drawShoulder(g: Graphics, j: Record<string, V>, p: any, s: number, side: "L" | "R"): void {
+  private drawShoulder(g: Graphics, j: Record<string, V>, p: any, s: number, side: "L" | "R", sz = 1): void {
     const shoulder = j[`shoulder${side}`];
     const elbow = j[`elbow${side}`];
     const sign = side === "L" ? -1 : 1;
 
     const cx = shoulder.x + sign * 1;
     const cy = shoulder.y;
-    const w = 6.5;
-    const h = 5.5;
+    const w = 6.5 * sz;
+    const h = 5.5 * sz;
 
     // Mail drape shape (slightly longer, flows down more)
     g.moveTo((cx - w * sign * 0.3) * s, (cy - h * 0.6) * s);

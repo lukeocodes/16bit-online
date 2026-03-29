@@ -27,8 +27,6 @@ const T  = 22;
 const H2 = T / 2;         // 11
 const H  = 2;              // floor thickness — half the wall DX (4 / 2 = 2)
 
-const TRIM = 0x3a3028;
-
 type V = { x: number; y: number };
 
 // Ground-level tile diamond corners (bottom of the slab)
@@ -82,8 +80,6 @@ export class FloorTile implements Model {
           } else {
             g.fill(color);
           }
-          g.poly(flat);
-          g.stroke({ width: s * 0.5, color: TRIM, alpha: 0.5 });
         },
       });
     };

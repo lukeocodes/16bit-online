@@ -221,17 +221,24 @@ function gameTick() {
   // Position broadcast
   broadcastPositions();
 
-  // Periodic progress save to DB (every 30s)
+  // Periodic progress + position save to DB (every 30s)
+  // Position is always saved regardless of dirty flag — movement alone doesn't set dirty
   progressSaveCounter++;
   if (progressSaveCounter >= PROGRESS_SAVE_INTERVAL) {
     progressSaveCounter = 0;
     for (const [entityId, prog] of playerProgress) {
-      if (!prog.dirty) continue;
-      prog.dirty = false;
       const entity = entityStore.get(entityId);
       if (!entity) continue;
+      const update: Record<string, unknown> = {
+        posX: entity.x, posY: entity.y, posZ: entity.z, mapId: entity.mapId,
+      };
+      if (prog.dirty) {
+        prog.dirty = false;
+        update.xp = prog.xp;
+        update.level = prog.level;
+      }
       db.update(characters)
-        .set({ xp: prog.xp, level: prog.level, posX: entity.x, posY: entity.y, posZ: entity.z })
+        .set(update)
         .where(eq(characters.id, prog.characterId))
         .catch(err => console.error(`[DB] Periodic save failed for ${entityId}:`, err));
     }

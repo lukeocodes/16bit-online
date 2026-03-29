@@ -1,53 +1,17 @@
+import type { Model } from "../types";
 import { registry } from "../registry";
-import { ArmorCloth } from "./ArmorCloth";
-import { ArmorLeather } from "./ArmorLeather";
-import { ArmorMail } from "./ArmorMail";
-import { ArmorPlate } from "./ArmorPlate";
-import { LegsCloth } from "./LegsCloth";
-import { LegsLeather } from "./LegsLeather";
-import { LegsMail } from "./LegsMail";
-import { LegsPlate } from "./LegsPlate";
-import { BootsCloth } from "./BootsCloth";
-import { BootsLeather } from "./BootsLeather";
-import { BootsMail } from "./BootsMail";
-import { BootsPlate } from "./BootsPlate";
-import { ShouldersCloth } from "./ShouldersCloth";
-import { ShouldersLeather } from "./ShouldersLeather";
-import { ShouldersMail } from "./ShouldersMail";
-import { ShouldersPlate } from "./ShouldersPlate";
-import { GauntletsCloth } from "./GauntletsCloth";
-import { GauntletsLeather } from "./GauntletsLeather";
-import { GauntletsMail } from "./GauntletsMail";
-import { GauntletsPlate } from "./GauntletsPlate";
 
-registry.register(new ArmorCloth());
-registry.register(new ArmorLeather());
-registry.register(new ArmorMail());
-registry.register(new ArmorPlate());
-registry.register(new LegsCloth());
-registry.register(new LegsLeather());
-registry.register(new LegsMail());
-registry.register(new LegsPlate());
-registry.register(new BootsCloth());
-registry.register(new BootsLeather());
-registry.register(new BootsMail());
-registry.register(new BootsPlate());
-registry.register(new ShouldersCloth());
-registry.register(new ShouldersLeather());
-registry.register(new ShouldersMail());
-registry.register(new ShouldersPlate());
-registry.register(new GauntletsCloth());
-registry.register(new GauntletsLeather());
-registry.register(new GauntletsMail());
-registry.register(new GauntletsPlate());
-
-// Race/theme armor variants
-import { ArmorDragon } from "./ArmorDragon";
-import { ArmorElven } from "./ArmorElven";
-import { ArmorSkeleton } from "./ArmorSkeleton";
-import { ArmorOgreskin } from "./ArmorOgreskin";
-
-registry.register(new ArmorDragon());
-registry.register(new ArmorElven());
-registry.register(new ArmorSkeleton());
-registry.register(new ArmorOgreskin());
+const modules = import.meta.glob("./*.ts", { eager: true });
+for (const [path, mod] of Object.entries(modules)) {
+  if (path === "./index.ts") continue;
+  for (const val of Object.values(mod as Record<string, unknown>)) {
+    if (typeof val !== "function") continue;
+    try {
+      const inst = new (val as new () => unknown)();
+      const m = inst as Partial<Model>;
+      if (typeof m.getDrawCalls === "function" && typeof m.id === "string" && m.id) {
+        registry.register(inst as Model);
+      }
+    } catch { /* not a model class */ }
+  }
+}

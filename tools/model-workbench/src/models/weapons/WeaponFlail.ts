@@ -1,5 +1,6 @@
 import type { Graphics } from "pixi.js";
 import type { Model, RenderContext, DrawCall, AttachmentPoint } from "../types";
+import { DEPTH_FAR_LIMB, DEPTH_NEAR_LIMB } from "../types";
 import { darken } from "../palette";
 
 /**
@@ -20,13 +21,14 @@ export class WeaponFlail implements Model {
     const walkPhase = skeleton.walkPhase;
 
     return [{
-      depth: facingCamera ? 57 : 23,
+      depth: facingCamera ? DEPTH_NEAR_LIMB + 3 : DEPTH_FAR_LIMB + 3,
       draw: (g: Graphics, s: number) => {
+        const sz = ctx.slotParams.size;
         const ca = Math.cos(angle);
         const sa = Math.sin(angle);
 
         // Handle
-        const handleLen = 10;
+        const handleLen = 10 * sz;
         const handleEndX = wrist.x + ca * handleLen;
         const handleEndY = wrist.y + sa * handleLen;
         g.moveTo(wrist.x * s, wrist.y * s);
@@ -39,7 +41,7 @@ export class WeaponFlail implements Model {
 
         // Chain (sways with walk)
         const sway = walkPhase !== 0 ? Math.sin(walkPhase * 2) * 3 : 0;
-        const chainLen = 8;
+        const chainLen = 8 * sz;
         const px = -sa;
         const py = ca;
 
@@ -65,7 +67,7 @@ export class WeaponFlail implements Model {
         // Spiked ball
         const ballX = prevX;
         const ballY = prevY;
-        const ballR = 3;
+        const ballR = 3 * sz;
 
         g.circle(ballX * s, ballY * s, ballR * s);
         g.fill(0x777777);

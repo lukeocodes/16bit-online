@@ -1,5 +1,6 @@
 import type { Graphics } from "pixi.js";
 import type { Model, RenderContext, DrawCall, Skeleton, AttachmentPoint } from "../types";
+import { DEPTH_FAR_LIMB, DEPTH_NEAR_LIMB } from "../types";
 
 export class WeaponAxe implements Model {
   readonly id = "weapon-axe";
@@ -15,11 +16,12 @@ export class WeaponAxe implements Model {
     const armAngle = Math.atan2(wrist.y - elbow.y, wrist.x - elbow.x);
 
     return [{
-      depth: facingCamera ? 57 : 23,
+      depth: facingCamera ? DEPTH_NEAR_LIMB + 3 : DEPTH_FAR_LIMB + 3,
       draw: (g: Graphics, s: number) => {
+        const sz = ctx.slotParams.size;
         const hand = wrist;
         const angle = armAngle;
-        const len = 14;
+        const len = 14 * sz;
         const ca = Math.cos(angle);
         const sa = Math.sin(angle);
         const topX = hand.x + ca * len;
@@ -31,8 +33,8 @@ export class WeaponAxe implements Model {
         g.stroke({ width: 2 * s, color: 0x886633 });
 
         // Axe head
-        const px = -sa * 6;
-        const py = ca * 6;
+        const px = -sa * 6 * sz;
+        const py = ca * 6 * sz;
         g.moveTo((topX - ca * 3) * s, (topY - sa * 3) * s);
         g.quadraticCurveTo(
           (topX + px) * s,

@@ -1,5 +1,6 @@
 import type { Graphics } from "pixi.js";
 import type { Model, RenderContext, DrawCall, AttachmentPoint } from "../types";
+import { DEPTH_FAR_LIMB, DEPTH_NEAR_LIMB } from "../types";
 import { darken, lighten } from "../palette";
 
 /**
@@ -19,19 +20,20 @@ export class WeaponThrowingKnife implements Model {
     const angle = Math.atan2(wrist.y - elbow.y, wrist.x - elbow.x);
 
     return [{
-      depth: facingCamera ? 57 : 23,
+      depth: facingCamera ? DEPTH_NEAR_LIMB + 3 : DEPTH_FAR_LIMB + 3,
       draw: (g: Graphics, s: number) => {
+        const sz = ctx.slotParams.size;
         const ca = Math.cos(angle);
         const sa = Math.sin(angle);
         const px = -sa;
         const py = ca;
 
-        const bladeLen = 8;
+        const bladeLen = 8 * sz;
         const tipX = wrist.x + ca * bladeLen;
         const tipY = wrist.y + sa * bladeLen;
 
         // Slim blade (narrow, tapered)
-        const bladeW = 1.2;
+        const bladeW = 1.2 * sz;
         g.poly([
           (wrist.x + px * bladeW) * s, (wrist.y + py * bladeW) * s,
           tipX * s, tipY * s,
@@ -58,7 +60,7 @@ export class WeaponThrowingKnife implements Model {
         g.stroke({ width: s * 1.2, color: 0x888888 });
 
         // Short wrapped grip
-        const gripLen = 4;
+        const gripLen = 4 * sz;
         const gripEndX = wrist.x - ca * gripLen;
         const gripEndY = wrist.y - sa * gripLen;
         g.moveTo(wrist.x * s, wrist.y * s);

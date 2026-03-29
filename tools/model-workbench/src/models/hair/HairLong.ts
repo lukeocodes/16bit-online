@@ -5,6 +5,7 @@ import type {
   DrawCall,
   AttachmentPoint,
 } from "../types";
+import { DEPTH_HEAD, DEPTH_BODY, DEPTH_FAR_LIMB } from "../types";
 import { darken } from "../palette";
 
 /**
@@ -30,9 +31,9 @@ export class HairLong implements Model {
 
     const calls: DrawCall[] = [];
 
-    // Back flowing section (always visible, falls down back)
+    // Back flow: behind body when facing camera, above back armor when facing away
     calls.push({
-      depth: 22, // behind torso
+      depth: facingCamera ? DEPTH_FAR_LIMB - 5 : DEPTH_BODY + 6,
       draw: (g: Graphics, s: number) => {
         const baseY = head.y + r * 0.3;
         const flowLen = 18; // long hair reaches mid-back
@@ -76,7 +77,7 @@ export class HairLong implements Model {
     // Back hair cap
     if (!facingCamera) {
       calls.push({
-        depth: 53,
+        depth: DEPTH_HEAD + 1,
         draw: (g: Graphics, s: number) => {
           g.ellipse(
             head.x * s,
@@ -91,7 +92,7 @@ export class HairLong implements Model {
 
     // Front bangs + side framing
     calls.push({
-      depth: 53,
+      depth: DEPTH_HEAD + 1,
       draw: (g: Graphics, s: number) => {
         if (facingCamera || sideView) {
           // Curtain bangs — parted, framing face

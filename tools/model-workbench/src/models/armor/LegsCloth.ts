@@ -1,5 +1,6 @@
 import type { Graphics } from "pixi.js";
 import type { Model, RenderContext, DrawCall, AttachmentPoint, V } from "../types";
+import { DEPTH_FAR_LIMB, DEPTH_BODY } from "../types";
 import { darken } from "../palette";
 import { drawTaperedLimb } from "../draw-helpers";
 
@@ -18,14 +19,15 @@ export class LegsCloth implements Model {
     const j = skeleton.joints;
     const calls: DrawCall[] = [];
 
+    const sz = ctx.slotParams.size;
     for (const side of [farSide, nearSide]) {
-      const d = side === farSide ? 10.5 : 12.5;
-      calls.push({ depth: d, draw: (g, s) => this.drawLeg(g, j, palette.body, palette.bodyDk, palette.outline, s, side) });
+      const d = side === farSide ? DEPTH_FAR_LIMB + 0 : DEPTH_FAR_LIMB + 2;
+      calls.push({ depth: d, draw: (g, s) => this.drawLeg(g, j, palette.body, palette.bodyDk, palette.outline, s, side, sz) });
     }
 
     // Waist sash
     calls.push({
-      depth: 33,
+      depth: DEPTH_BODY + 3,
       draw: (g, s) => {
         const { hipL, hipR, crotch } = j;
         g.moveTo(hipL.x * s, hipL.y * s);
@@ -64,17 +66,17 @@ export class LegsCloth implements Model {
     return calls;
   }
 
-  private drawLeg(g: Graphics, j: Record<string, V>, color: number, dk: number, outline: number, s: number, side: "L" | "R"): void {
+  private drawLeg(g: Graphics, j: Record<string, V>, color: number, dk: number, outline: number, s: number, side: "L" | "R", sz = 1): void {
     const hip = j[`hip${side}`];
     const knee = j[`knee${side}`];
     const ankle = j[`ankle${side}`];
     const legTop: V = { x: hip.x * 0.5, y: hip.y };
 
     // Loose cloth over thigh
-    drawTaperedLimb(g, legTop, knee, 7, 5.5, color, dk, outline, s);
+    drawTaperedLimb(g, legTop, knee, 7 * sz, 5.5 * sz, color, dk, outline, s);
 
     // Cloth over calf — flows wider
-    drawTaperedLimb(g, knee, ankle, 5.5, 5, color, dk, outline, s);
+    drawTaperedLimb(g, knee, ankle, 5.5 * sz, 5 * sz, color, dk, outline, s);
 
     // Hem at ankle
     g.ellipse(ankle.x * s, ankle.y * s, 3 * s, 1.5 * s);

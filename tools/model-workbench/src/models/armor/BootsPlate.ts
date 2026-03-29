@@ -1,5 +1,6 @@
 import type { Graphics } from "pixi.js";
 import type { Model, RenderContext, DrawCall, AttachmentPoint, V } from "../types";
+import { DEPTH_FAR_LIMB } from "../types";
 
 /**
  * Plate boots — heavy armored sabatons with articulated toe plates.
@@ -16,22 +17,23 @@ export class BootsPlate implements Model {
     const iso = skeleton.iso;
     const calls: DrawCall[] = [];
 
+    const sz = ctx.slotParams.size;
     for (const side of [farSide, nearSide]) {
-      const d = side === farSide ? 11.5 : 13.5;
-      calls.push({ depth: d, draw: (g, s) => this.drawBoot(g, j, iso, palette, s, side) });
+      const d = side === farSide ? DEPTH_FAR_LIMB + 0 : DEPTH_FAR_LIMB + 2;
+      calls.push({ depth: d, draw: (g, s) => this.drawBoot(g, j, iso, palette, s, side, sz) });
     }
     return calls;
   }
 
-  private drawBoot(g: Graphics, j: Record<string, V>, iso: V, p: any, s: number, side: "L" | "R"): void {
+  private drawBoot(g: Graphics, j: Record<string, V>, iso: V, p: any, s: number, side: "L" | "R", sz = 1): void {
     const ankle = j[`ankle${side}`];
     const knee = j[`knee${side}`];
     const color = p.body;
 
     // Armored shin guard (extends up)
-    const shaftTopY = ankle.y - 4;
+    const shaftTopY = ankle.y - 4 * sz;
     const shaftTopX = ankle.x + (knee.x - ankle.x) * 0.25;
-    g.roundRect((shaftTopX - 3.2) * s, shaftTopY * s, 6.4 * s, (ankle.y - shaftTopY + 1.5) * s, 1.5 * s);
+    g.roundRect((shaftTopX - 3.2 * sz) * s, shaftTopY * s, 6.4 * sz * s, (ankle.y - shaftTopY + 1.5) * s, 1.5 * s);
     g.fill(color);
     g.roundRect((shaftTopX - 3.2) * s, shaftTopY * s, 6.4 * s, (ankle.y - shaftTopY + 1.5) * s, 1.5 * s);
     g.stroke({ width: s * 0.5, color: p.outline, alpha: 0.4 });
@@ -54,7 +56,7 @@ export class BootsPlate implements Model {
     g.stroke({ width: s * 0.4, color: p.outline, alpha: 0.3 });
 
     // Heavy armored foot
-    const footLen = 5;
+    const footLen = 5 * sz;
     const fwdX = iso.x * footLen;
     const fwdY = iso.y * footLen * 0.5;
     const tipX = ankle.x + fwdX;
@@ -65,8 +67,8 @@ export class BootsPlate implements Model {
     const flen = Math.sqrt(fdx * fdx + fdy * fdy) || 1;
     const pnx = -fdy / flen;
     const pny = fdx / flen;
-    const hw = 3; // wider
-    const tw = 1.8;
+    const hw = 3 * sz; // wider
+    const tw = 1.8 * sz;
 
     g.moveTo((ankle.x + pnx * hw) * s, (ankle.y + pny * hw) * s);
     g.lineTo((tipX + pnx * tw) * s, (tipY + pny * tw) * s);

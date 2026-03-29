@@ -6,6 +6,7 @@ import type {
   Skeleton,
   AttachmentPoint,
 } from "../types";
+import { DEPTH_HEAD } from "../types";
 
 export class CoifMail implements Model {
   readonly id = "coif-mail";
@@ -21,7 +22,7 @@ export class CoifMail implements Model {
 
     return [
       {
-        depth: 54,
+        depth: DEPTH_HEAD + 1,
         draw: (g: Graphics, s: number) => {
           // Coif covers full head (opaque) — chain mail texture with ring pattern
           g.ellipse(head.x * s, (head.y + 1) * s, (r + 1) * wf * s, (r + 2) * s);

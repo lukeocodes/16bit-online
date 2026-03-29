@@ -19,10 +19,31 @@
     <div id="ui-overlay"></div>
   </div>
   <script>
-    // Prevent browser zoom (Ctrl+scroll, pinch) — all zoom is handled by the game engine
-    document.addEventListener("wheel", (e) => { if (e.ctrlKey) e.preventDefault(); }, { passive: false });
-    document.addEventListener("gesturestart", (e) => e.preventDefault(), { passive: false });
-    document.addEventListener("gesturechange", (e) => e.preventDefault(), { passive: false });
+    // Lock layout against browser zoom — apply inverse scale to #app so canvas + UI move together.
+    // Chrome/Edge: outerWidth/innerWidth gives the zoom factor directly.
+    // Firefox: devicePixelRatio drifts with zoom; compare against baseline set at init.
+    const basePixelRatio = window.devicePixelRatio || 1;
+    const root = document.getElementById('app');
+
+    function lockZoom() {
+      const chromeZoom = window.outerWidth / window.innerWidth;
+      const ffZoom = (window.devicePixelRatio || 1) / basePixelRatio;
+      // outerWidth/innerWidth is reliable on Chrome; falls back to dpr ratio on Firefox
+      const zoom = (window.outerWidth > 0 && chromeZoom > 0.1) ? chromeZoom : ffZoom;
+      const inv = 1 / zoom;
+      root.style.transform = `scale(${inv})`;
+      root.style.transformOrigin = 'top left';
+      root.style.width = `${window.innerWidth * zoom}px`;
+      root.style.height = `${window.innerHeight * zoom}px`;
+    }
+
+    window.addEventListener('resize', lockZoom);
+    lockZoom();
+
+    // Also block Ctrl+scroll and touch pinch as a belt-and-suspenders measure
+    document.addEventListener('wheel', (e) => { if (e.ctrlKey) e.preventDefault(); }, { passive: false });
+    document.addEventListener('gesturestart', (e) => e.preventDefault(), { passive: false });
+    document.addEventListener('gesturechange', (e) => e.preventDefault(), { passive: false });
   </script>
   <script type="module" src="/src/main.ts"></script>
 </body>

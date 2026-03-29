@@ -1,27 +1,14 @@
 import type { Model, RenderContext, DrawCall, Skeleton, AttachmentPoint } from "../types";
 import { DEPTH_N } from "../types";
 import { darken, lighten } from "../palette";
+import { STORY_H } from "./WallN";
 
-/**
- * WALL_N — north wall panel. Six faces, CLAUDE.isometric.md geometry.
- *
- * T=22, H2=11, DX=4, DY=2, STORY_H=66=3T.
- *
- * Colors derived from ctx.palette.primary at runtime:
- *   top / ground cap : lighten(primary, 0.15)   — lit from above
- *   outer / inner    : primary                  — face colour
- *   left / right edge: darken(primary,  0.25)   — in shadow
- *
- * If ctx.texture is set (PixiJS Texture), it is stretched onto each face
- * using g.fill({ texture, matrix }) instead of the flat colour fill.
- */
+const CAP_H = Math.round(STORY_H / 8); // ~8px
 
 const T  = 22;
 const H2 = T / 2;
-const DX = Math.round(0.2 * T);   // 4
-const DY = Math.round(0.2 * H2);  // 2
-
-export const STORY_H = 3 * T;     // 66
+const DX = Math.round(0.2 * T);
+const DY = Math.round(0.2 * H2);
 
 type V = { x: number; y: number };
 
@@ -30,11 +17,11 @@ const OB: V = { x:  0,      y: -H2     };
 const IA: V = { x: -T + DX, y:  DY     };
 const IB: V = { x:  DX,     y: -H2+DY  };
 
-const lift = (p: V): V => ({ x: p.x, y: p.y - STORY_H });
+const lift = (p: V): V => ({ x: p.x, y: p.y - CAP_H });
 
-export class WallN implements Model {
-  readonly id         = "wall-n";
-  readonly name       = "Wall N";
+export class WallNcap implements Model {
+  readonly id         = "wall-n-cap";
+  readonly name       = "Wall N Cap";
   readonly category   = "construction" as const;
   readonly slot       = "root" as const;
   readonly isAnimated = false;
@@ -43,11 +30,10 @@ export class WallN implements Model {
     const { iso } = ctx.skeleton;
     const primary  = ctx.palette.primary;
     const TOP_COL  = lighten(primary, 0.25);
-    const LIT_COL  = lighten(primary, 0.1);   // NW-facing outer — lit side
-    const DIM_COL  = darken(primary, 0.2);    // SE-facing inner — shadow side
+    const LIT_COL  = lighten(primary, 0.1);
+    const DIM_COL  = darken(primary, 0.2);
     const SIDE_COL = darken(primary, 0.3);
 
-    // PixiJS Texture passed through context for textured fills
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const tex = ctx.texture as any ?? null;
 
@@ -65,7 +51,6 @@ export class WallN implements Model {
           const flat = pts.flatMap(p => [p.x * s, p.y * s]);
           g.poly(flat);
           if (tex) {
-            // Stretch texture over the face's axis-aligned bounding box
             const xs = pts.map(p => p.x * s);
             const ys = pts.map(p => p.y * s);
             const x0 = Math.min(...xs), x1 = Math.max(...xs);
@@ -81,35 +66,24 @@ export class WallN implements Model {
             g.fill(color);
           }
           detail?.(g, s);
-          // Subtle edge outline — defines face boundaries without mortar look
           g.poly(flat);
           g.stroke({ width: s * 0.4, color: 0x000000, alpha: 0.18 });
         },
       });
     };
 
-    // ── 1. Ground cap (buried, never visible) ─────────────────────────────────
     quad(DEPTH_N + 0, TOP_COL, [OA, OB, IB, IA]);
 
-    // ── 2. Outer face — NW-facing, lit side ───────────────────────────────────
     if (iso.y >= 0) {
       quad(DEPTH_N + 1, LIT_COL, [OA, OB, lift(OB), lift(OA)]);
     }
-
-    // ── 3. Right edge (visible from east, iso.x ≥ 0) ─────────────────────────
     if (iso.x >= 0) {
       quad(DEPTH_N + 2, SIDE_COL, [OB, IB, lift(IB), lift(OB)]);
     }
-
-    // ── 4. Top cap ────────────────────────────────────────────────────────────
     quad(DEPTH_N + 3, TOP_COL, [lift(OA), lift(OB), lift(IB), lift(IA)]);
-
-    // ── 5. Left edge (visible from west, iso.x ≤ 0) ──────────────────────────
     if (iso.x <= 0) {
       quad(DEPTH_N + 4, SIDE_COL, [OA, IA, lift(IA), lift(OA)]);
     }
-
-    // ── 6. Inner face — SE-facing, shadow side ────────────────────────────────
     quad(DEPTH_N + 5, DIM_COL, [IA, IB, lift(IB), lift(IA)]);
 
     return calls;

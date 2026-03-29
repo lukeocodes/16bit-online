@@ -1,5 +1,6 @@
 import type { Graphics } from "pixi.js";
 import type { Model, RenderContext, DrawCall, AttachmentPoint, V } from "../types";
+import { DEPTH_FAR_LIMB } from "../types";
 
 /**
  * Leather boots — sturdy mid-calf boots with buckle straps.
@@ -16,14 +17,15 @@ export class BootsLeather implements Model {
     const iso = skeleton.iso;
     const calls: DrawCall[] = [];
 
+    const sz = ctx.slotParams.size;
     for (const side of [farSide, nearSide]) {
-      const d = side === farSide ? 11.5 : 13.5;
-      calls.push({ depth: d, draw: (g, s) => this.drawBoot(g, j, iso, palette, s, side) });
+      const d = side === farSide ? DEPTH_FAR_LIMB + 0 : DEPTH_FAR_LIMB + 2;
+      calls.push({ depth: d, draw: (g, s) => this.drawBoot(g, j, iso, palette, s, side, sz) });
     }
     return calls;
   }
 
-  private drawBoot(g: Graphics, j: Record<string, V>, iso: V, p: any, s: number, side: "L" | "R"): void {
+  private drawBoot(g: Graphics, j: Record<string, V>, iso: V, p: any, s: number, side: "L" | "R", sz = 1): void {
     const ankle = j[`ankle${side}`];
     const knee = j[`knee${side}`];
     const color = p.body;
@@ -31,9 +33,9 @@ export class BootsLeather implements Model {
     const accent = p.accent;
 
     // Boot shaft (extends up the calf)
-    const shaftTopY = ankle.y - 5;
+    const shaftTopY = ankle.y - 5 * sz;
     const shaftTopX = ankle.x + (knee.x - ankle.x) * 0.3;
-    g.roundRect((shaftTopX - 3) * s, shaftTopY * s, 6 * s, (ankle.y - shaftTopY + 1) * s, 1 * s);
+    g.roundRect((shaftTopX - 3 * sz) * s, shaftTopY * s, 6 * sz * s, (ankle.y - shaftTopY + 1) * s, 1 * s);
     g.fill(color);
     g.roundRect((shaftTopX - 3) * s, shaftTopY * s, 6 * s, (ankle.y - shaftTopY + 1) * s, 1 * s);
     g.stroke({ width: s * 0.4, color: p.outline, alpha: 0.35 });
@@ -51,7 +53,7 @@ export class BootsLeather implements Model {
     g.fill(p.accentDk);
 
     // Foot
-    const footLen = 4.5;
+    const footLen = 4.5 * sz;
     const fwdX = iso.x * footLen;
     const fwdY = iso.y * footLen * 0.5;
     const tipX = ankle.x + fwdX;
@@ -62,8 +64,8 @@ export class BootsLeather implements Model {
     const flen = Math.sqrt(fdx * fdx + fdy * fdy) || 1;
     const pnx = -fdy / flen;
     const pny = fdx / flen;
-    const hw = 2.5;
-    const tw = 1.5;
+    const hw = 2.5 * sz;
+    const tw = 1.5 * sz;
 
     g.moveTo((ankle.x + pnx * hw) * s, (ankle.y + pny * hw) * s);
     g.lineTo((tipX + pnx * tw) * s, (tipY + pny * tw) * s);

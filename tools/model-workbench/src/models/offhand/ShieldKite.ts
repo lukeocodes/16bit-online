@@ -1,5 +1,6 @@
 import type { Graphics } from "pixi.js";
 import type { Model, RenderContext, DrawCall, Skeleton, AttachmentPoint } from "../types";
+import { DEPTH_FAR_LIMB, DEPTH_NEAR_LIMB } from "../types";
 import { darken, lighten } from "../palette";
 
 export class ShieldKite implements Model {
@@ -18,14 +19,15 @@ export class ShieldKite implements Model {
 
     return [
       {
-        depth: facingCamera ? 18 : 48,
+        depth: facingCamera ? DEPTH_FAR_LIMB + 3 : DEPTH_NEAR_LIMB + 3,
         draw: (g: Graphics, s: number) => {
+          const sz = ctx.slotParams.size;
           const ox = iso.x * 4;
           const oy = iso.y * 2;
           const cx = wrist.x + ox;
           const cy = wrist.y - 4 + oy;
-          const sw = 7 * wf;
-          const sh = 9;
+          const sw = 7 * sz * wf;
+          const sh = 9 * sz;
 
           // Shield body (kite shape)
           g.moveTo(cx * s, (cy - sh) * s);

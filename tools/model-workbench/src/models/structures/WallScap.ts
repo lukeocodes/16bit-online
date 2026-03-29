@@ -3,36 +3,25 @@ import { DEPTH_S } from "../types";
 import { darken, lighten } from "../palette";
 import { STORY_H } from "./WallN";
 
-/**
- * WALL_S — south wall panel. Mirror of WALL_N across the tile centre.
- *
- * WALL_N hugs the NW edge: OA(-T, 0) → OB(0, -H2), depth (+DX, +DY)
- * WALL_S hugs the SE edge: OA(+T, 0) → OB(0, +H2), depth (-DX, -DY)
- *
- * Face culling is the direct mirror of WALL_N:
- *   outer      — iso.y >= 0  (same — SE face is also forward-facing)
- *   right edge — iso.x <= 0  (flipped — east corner, visible from west)
- *   left edge  — iso.x >= 0  (flipped — south corner, visible from east)
- */
+const CAP_H = Math.round(STORY_H / 8);
 
 const T  = 22;
 const H2 = T / 2;
-const DX = Math.round(0.2 * T);   // 4
-const DY = Math.round(0.2 * H2);  // 2
+const DX = Math.round(0.2 * T);
+const DY = Math.round(0.2 * H2);
 
 type V = { x: number; y: number };
 
-// Mirror of WALL_N: negate x, negate y, negate depth direction
-const OA: V = { x:  T,      y:  0      };  // outer east
-const OB: V = { x:  0,      y:  H2     };  // outer south
-const IA: V = { x:  T - DX, y: -DY     };  // inner east  = OA + (−DX, −DY)
-const IB: V = { x: -DX,     y:  H2-DY  };  // inner south = OB + (−DX, −DY)
+const OA: V = { x:  T,      y:  0      };
+const OB: V = { x:  0,      y:  H2     };
+const IA: V = { x:  T - DX, y: -DY     };
+const IB: V = { x: -DX,     y:  H2-DY  };
 
-const lift = (p: V): V => ({ x: p.x, y: p.y - STORY_H });
+const lift = (p: V): V => ({ x: p.x, y: p.y - CAP_H });
 
-export class WallS implements Model {
-  readonly id         = "wall-s";
-  readonly name       = "Wall S";
+export class WallScap implements Model {
+  readonly id         = "wall-s-cap";
+  readonly name       = "Wall S Cap";
   readonly category   = "construction" as const;
   readonly slot       = "root" as const;
   readonly isAnimated = false;
@@ -41,8 +30,8 @@ export class WallS implements Model {
     const { iso } = ctx.skeleton;
     const primary  = ctx.palette.primary;
     const TOP_COL  = lighten(primary, 0.25);
-    const LIT_COL  = lighten(primary, 0.1);   // NW-facing inner — lit side
-    const DIM_COL  = darken(primary, 0.2);    // SE-facing outer — shadow side
+    const LIT_COL  = lighten(primary, 0.1);
+    const DIM_COL  = darken(primary, 0.2);
     const SIDE_COL = darken(primary, 0.3);
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -83,26 +72,15 @@ export class WallS implements Model {
       });
     };
 
-    // ── 1. Ground cap (buried) ────────────────────────────────────────────────
     quad(DEPTH_S + 0, TOP_COL, [OA, OB, IB, IA]);
-
-    // ── 2. Inner face — NW-facing from inside, lit side ───────────────────────
     quad(DEPTH_S + 1, LIT_COL, [IA, IB, lift(IB), lift(IA)]);
-
-    // ── 3. Right edge — east corner (iso.x ≤ 0) ───────────────────────────────
     if (iso.x <= 0) {
       quad(DEPTH_S + 2, SIDE_COL, [OA, IA, lift(IA), lift(OA)]);
     }
-
-    // ── 4. Outer face — SE-facing, shadow side ────────────────────────────────
     if (iso.y >= 0) {
       quad(DEPTH_S + 3, DIM_COL, [OA, OB, lift(OB), lift(OA)]);
     }
-
-    // ── 5. Top cap ─────────────────────────────────────────────────────────────
     quad(DEPTH_S + 4, TOP_COL, [lift(OA), lift(OB), lift(IB), lift(IA)]);
-
-    // ── 6. Left edge — south corner (iso.x ≥ 0) ───────────────────────────────
     if (iso.x >= 0) {
       quad(DEPTH_S + 5, SIDE_COL, [OB, IB, lift(IB), lift(OB)]);
     }

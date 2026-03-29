@@ -2,6 +2,8 @@ import type { Container } from "pixi.js";
 import { worldToScreen } from "./IsometricRenderer";
 
 const DEFAULT_ZOOM = 2.0;
+export const MIN_ZOOM = 1.0;
+export const MAX_ZOOM = 4.0;
 // Exponential decay rate (higher = snappier follow). Frame-rate independent.
 const FOLLOW_SPEED = 12;
 
@@ -40,7 +42,7 @@ export class IsoCamera {
   }
 
   setZoom(zoom: number): void {
-    this.targetZoom = Math.max(0.5, Math.min(4.0, zoom));
+    this.targetZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, zoom));
   }
 
   getZoom(): number {

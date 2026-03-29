@@ -9,12 +9,60 @@ import type { CombatComponent } from "../ecs/components/Combat";
 import { worldToScreen } from "./IsometricRenderer";
 import { facingToDirection, directionToIsoOffset } from "./SpriteDirection";
 import { entityNameToSpriteType } from "./EntitySpriteSheet";
+import type { CompositeConfig } from "../../../../tools/model-workbench/src/models/types";
+import { computePalette } from "../../../../tools/model-workbench/src/models/palette";
 
 interface ISpriteSheet {
   getFrame(entityType: string, direction: number, walkPhaseIndex?: number): Texture;
+  getCompositeFrame?(config: CompositeConfig, direction: number, walkPhaseIndex?: number): Texture;
   has(entityType: string): boolean;
   readonly displayScale?: number;
   readonly walkPhases?: number;
+  readonly displayedFrameHeight?: number;
+}
+
+// Cloth mage outfit — default player loadout
+const PLAYER_ATTACHMENTS: CompositeConfig["attachments"] = [
+  { slot: "head-top",  modelId: "hood-cloth"      },
+  { slot: "hand-R",    modelId: "weapon-staff"     },
+  { slot: "torso",     modelId: "robe-cloth"       },
+  { slot: "shoulders", modelId: "shoulders-cloth"  },
+  { slot: "gauntlets", modelId: "gauntlets-cloth"  },
+  { slot: "legs",      modelId: "legs-cloth"       },
+  { slot: "feet-L",    modelId: "boots-cloth"      },
+  { slot: "feet-R",    modelId: "boots-cloth"      },
+];
+
+// A set of pleasing cloth outfit hues — one is picked deterministically per entity ID
+const OUTFIT_PRIMARIES = [
+  0x4466aa, // slate blue
+  0x994422, // terracotta
+  0x226644, // forest green
+  0x664488, // violet
+  0xaa6622, // amber
+  0x228899, // teal
+  0x993355, // rose
+  0x556644, // sage
+];
+
+function outfitColorForId(entityId: string): number {
+  let h = 0;
+  for (let i = 0; i < entityId.length; i++) h = (h * 31 + entityId.charCodeAt(i)) >>> 0;
+  return OUTFIT_PRIMARIES[h % OUTFIT_PRIMARIES.length];
+}
+
+function buildPlayerCompositeConfig(entityId: string, render: RenderableComponent): CompositeConfig {
+  const primary   = outfitColorForId(entityId);
+  const secondary = (primary & 0xfefefe) >> 1; // ~50% darker as accent
+  const skin = hexToNumber(render.skinColor);
+  const hair = hexToNumber(render.hairColor);
+  return {
+    baseModelId: "human-body",
+    palette: computePalette(skin, hair, 0x334455, primary, secondary, "cloth"),
+    attachments: PLAYER_ATTACHMENTS,
+    build: 1,
+    height: 1,
+  };
 }
 
 // Entity visual sizing (pixels)
@@ -73,7 +121,10 @@ interface FloatingText {
  * handles z-sorting, damage flash, attack lines, and target ring.
  */
 export class EntityRenderer {
+  /** Overlay container (HP bars, floating text, attack lines) — always on top */
   public container: Container;
+  /** World container — entity bodies are added here for correct depth sorting with walls */
+  private worldContainer: Container;
 
   private entityManager: EntityManager;
   private localEntityId: string | null = null;
@@ -84,6 +135,7 @@ export class EntityRenderer {
   private autoAttacking = false;
   private attackLines: AttackLine[] = [];
   private floatingTexts: FloatingText[] = [];
+  private textPool: Text[] = []; // reusable Text objects for floating damage numbers
   private chatBubbles: ChatBubble[] = [];
   private hpBars = new Map<string, Graphics>();
   private lastHpDrawn = new Map<string, number>(); // entity -> hp value last drawn
@@ -101,10 +153,13 @@ export class EntityRenderer {
   // Dev mode spawn point graphics
   private spawnPointGraphics = new Map<string, Graphics>();
 
-  constructor(entityManager: EntityManager) {
+  constructor(entityManager: EntityManager, worldContainer: Container) {
     this.entityManager = entityManager;
+    this.worldContainer = worldContainer;
     this.container = new Container();
-    this.container.sortableChildren = true;
+    this.container.zIndex = 999000; // overlay always on top
+    // No sortableChildren — all children are high-zIndex overlay elements that
+    // don't need depth sorting relative to each other.
 
     // Clean up internal Maps when entities are removed to prevent memory leaks
     entityManager.onEntityRemoved((id) => {
@@ -130,6 +185,7 @@ export class EntityRenderer {
 
   setLocalEntityId(id: string) { this.localEntityId = id; }
   setSpriteSheet(sheet: ISpriteSheet) { this.spriteSheet = sheet; }
+  getSpriteSheet(): ISpriteSheet | null { return this.spriteSheet; }
 
   setTargetEntity(entityId: string | null): void {
     this.targetEntityId = entityId;
@@ -175,7 +231,8 @@ export class EntityRenderer {
     const { sx, sy } = worldToScreen(pos.x, pos.z, pos.y);
     const offsetX = (Math.random() - 0.5) * 20;
 
-    const text = new Text({
+    // Acquire a Text from the pool or create a new one
+    const text = this.textPool.pop() ?? new Text({
       text: label,
       style: {
         fontSize: 16,
@@ -186,6 +243,13 @@ export class EntityRenderer {
         dropShadow: { alpha: 0.5, distance: 1, color: 0x000000 },
       },
     });
+    // Re-apply mutable properties in case this Text came from the pool
+    text.text = label;
+    if (text.style) {
+      (text.style as { fill: number }).fill = color;
+    }
+    text.alpha = 1;
+    text.scale.set(1);
     text.anchor.set(0.5, 0.5);
     text.position.set(sx + offsetX, sy - BODY_HEIGHT - HEAD_RADIUS * 2 - 10);
     text.zIndex = 1000000;
@@ -298,7 +362,9 @@ export class EntityRenderer {
       ft.elapsed += dt;
       const progress = ft.elapsed / ft.duration;
       if (progress >= 1) {
-        ft.text.destroy();
+        // Return the Text object to the pool instead of destroying it
+        this.container.removeChild(ft.text);
+        this.textPool.push(ft.text);
         this.floatingTexts.splice(i, 1);
       } else {
         // Float upward with easing (fast start, slow end)
@@ -330,7 +396,7 @@ export class EntityRenderer {
       if (targetPos) {
         if (!this.targetRing) {
           this.targetRing = this.createTargetRing();
-          this.container.addChild(this.targetRing);
+          this.worldContainer.addChild(this.targetRing);
         }
         const { sx, sy } = worldToScreen(targetPos.x, targetPos.z, targetPos.y);
         this.targetRing.position.set(sx, sy);
@@ -355,7 +421,7 @@ export class EntityRenderer {
 
       if (!render.displayObject) {
         render.displayObject = this.createEntitySprite(entity.id, render);
-        this.container.addChild(render.displayObject);
+        this.worldContainer.addChild(render.displayObject);
 
         // Scale NPCs by max HP for visual size differentiation
         const identity = entity.components.get("identity") as IdentityComponent | undefined;
@@ -409,20 +475,32 @@ export class EntityRenderer {
       // Swap sprite texture when direction or walk phase changes
       const bodySprite = render.displayObject.children.find(c => c.label === "body-sprite") as Sprite | undefined;
       if (bodySprite && this.spriteSheet) {
-        const spriteType = (render.displayObject as any)._spriteType as string;
-        if (spriteType) {
-          const walkPhases = this.spriteSheet.walkPhases ?? 1;
-          let walkPhaseIndex = 0;
-          if (walkPhases > 1 && (render.displayObject as any)._isWalking) {
-            const raw: number = (render.displayObject as any)._walkPhase ?? 0;
-            const norm = ((raw % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
-            walkPhaseIndex = Math.floor((norm / (Math.PI * 2)) * walkPhases) % walkPhases;
+        const walkPhases = this.spriteSheet.walkPhases ?? 1;
+        let walkPhaseIndex = 0;
+        if (walkPhases > 1 && (render.displayObject as any)._isWalking) {
+          const raw: number = (render.displayObject as any)._walkPhase ?? 0;
+          const norm = ((raw % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
+          walkPhaseIndex = Math.floor((norm / (Math.PI * 2)) * walkPhases) % walkPhases;
+        }
+        const prevPhase: number = (render.displayObject as any)._walkPhaseIndex ?? -1;
+        (render.displayObject as any)._walkPhaseIndex = walkPhaseIndex;
+        if (prevDir !== dirIndex || prevPhase !== walkPhaseIndex) {
+          const cfg: CompositeConfig | null = (render.displayObject as any)._compositeConfig ?? null;
+          if (cfg && this.spriteSheet.getCompositeFrame) {
+            bodySprite.texture = this.spriteSheet.getCompositeFrame(cfg, dirIndex, walkPhaseIndex);
+          } else {
+            const spriteType = (render.displayObject as any)._spriteType as string;
+            if (spriteType) bodySprite.texture = this.spriteSheet.getFrame(spriteType, dirIndex, walkPhaseIndex);
           }
-          const prevPhase: number = (render.displayObject as any)._walkPhaseIndex ?? -1;
-          (render.displayObject as any)._walkPhaseIndex = walkPhaseIndex;
-          if (prevDir !== dirIndex || prevPhase !== walkPhaseIndex) {
-            bodySprite.texture = this.spriteSheet.getFrame(spriteType, dirIndex, walkPhaseIndex);
-          }
+        }
+        // Keep scale in sync with current displayScale. When quality changes the scale
+        // changes, so we also force a texture re-fetch (old texture is the wrong size).
+        const expectedScale = this.spriteSheet.displayScale ?? 1;
+        if (Math.abs(bodySprite.scale.x - expectedScale) > 0.001) {
+          bodySprite.scale.set(expectedScale);
+          // Invalidate cached dir/phase so the texture regenerates this frame
+          (render.displayObject as any)._dirIndex = -1;
+          (render.displayObject as any)._walkPhaseIndex = -1;
         }
       }
 
@@ -563,8 +641,16 @@ export class EntityRenderer {
       }
       container.addChild(shadow);
 
-      // Sprite from sheet
-      const texture = this.spriteSheet.getFrame(spriteType, 0);
+      // Player entities use composite (full outfit); NPCs use simple sprite
+      const isPlayer = identity?.entityType === "player";
+      let texture: Texture;
+      let compositeConfig: CompositeConfig | null = null;
+      if (isPlayer && this.spriteSheet.getCompositeFrame) {
+        compositeConfig = buildPlayerCompositeConfig(entityId, render);
+        texture = this.spriteSheet.getCompositeFrame(compositeConfig, 0);
+      } else {
+        texture = this.spriteSheet.getFrame(spriteType, 0);
+      }
       const bodySprite = new Sprite(texture);
       bodySprite.label = "body-sprite";
       bodySprite.anchor.set(0.5, 1);
@@ -573,6 +659,7 @@ export class EntityRenderer {
       if (displayScale !== 1) bodySprite.scale.set(displayScale);
       container.addChild(bodySprite);
       (container as any)._spriteType = spriteType;
+      (container as any)._compositeConfig = compositeConfig;
     } else {
       // Fallback: Graphics mode
       const bodyColor = hexToNumber(render.bodyColor);
@@ -625,7 +712,12 @@ export class EntityRenderer {
         },
       });
       label.anchor.set(0.5, 1);
-      label.position.set(0, -BODY_HEIGHT - HEAD_RADIUS * 2 - 2);
+      // Position above the model top: use sprite sheet frame height if available,
+      // otherwise fall back to the Graphics-mode constants.
+      const labelY = this.spriteSheet?.displayedFrameHeight != null
+        ? -(this.spriteSheet.displayedFrameHeight - 4) - 4  // 4px sprite y-offset + 4px gap
+        : -BODY_HEIGHT - HEAD_RADIUS * 2 - 2;
+      label.position.set(0, labelY);
       container.addChild(label);
     }
 
@@ -809,7 +901,7 @@ export class EntityRenderer {
 
       g.position.set(sx, sy);
       g.zIndex = -1;
-      this.container.addChild(g);
+      this.worldContainer.addChild(g);
       this.spawnPointGraphics.set(sp.id, g);
     }
   }
@@ -821,7 +913,7 @@ export class EntityRenderer {
       let g = this.spawnPointGraphics.get(key);
       if (!g) {
         g = new Graphics();
-        this.container.addChild(g);
+        this.worldContainer.addChild(g);
         this.spawnPointGraphics.set(key, g);
       }
       g.clear();
@@ -846,6 +938,14 @@ export class EntityRenderer {
   }
 
   dispose(): void {
+    // Remove entity body displayObjects from worldContainer
+    for (const entity of this.entityManager.iterEntitiesWithComponents("renderable")) {
+      const render = entity.components.get("renderable") as RenderableComponent;
+      if (render?.displayObject) {
+        render.displayObject.destroy({ children: true });
+        render.displayObject = null;
+      }
+    }
     this.container.destroy({ children: true });
     this.flashTimers.clear();
     this.attackLines.length = 0;

@@ -1,5 +1,6 @@
 import type { Graphics } from "pixi.js";
 import type { Model, RenderContext, DrawCall, AttachmentPoint, V } from "../types";
+import { DEPTH_FAR_LIMB, DEPTH_BODY } from "../types";
 
 /**
  * Plate shoulders — heavy layered pauldrons with rivets and raised edges.
@@ -15,26 +16,27 @@ export class ShouldersPlate implements Model {
     const j = skeleton.joints;
     const calls: DrawCall[] = [];
 
+    const sz = ctx.slotParams.size;
     calls.push({
-      depth: facingCamera ? 28 : 42,
-      draw: (g, s) => this.drawShoulder(g, j, palette, s, farSide),
+      depth: facingCamera ? DEPTH_FAR_LIMB + 8 : DEPTH_BODY + 3,
+      draw: (g, s) => this.drawShoulder(g, j, palette, s, farSide, sz),
     });
     calls.push({
-      depth: facingCamera ? 42 : 28,
-      draw: (g, s) => this.drawShoulder(g, j, palette, s, nearSide),
+      depth: facingCamera ? DEPTH_BODY + 3 : DEPTH_FAR_LIMB + 8,
+      draw: (g, s) => this.drawShoulder(g, j, palette, s, nearSide, sz),
     });
 
     return calls;
   }
 
-  private drawShoulder(g: Graphics, j: Record<string, V>, p: any, s: number, side: "L" | "R"): void {
+  private drawShoulder(g: Graphics, j: Record<string, V>, p: any, s: number, side: "L" | "R", sz = 1): void {
     const shoulder = j[`shoulder${side}`];
     const sign = side === "L" ? -1 : 1;
 
     const cx = shoulder.x + sign * 1.5;
     const cy = shoulder.y - 1;
-    const w = 7.5;
-    const h = 6;
+    const w = 7.5 * sz;
+    const h = 6 * sz;
 
     // Main pauldron plate (layered look — bottom layer)
     g.roundRect((cx - w * 0.5 * sign - (sign > 0 ? 0 : w)) * s, (cy - h * 0.3) * s, w * s, h * 0.7 * s, 2 * s);

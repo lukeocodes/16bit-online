@@ -1,5 +1,6 @@
 import type { Graphics } from "pixi.js";
 import type { Model, RenderContext, DrawCall, Skeleton, AttachmentPoint } from "../types";
+import { DEPTH_FAR_LIMB, DEPTH_NEAR_LIMB } from "../types";
 
 export class WeaponWand implements Model {
   readonly id = "weapon-wand";
@@ -15,11 +16,12 @@ export class WeaponWand implements Model {
     const armAngle = Math.atan2(wrist.y - elbow.y, wrist.x - elbow.x);
 
     return [{
-      depth: facingCamera ? 57 : 23,
+      depth: facingCamera ? DEPTH_NEAR_LIMB + 3 : DEPTH_FAR_LIMB + 3,
       draw: (g: Graphics, s: number) => {
+        const sz = ctx.slotParams.size;
         const hand = wrist;
         const angle = armAngle;
-        const len = 11;
+        const len = 11 * sz;
         const ca = Math.cos(angle);
         const sa = Math.sin(angle);
         const tipX = hand.x + ca * len;
@@ -31,9 +33,9 @@ export class WeaponWand implements Model {
         g.stroke({ width: 1.8 * s, color: 0x664422 });
 
         // Glowing tip
-        g.circle(tipX * s, tipY * s, 2.5 * s);
+        g.circle(tipX * s, tipY * s, 2.5 * sz * s);
         g.fill({ color: 0xff6644, alpha: 0.85 });
-        g.circle(tipX * s, tipY * s, 1.2 * s);
+        g.circle(tipX * s, tipY * s, 1.2 * sz * s);
         g.fill({ color: 0xffcc88, alpha: 0.7 });
 
         // Grip

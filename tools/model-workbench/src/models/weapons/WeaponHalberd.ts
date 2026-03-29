@@ -1,5 +1,6 @@
 import type { Graphics } from "pixi.js";
 import type { Model, RenderContext, DrawCall, AttachmentPoint } from "../types";
+import { DEPTH_FAR_LIMB, DEPTH_NEAR_LIMB } from "../types";
 import { darken, lighten } from "../palette";
 
 /**
@@ -10,6 +11,7 @@ export class WeaponHalberd implements Model {
   readonly name = "Halberd";
   readonly category = "weapon" as const;
   readonly slot = "hand-R" as const;
+  readonly twoHanded = true;
 
   getDrawCalls(ctx: RenderContext): DrawCall[] {
     const { skeleton, facingCamera } = ctx;
@@ -19,15 +21,16 @@ export class WeaponHalberd implements Model {
     const angle = Math.atan2(wrist.y - elbow.y, wrist.x - elbow.x);
 
     return [{
-      depth: facingCamera ? 57 : 23,
+      depth: facingCamera ? DEPTH_NEAR_LIMB + 3 : DEPTH_FAR_LIMB + 3,
       draw: (g: Graphics, s: number) => {
+        const sz = ctx.slotParams.size;
         const ca = Math.cos(angle);
         const sa = Math.sin(angle);
         const px = -sa;
         const py = ca;
 
         // Long shaft
-        const shaftLen = 24;
+        const shaftLen = 24 * sz;
         const tipX = wrist.x + ca * shaftLen;
         const tipY = wrist.y + sa * shaftLen;
         g.moveTo((wrist.x - ca * 3) * s, (wrist.y - sa * 3) * s);
@@ -38,8 +41,8 @@ export class WeaponHalberd implements Model {
         const bladeBase = 0.78; // position along shaft
         const bladeX = wrist.x + ca * shaftLen * bladeBase;
         const bladeY = wrist.y + sa * shaftLen * bladeBase;
-        const bladeW = 5;
-        const bladeH = 6;
+        const bladeW = 5 * sz;
+        const bladeH = 6 * sz;
 
         g.moveTo(bladeX * s, bladeY * s);
         g.quadraticCurveTo(

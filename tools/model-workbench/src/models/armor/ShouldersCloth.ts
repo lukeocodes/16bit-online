@@ -1,8 +1,10 @@
 import type { Graphics } from "pixi.js";
-import type { Model, RenderContext, DrawCall, AttachmentPoint, V } from "../types";
+import type { Model, RenderContext, DrawCall, AttachmentPoint } from "../types";
+import { DEPTH_NEAR_LIMB } from "../types";
 
 /**
- * Cloth shoulders — simple padded cloth epaulettes/mantle.
+ * Cloth Mantle — wide shoulder drape that hangs from the shoulders
+ * to just past the elbows, with a yoke connecting both sides.
  */
 export class ShouldersCloth implements Model {
   readonly id = "shoulders-cloth";
@@ -13,53 +15,90 @@ export class ShouldersCloth implements Model {
   getDrawCalls(ctx: RenderContext): DrawCall[] {
     const { skeleton, palette, farSide, nearSide, facingCamera } = ctx;
     const j = skeleton.joints;
+    const sz = ctx.slotParams.size;
+    const wf = skeleton.wf;
     const calls: DrawCall[] = [];
 
-    // Far shoulder (behind torso)
+    // Far side drape — over far arm
     calls.push({
-      depth: facingCamera ? 28 : 42,
-      draw: (g, s) => this.drawShoulder(g, j, palette, s, farSide),
+      depth: DEPTH_NEAR_LIMB + 6,
+      draw: (g, s) => this.drawDrape(g, j, palette, s, farSide, sz, wf),
     });
-    // Near shoulder (in front)
+
+    // Yoke connecting panel
     calls.push({
-      depth: facingCamera ? 42 : 28,
-      draw: (g, s) => this.drawShoulder(g, j, palette, s, nearSide),
+      depth: DEPTH_NEAR_LIMB + 7,
+      draw: (g, s) => {
+        const sL = j.shoulderL;
+        const sR = j.shoulderR;
+        const neck = j.neckBase;
+        const dropY = neck.y + 5 * sz;
+
+        // Horizontal yoke from shoulder to shoulder
+        g.moveTo((sL.x - 2 * sz * wf) * s, sL.y * s);
+        g.quadraticCurveTo(neck.x * s, (neck.y + 1) * s, (sR.x + 2 * sz * wf) * s, sR.y * s);
+        g.lineTo((sR.x + 1 * sz * wf) * s, dropY * s);
+        g.quadraticCurveTo(neck.x * s, (dropY + 1) * s, (sL.x - 1 * sz * wf) * s, dropY * s);
+        g.closePath();
+        g.fill(palette.body);
+        g.stroke({ width: s * 0.4, color: palette.bodyDk, alpha: 0.3 });
+      },
+    });
+
+    // Near side drape — over near arm (highest depth = front of everything)
+    calls.push({
+      depth: DEPTH_NEAR_LIMB + 8,
+      draw: (g, s) => this.drawDrape(g, j, palette, s, nearSide, sz, wf),
     });
 
     return calls;
   }
 
-  private drawShoulder(g: Graphics, j: Record<string, V>, p: any, s: number, side: "L" | "R"): void {
+  private drawDrape(
+    g: Graphics,
+    j: Record<string, any>,
+    p: any,
+    s: number,
+    side: "L" | "R",
+    sz: number,
+    wf: number
+  ): void {
     const shoulder = j[`shoulder${side}`];
-    const elbow = j[`elbow${side}`];
+    const sign     = side === "L" ? -1 : 1;
 
-    // Flowing cloth drape over shoulder
-    const dx = elbow.x - shoulder.x;
-    const dy = elbow.y - shoulder.y;
-    const len = Math.sqrt(dx * dx + dy * dy) || 1;
-    const px = (-dy / len) * 4;
-    const py = (dx / len) * 4;
+    // Drape covers shoulders only — hem sits just below the deltoid
+    const outerX  = shoulder.x + sign * 5 * sz * wf;
+    const hemY    = shoulder.y + 5 * sz;
+    const innerX  = shoulder.x + sign * 1.5 * sz * wf;
 
-    g.moveTo((shoulder.x + px) * s, (shoulder.y + py - 1) * s);
+    g.moveTo(shoulder.x * s, shoulder.y * s);
     g.quadraticCurveTo(
-      (shoulder.x + px * 1.3) * s, (shoulder.y + py + 3) * s,
-      (shoulder.x + dx * 0.4 + px * 0.5) * s, (shoulder.y + dy * 0.4 + py * 0.5 + 2) * s
+      outerX * s, (shoulder.y + 1) * s,
+      outerX * s, (shoulder.y + (hemY - shoulder.y) * 0.5) * s
     );
-    g.lineTo((shoulder.x + dx * 0.4 - px * 0.3) * s, (shoulder.y + dy * 0.4 - py * 0.3 + 2) * s);
     g.quadraticCurveTo(
-      (shoulder.x - px * 0.5) * s, (shoulder.y - py * 0.5 + 1) * s,
-      (shoulder.x + px) * s, (shoulder.y + py - 1) * s
+      outerX * s, hemY * s,
+      (shoulder.x + sign * 2 * sz * wf) * s, hemY * s
     );
+    g.lineTo(innerX * s, (shoulder.y + 4 * sz) * s);
     g.closePath();
     g.fill(p.body);
 
-    // Edge stitch
-    g.moveTo((shoulder.x + px) * s, (shoulder.y + py - 1) * s);
+    // Hem edge
+    g.moveTo(outerX * s, (shoulder.y + (hemY - shoulder.y) * 0.6) * s);
     g.quadraticCurveTo(
-      (shoulder.x + px * 1.3) * s, (shoulder.y + py + 3) * s,
-      (shoulder.x + dx * 0.4 + px * 0.5) * s, (shoulder.y + dy * 0.4 + py * 0.5 + 2) * s
+      outerX * s, hemY * s,
+      (shoulder.x + sign * 2 * sz * wf) * s, hemY * s
     );
-    g.stroke({ width: s * 0.4, color: p.outline, alpha: 0.35 });
+    g.stroke({ width: s * 0.7, color: p.accent, alpha: 0.6 });
+
+    // Fold crease
+    g.moveTo(shoulder.x * s, (shoulder.y + 2) * s);
+    g.quadraticCurveTo(
+      (shoulder.x + sign * 2 * sz * wf) * s, (shoulder.y + 3) * s,
+      innerX * s, (shoulder.y + 5 * sz) * s
+    );
+    g.stroke({ width: s * 0.4, color: p.bodyDk, alpha: 0.25 });
   }
 
   getAttachmentPoints(): Record<string, AttachmentPoint> { return {}; }

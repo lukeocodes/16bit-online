@@ -1,5 +1,6 @@
 import type { Graphics } from "pixi.js";
 import type { Model, RenderContext, DrawCall, AttachmentPoint, V } from "../types";
+import { DEPTH_FAR_LIMB, DEPTH_BODY } from "../types";
 import { darken } from "../palette";
 import { drawTaperedLimb } from "../draw-helpers";
 
@@ -18,14 +19,15 @@ export class LegsLeather implements Model {
     const j = skeleton.joints;
     const calls: DrawCall[] = [];
 
+    const sz = ctx.slotParams.size;
     for (const side of [farSide, nearSide]) {
-      const d = side === farSide ? 10.5 : 12.5;
-      calls.push({ depth: d, draw: (g, s) => this.drawLeg(g, j, palette, s, side) });
+      const d = side === farSide ? DEPTH_FAR_LIMB + 0 : DEPTH_FAR_LIMB + 2;
+      calls.push({ depth: d, draw: (g, s) => this.drawLeg(g, j, palette, s, side, sz) });
     }
 
     // Belt/waist panel
     calls.push({
-      depth: 33,
+      depth: DEPTH_BODY + 3,
       draw: (g, s) => {
         const { hipL, hipR, crotch } = j;
         g.moveTo(hipL.x * s, hipL.y * s);
@@ -46,17 +48,17 @@ export class LegsLeather implements Model {
     return calls;
   }
 
-  private drawLeg(g: Graphics, j: Record<string, V>, p: any, s: number, side: "L" | "R"): void {
+  private drawLeg(g: Graphics, j: Record<string, V>, p: any, s: number, side: "L" | "R", sz = 1): void {
     const hip = j[`hip${side}`];
     const knee = j[`knee${side}`];
     const ankle = j[`ankle${side}`];
     const legTop: V = { x: hip.x * 0.5, y: hip.y };
 
     // Fitted leather thigh
-    drawTaperedLimb(g, legTop, knee, 6.2, 4.8, p.body, p.bodyDk, p.outline, s);
+    drawTaperedLimb(g, legTop, knee, 6.2 * sz, 4.8 * sz, p.body, p.bodyDk, p.outline, s);
 
     // Knee pad (reinforced)
-    g.ellipse(knee.x * s, knee.y * s, 3.5 * s, 2.2 * s);
+    g.ellipse(knee.x * s, knee.y * s, 3.5 * sz * s, 2.2 * sz * s);
     g.fill(p.accent);
     g.ellipse(knee.x * s, knee.y * s, 3.5 * s, 2.2 * s);
     g.stroke({ width: s * 0.4, color: p.accentDk, alpha: 0.4 });
@@ -66,7 +68,7 @@ export class LegsLeather implements Model {
     g.fill(p.accentDk);
 
     // Fitted leather calf
-    drawTaperedLimb(g, knee, ankle, 5, 3.8, p.body, p.bodyDk, p.outline, s);
+    drawTaperedLimb(g, knee, ankle, 5 * sz, 3.8 * sz, p.body, p.bodyDk, p.outline, s);
 
     // Stitching line down the side
     const mx = (legTop.x + knee.x) / 2 + 2.5;

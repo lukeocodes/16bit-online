@@ -5,6 +5,7 @@ import type {
   DrawCall,
   AttachmentPoint,
 } from "../types";
+import { DEPTH_HEAD, DEPTH_BODY, DEPTH_FAR_LIMB } from "../types";
 import { darken, lighten } from "../palette";
 
 /**
@@ -31,9 +32,9 @@ export class HairBraided implements Model {
 
     const calls: DrawCall[] = [];
 
-    // Two braids — depth 22 (behind torso, in front of back hair)
+    // Braids: behind body when facing camera, above back armor when facing away
     calls.push({
-      depth: 23,
+      depth: facingCamera ? DEPTH_FAR_LIMB - 5 : DEPTH_BODY + 6,
       draw: (g: Graphics, s: number) => {
         const braidStartY = head.y + 3;
         const braidLen = 16;
@@ -99,7 +100,7 @@ export class HairBraided implements Model {
     // Back hair cap
     if (!facingCamera) {
       calls.push({
-        depth: 53,
+        depth: DEPTH_HEAD + 1,
         draw: (g: Graphics, s: number) => {
           g.ellipse(
             head.x * s,
@@ -114,7 +115,7 @@ export class HairBraided implements Model {
 
     // Front bangs and top
     calls.push({
-      depth: 53,
+      depth: DEPTH_HEAD + 1,
       draw: (g: Graphics, s: number) => {
         if (facingCamera || sideView) {
           // Center-parted bangs
@@ -131,7 +132,7 @@ export class HairBraided implements Model {
           g.lineTo(head.x * s, (head.y - r * 0.2) * s);
           g.stroke({ width: s * 0.4, color: hairDk, alpha: 0.3 });
 
-          if (sideView) {
+          if (sideView && !facingCamera) {
             const hx = head.x + iso.x * 2;
             g.ellipse(
               hx * s,
