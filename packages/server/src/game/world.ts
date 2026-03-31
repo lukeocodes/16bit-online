@@ -11,7 +11,7 @@ import {
 } from "./protocol.js";
 import { xpForKill, processXpGain, xpToNextLevel, totalXpForLevel } from "./experience.js";
 import { rollAndGetLoot } from "./inventory.js";
-import { dropItem as dropWorldItem, getZoneItems } from "./world-items.js";
+import { dropItem as dropWorldItem, getZoneItems, tickItemDecay } from "./world-items.js";
 import { onDungeonNpcDeath } from "./dungeon.js";
 import { onQuestKill } from "./quests.js";
 import { config } from "../config.js";
@@ -226,6 +226,15 @@ function gameTick() {
   progressSaveCounter++;
   if (progressSaveCounter >= PROGRESS_SAVE_INTERVAL) {
     progressSaveCounter = 0;
+
+    // Item decay: collect zones that have active players
+    const activeZones = new Set<string>();
+    for (const conn of connectionManager.iterAll()) {
+      const ent = entityStore.get(conn.entityId);
+      if (ent) activeZones.add(ent.mapId === 1 ? "human-meadows" : `zone-${ent.mapId}`);
+    }
+    tickItemDecay(activeZones);
+
     for (const [entityId, prog] of playerProgress) {
       const entity = entityStore.get(entityId);
       if (!entity) continue;

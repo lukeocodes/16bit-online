@@ -87,8 +87,11 @@ export class Game {
   // Click indicators
   private clickIndicator: Graphics | null = null;
   private clickIndicatorType: "move" | "attack" | null = null;
-  private clickIndicatorTargetId: string | null = null; // for attack: follows entity
+  private clickIndicatorTargetId: string | null = null;
   private clickIndicatorAlpha = 0;
+  private clickIndicatorTileX = 0;
+  private clickIndicatorTileZ = 0;
+  private clickIndicatorRipple = 0; // 0–1 ripple phase, loops
   private lastCursor = "";
   private followTargetId: string | null = null;
   private particles: ParticleSystem;
@@ -1034,47 +1037,59 @@ export class Game {
     this.clickIndicatorType = type;
     this.clickIndicatorTargetId = targetId ?? null;
     this.clickIndicatorAlpha = 1;
-    this.updateClickIndicatorGraphic(tileX, tileZ);
+    this.clickIndicatorTileX = tileX;
+    this.clickIndicatorTileZ = tileZ;
+    this.clickIndicatorRipple = 0;
   }
 
-  private updateClickIndicatorGraphic(tileX: number, tileZ: number) {
+  private updateClickIndicatorGraphic() {
     if (!this.clickIndicator) return;
-    const { sx, sy } = worldToScreen(tileX, tileZ, 0);
+    const { sx, sy } = worldToScreen(this.clickIndicatorTileX, this.clickIndicatorTileZ, 0);
     this.clickIndicator.position.set(sx, sy);
     this.clickIndicator.clear();
     const color = this.clickIndicatorType === "attack" ? 0xff4444 : 0x44ddcc;
+    const r = this.clickIndicatorRipple; // 0–1
+
+    // Expanding ripple ring: starts at base size, radiates outward and fades
+    const rippleScale = 1 + r * 1.8;
+    const rippleAlpha = (1 - r) * 0.6;
+    this.clickIndicator.ellipse(0, 0, 18 * rippleScale, 9 * rippleScale);
+    this.clickIndicator.stroke({ width: 1.5, color, alpha: rippleAlpha });
+
+    // Base filled circle (fades with overall alpha, handled by container alpha)
     this.clickIndicator.ellipse(0, 0, 18, 9);
-    this.clickIndicator.fill({ color, alpha: 0.45 });
+    this.clickIndicator.fill({ color, alpha: 0.35 });
     this.clickIndicator.ellipse(0, 0, 18, 9);
-    this.clickIndicator.stroke({ width: 1.5, color, alpha: 0.9 });
+    this.clickIndicator.stroke({ width: 1.5, color, alpha: 0.85 });
   }
 
   private updateClickIndicator(frameDt: number) {
     if (!this.clickIndicator || !this.clickIndicatorType) return;
 
+    // Advance ripple (loops 0→1 at ~1.2 cycles/sec)
+    this.clickIndicatorRipple = (this.clickIndicatorRipple + frameDt * 1.2) % 1;
+
     if (this.clickIndicatorType === "attack") {
-      // Follow the target entity
+      // Follow entity
       if (this.clickIndicatorTargetId) {
         const pos = this.entityManager.getComponent<PositionComponent>(this.clickIndicatorTargetId, "position");
         if (pos) {
-          this.updateClickIndicatorGraphic(pos.x, pos.z);
+          this.clickIndicatorTileX = pos.x;
+          this.clickIndicatorTileZ = pos.z;
         } else {
-          // Entity gone — hide
           this.clickIndicatorAlpha = 0;
         }
       }
-      // Attack indicator stays at full alpha until target is deselected
       if (!this.followTargetId && !this.selectedTargetId) this.clickIndicatorAlpha = 0;
     } else {
-      // Move indicator: fade based on remaining distance to goal
+      // Move: fade as player closes in
       if (this.moveGoal && this.localEntityId) {
         const myPos = this.entityManager.getComponent<PositionComponent>(this.localEntityId, "position");
         if (myPos) {
           const dist = Math.abs(myPos.x - this.moveGoal.x) + Math.abs(myPos.z - this.moveGoal.z);
-          this.clickIndicatorAlpha = Math.min(1, dist / 3); // fully faded within 3 tiles
+          this.clickIndicatorAlpha = Math.min(1, dist / 3);
         }
       } else {
-        // Goal reached or cancelled — fade out quickly
         this.clickIndicatorAlpha -= frameDt * 3;
       }
     }
@@ -1085,6 +1100,8 @@ export class Game {
       this.clickIndicator.clear();
       this.clickIndicatorType = null;
       this.clickIndicatorTargetId = null;
+    } else {
+      this.updateClickIndicatorGraphic();
     }
   }
 

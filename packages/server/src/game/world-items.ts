@@ -8,7 +8,7 @@
 
 import { db } from "../db/postgres.js";
 import { worldItems as worldItemsTable } from "../db/schema.js";
-import { eq, and, or, isNull, gt, sql } from "drizzle-orm";
+import { eq, and, or, isNull, gt, sql, inArray } from "drizzle-orm";
 import { getItem } from "./items.js";
 
 export interface WorldItem {
@@ -25,6 +25,53 @@ export interface WorldItem {
 
 // In-memory store: id → WorldItem
 const store = new Map<string, WorldItem>();
+
+// ——— Zone-empty decay ———
+// When no players are in a zone, dropped items decay after DECAY_WHEN_EMPTY_MS
+const DECAY_WHEN_EMPTY_MS = 60 * 1000; // 1 minute
+const zoneEmptiedAt = new Map<string, number>(); // zoneId → timestamp when it became empty
+
+/** Call each game tick with the set of zones that currently have at least one player. */
+export function tickItemDecay(activeZoneIds: Set<string>): void {
+  const now = Date.now();
+
+  // Update zone-empty timestamps
+  for (const [zoneId] of zoneEmptiedAt) {
+    if (activeZoneIds.has(zoneId)) zoneEmptiedAt.delete(zoneId); // player arrived
+  }
+  for (const zoneId of activeZoneIds) {
+    zoneEmptiedAt.delete(zoneId); // active — clear any empty timer
+  }
+
+  // Find zones that have items but no players and haven't been tracked yet
+  const itemZones = new Set<string>();
+  for (const item of store.values()) {
+    if (item.source === "drop") itemZones.add(item.zoneId);
+  }
+  for (const zoneId of itemZones) {
+    if (!activeZoneIds.has(zoneId) && !zoneEmptiedAt.has(zoneId)) {
+      zoneEmptiedAt.set(zoneId, now); // zone just became empty
+    }
+  }
+
+  // Remove items in zones that have been empty longer than threshold
+  const toRemove: string[] = [];
+  for (const [zoneId, emptiedAt] of zoneEmptiedAt) {
+    if (now - emptiedAt >= DECAY_WHEN_EMPTY_MS) {
+      for (const [id, item] of store) {
+        if (item.zoneId === zoneId && item.source === "drop") toRemove.push(id);
+      }
+      zoneEmptiedAt.delete(zoneId);
+    }
+  }
+  if (toRemove.length > 0) {
+    for (const id of toRemove) store.delete(id);
+    db.delete(worldItemsTable)
+      .where(inArray(worldItemsTable.id, toRemove))
+      .catch(err => console.error("[WorldItems] Decay cleanup failed:", err));
+    console.log(`[WorldItems] Decayed ${toRemove.length} items from empty zones`);
+  }
+}
 
 // ——— Tiled map item loading ———
 

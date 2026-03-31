@@ -403,10 +403,12 @@ export class EntityRenderer {
         this.targetRing.visible = true;
         this.targetRing.zIndex = (targetPos.x + targetPos.z) * 10 - 1;
         // Pulse effect
-        this.ringRotation += dt * 2;
-        const pulse = 1.0 + Math.sin(this.ringRotation * 3) * 0.1;
+        // Attack: faster, more pronounced pulse. Selected only: gentle idle
+        const speed = this.autoAttacking ? 4 : 2;
+        const amp   = this.autoAttacking ? 0.18 : 0.06;
+        this.ringRotation += dt * speed;
+        const pulse = 1.0 + Math.sin(this.ringRotation * 3) * amp;
         this.targetRing.scale.set(pulse);
-        // Update color based on auto-attack state
         this.targetRing.clear();
         this.drawRingShape(this.targetRing);
       } else if (this.targetRing) {
