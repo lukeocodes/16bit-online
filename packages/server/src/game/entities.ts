@@ -10,6 +10,8 @@ export interface ServerEntity {
   rotation: number;
   mapId: number;
   lastUpdate: number;
+  /** ID of a saved model from the workbench DB, if this entity uses a custom composite model */
+  savedModelId?: string;
 }
 
 const AWAKE_RADIUS = 32;

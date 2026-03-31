@@ -12,6 +12,7 @@ import { getZone } from "../game/zone-registry.js";
 import { isWalkable } from "../world/terrain.js";
 import { startLingering, cancelLingering, isLingering } from "../game/linger.js";
 import { Opcode, packEntitySpawn, packEntityDespawn, packReliable, packSpawnPoint, packChunkData, packBinaryAbilityCooldown, packBinaryDamage, packBinaryState, packBinaryDeath, packBinaryRespawn } from "../game/protocol.js";
+import { getAllSavedModels } from "../game/model-registry.js";
 import { getZoneItems, pickupItem } from "../game/world-items.js";
 import { giveItem } from "../game/inventory.js";
 import { getServerNoisePerm, getCachedWorldMapGzip, getWorldMap } from "../world/queries.js";
@@ -498,6 +499,12 @@ export async function rtcRoutes(app: FastifyInstance) {
           const worldItems = getZoneItems(zoneId);
           if (worldItems.length > 0) {
             reliableChannel.send(Buffer.from(packReliable(Opcode.WORLD_ITEMS_SYNC, { items: worldItems })));
+          }
+
+          // Send saved model configs so client can render custom composites
+          const savedModels = getAllSavedModels();
+          if (savedModels.length > 0) {
+            reliableChannel.send(Buffer.from(packReliable(Opcode.SAVED_MODELS_SYNC, { models: savedModels })));
           }
 
           reliableChannel.send(Buffer.from(packReliable(Opcode.WORLD_READY, {

@@ -9,6 +9,7 @@ import { initWorldMap, cacheWorldMapToRedis } from "./world/queries.js";
 import { loadTiledMap, loadZoneMap, getZoneMapItems } from "./world/tiled-map.js";
 import { getAllZones } from "./game/zone-registry.js";
 import { loadMapItems, loadDbItems } from "./game/world-items.js";
+import { loadSavedModelsFromDB } from "./game/model-registry.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -34,6 +35,9 @@ async function main() {
   // Generate world map from seed (deterministic, ~100-500ms)
   initWorldMap(config.world.seed);
   await cacheWorldMapToRedis();
+
+  // Load workbench saved models into memory (non-fatal if DB not yet migrated)
+  await loadSavedModelsFromDB();
 
   spawnInitialNpcs();
   startGameLoop();
