@@ -53,17 +53,16 @@ export class InputManager {
       this.mouseY = e.offsetY;
     });
 
-    // Left-click on canvas
-    canvas.addEventListener("click", (e) => {
-      if (this.enabled && this.onLeftClick) {
-        this.onLeftClick(e.offsetX, e.offsetY);
-      }
-    });
+    // Suppress native context menu so right-click is always available for game actions
+    canvas.addEventListener("contextmenu", (e) => e.preventDefault());
 
-    // Right-click on canvas
-    canvas.addEventListener("contextmenu", (e) => {
-      e.preventDefault();
-      if (this.enabled && this.onRightClick) {
+    // Use pointerdown for both buttons — fires before any context menu and works
+    // reliably on canvas elements across all browsers and input methods
+    canvas.addEventListener("pointerdown", (e) => {
+      if (!this.enabled) return;
+      if (e.button === 0 && this.onLeftClick) {
+        this.onLeftClick(e.offsetX, e.offsetY);
+      } else if (e.button === 2 && this.onRightClick) {
         this.onRightClick(e.offsetX, e.offsetY);
       }
     });
