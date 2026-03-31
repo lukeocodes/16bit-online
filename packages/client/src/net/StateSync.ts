@@ -32,6 +32,17 @@ export type WorldItemsSyncCallback = (items: WorldItemData[]) => void;
 export type WorldItemSpawnCallback = (item: WorldItemData) => void;
 export type WorldItemDespawnCallback = (id: string) => void;
 
+export interface SavedModelEntry {
+  id: string;
+  name: string;
+  description: string | null;
+  baseModelId: string;
+  compositeConfig: unknown;
+  tags: string[];
+  isNpc: boolean;
+}
+export type SavedModelsSyncCallback = (models: SavedModelEntry[]) => void;
+
 export class StateSync {
   private entityManager: EntityManager;
   private localEntityId: string | null = null;
@@ -57,6 +68,9 @@ export class StateSync {
   private onWorldItemsSync: WorldItemsSyncCallback | null = null;
   private onWorldItemSpawn: WorldItemSpawnCallback | null = null;
   private onWorldItemDespawn: WorldItemDespawnCallback | null = null;
+  private onSavedModelsSync: SavedModelsSyncCallback | null = null;
+  /** Local cache of saved models received from server */
+  private savedModelsCache = new Map<string, SavedModelEntry>();
   private terrainYResolver: ((x: number, z: number) => number) | null = null;
 
   // Spawn points (for dev mode rendering)
@@ -102,6 +116,11 @@ export class StateSync {
   setOnWorldItemsSync(handler: WorldItemsSyncCallback) { this.onWorldItemsSync = handler; }
   setOnWorldItemSpawn(handler: WorldItemSpawnCallback) { this.onWorldItemSpawn = handler; }
   setOnWorldItemDespawn(handler: WorldItemDespawnCallback) { this.onWorldItemDespawn = handler; }
+  setOnSavedModelsSync(handler: SavedModelsSyncCallback) { this.onSavedModelsSync = handler; }
+
+  getSavedModel(id: string): SavedModelEntry | undefined {
+    return this.savedModelsCache.get(id);
+  }
 
   handleChunkData(data: ArrayBuffer): void {
     // Format: [opcode:u8] [cx:i16LE] [cz:i16LE] [heights:2048 bytes Float16]
@@ -338,6 +357,15 @@ export class StateSync {
           this.onDungeonExit(data.exitX, data.exitZ, data.message);
         }
         break;
+      case Opcode.SAVED_MODELS_SYNC:
+        if (Array.isArray(data.models)) {
+          this.savedModelsCache.clear();
+          for (const m of data.models as SavedModelEntry[]) {
+            this.savedModelsCache.set(m.id, m);
+          }
+          if (this.onSavedModelsSync) this.onSavedModelsSync(data.models);
+        }
+        break;
     }
   }
 
@@ -358,12 +386,21 @@ export class StateSync {
     pos.isRemote = true;
     this.entityManager.addComponent(id, pos);
     this.entityManager.addComponent(id, createMovement(0, data.x || 0, data.z || 0));
-    this.entityManager.addComponent(id, createRenderable(
+    const renderable = createRenderable(
       data.entityType || "player",
       data.bodyColor || "#aa4444",
       data.skinColor || "#e8c4a0",
       data.hairColor || "#2c1b0e",
-    ));
+    );
+    // If entity has a saved model config, resolve it from cache
+    if (data.savedModelId) {
+      const savedModel = this.savedModelsCache.get(data.savedModelId);
+      if (savedModel) {
+        (renderable as any).savedModelId = data.savedModelId;
+        (renderable as any).compositeConfig = savedModel.compositeConfig;
+      }
+    }
+    this.entityManager.addComponent(id, renderable);
 
     const stats = createStats(8, 8, 8);
     stats.hp = data.hp ?? 50;
