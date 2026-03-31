@@ -8,6 +8,7 @@ import { authRoutes } from "./routes/auth.js";
 import { characterRoutes } from "./routes/characters.js";
 import { worldRoutes } from "./routes/world.js";
 import { rtcRoutes } from "./routes/rtc.js";
+import { modelRoutes } from "./routes/models.js";
 import { config } from "./config.js";
 
 export async function buildApp() {
@@ -30,6 +31,7 @@ export async function buildApp() {
   await app.register(characterRoutes, { prefix: "/api/characters" });
   await app.register(worldRoutes, { prefix: "/api/world" });
   await app.register(rtcRoutes, { prefix: "/api/rtc" });
+  await app.register(modelRoutes, { prefix: "/api/models" });
 
   // Serve built client if available (for ngrok / production)
   const __dirname = dirname(fileURLToPath(import.meta.url));
