@@ -1,7 +1,20 @@
 import type { CompositeConfig, AttachmentSlot, ModelPalette } from "./models/types";
+import type { AnimationState } from "./models/WorkbenchSpriteSheet";
 import { registry } from "./models/registry";
 
 export type ViewMode = "composite" | "individual";
+
+export interface SavedModelEntry {
+  id: string;
+  name: string;
+  description?: string;
+  baseModelId: string;
+  compositeConfig: CompositeConfig;
+  tags: string[];
+  isNpc: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+}
 
 export interface WorkbenchState {
   viewMode: ViewMode;
@@ -14,6 +27,16 @@ export interface WorkbenchState {
   compositeConfig: CompositeConfig;
   /** Show ghost body behind individual models for context */
   showGhostBody: boolean;
+  /** Animation mode: peace walk, attack stationary, attack moving */
+  animationState: AnimationState;
+  /** Attack phase counter (0..ATTACK_PHASES-1) */
+  attackPhase: number;
+  /** If non-null, the walk phase is frozen at this index and animation is paused */
+  frozenFrameIndex: number | null;
+  /** DB-saved models loaded from server */
+  savedModels: SavedModelEntry[];
+  /** Whether the game server is reachable */
+  serverOnline: boolean;
 }
 
 export interface WorkbenchAPI {
@@ -24,6 +47,8 @@ export interface WorkbenchAPI {
   toggleAnimation(playing?: boolean): void;
   setAnimSpeed(speed: number): void;
   setShowGhostBody(show: boolean): void;
+  setAnimationState(state: AnimationState): void;
+  freezeFrame(index: number | null): void;
 
   // Composite config
   setSlot(slot: string, modelId: string | null): void;
@@ -32,6 +57,14 @@ export interface WorkbenchAPI {
   setBuild(build: number): void;
   setHeight(height: number): void;
 
+  // DB persistence
+  selectModel(id: string): void;
+  getCompositeConfig(): CompositeConfig;
+  saveModel(name: string, description?: string, isNpc?: boolean): Promise<string>;
+  loadSavedModel(id: string): void;
+  deleteSavedModel(id: string): Promise<void>;
+  reloadSavedModels(): Promise<void>;
+
   // Queries
   getState(): WorkbenchState;
   getConfig(): CompositeConfig;
@@ -39,6 +72,7 @@ export interface WorkbenchAPI {
   listCategories(): string[];
   getDirection(): number;
   isPlaying(): boolean;
+  getSavedModels(): SavedModelEntry[];
 
   // Events
   onChange(callback: () => void): void;
@@ -63,7 +97,7 @@ export function createWorkbenchAPI(state: WorkbenchState): WorkbenchAPI {
     },
 
     setDirection(dir) {
-      state.direction = dir % 8;
+      state.direction = ((dir % 8) + 8) % 8;
       notify();
     },
 
@@ -84,6 +118,17 @@ export function createWorkbenchAPI(state: WorkbenchState): WorkbenchAPI {
 
     setShowGhostBody(show) {
       state.showGhostBody = show;
+      notify();
+    },
+
+    setAnimationState(animState) {
+      state.animationState = animState;
+      notify();
+    },
+
+    freezeFrame(index) {
+      state.frozenFrameIndex = index;
+      if (index !== null) state.playing = false;
       notify();
     },
 
@@ -110,7 +155,7 @@ export function createWorkbenchAPI(state: WorkbenchState): WorkbenchAPI {
       notify();
     },
 
-    setArmor(type) {
+    setArmor(_type) {
       notify();
     },
 
@@ -121,6 +166,83 @@ export function createWorkbenchAPI(state: WorkbenchState): WorkbenchAPI {
 
     setHeight(height) {
       state.compositeConfig.height = Math.max(0.85, Math.min(1.15, height));
+      notify();
+    },
+
+    selectModel(id) {
+      // Check base models first
+      const model = registry.get(id);
+      if (model) {
+        if (model.slot === "root" && model.category !== "construction") {
+          state.compositeConfig.baseModelId = id;
+          api.setView("composite");
+        } else {
+          api.setView("individual", id);
+        }
+        return;
+      }
+      // Check saved models
+      const saved = state.savedModels.find((m) => m.id === id);
+      if (saved) {
+        Object.assign(state.compositeConfig, saved.compositeConfig);
+        state.compositeConfig.baseModelId = saved.baseModelId;
+        state.viewMode = "composite";
+        state.selectedModelId = null;
+        notify();
+      }
+    },
+
+    getCompositeConfig() {
+      return { ...state.compositeConfig };
+    },
+
+    async saveModel(name, description, isNpc) {
+      const body = {
+        name,
+        description: description ?? "",
+        baseModelId: state.compositeConfig.baseModelId,
+        compositeConfig: state.compositeConfig,
+        tags: [] as string[],
+        isNpc: isNpc ?? false,
+      };
+      const res = await fetch("/api/models/saved", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) throw new Error(`Save failed: ${res.statusText}`);
+      const data = await res.json() as { id: string };
+      await api.reloadSavedModels();
+      return data.id;
+    },
+
+    loadSavedModel(id) {
+      const saved = state.savedModels.find((m) => m.id === id);
+      if (!saved) return;
+      Object.assign(state.compositeConfig, saved.compositeConfig);
+      state.compositeConfig.baseModelId = saved.baseModelId;
+      state.viewMode = "composite";
+      state.selectedModelId = null;
+      notify();
+    },
+
+    async deleteSavedModel(id) {
+      const res = await fetch(`/api/models/saved/${id}`, { method: "DELETE" });
+      if (!res.ok) throw new Error(`Delete failed: ${res.statusText}`);
+      await api.reloadSavedModels();
+    },
+
+    async reloadSavedModels() {
+      try {
+        const res = await fetch("/api/models/saved");
+        if (!res.ok) { state.serverOnline = false; notify(); return; }
+        const data = await res.json() as { models: SavedModelEntry[] };
+        state.savedModels = data.models ?? [];
+        state.serverOnline = true;
+      } catch {
+        state.serverOnline = false;
+        state.savedModels = [];
+      }
       notify();
     },
 
@@ -151,6 +273,10 @@ export function createWorkbenchAPI(state: WorkbenchState): WorkbenchAPI {
 
     isPlaying() {
       return state.playing;
+    },
+
+    getSavedModels() {
+      return [...state.savedModels];
     },
 
     onChange(callback) {

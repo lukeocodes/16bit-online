@@ -1,4 +1,4 @@
-import type { WorkbenchState, WorkbenchAPI } from "./WorkbenchAPI";
+import type { WorkbenchState, WorkbenchAPI, SavedModelEntry } from "./WorkbenchAPI";
 import type { ArmorType } from "./models/palette";
 import { computePalette } from "./models/palette";
 import { registry } from "./models/registry";
@@ -32,15 +32,183 @@ const SLOT_LABELS: Record<string, string> = {
   "feet-R": "Boots",
 };
 
+// ─── Searchable Slot Picker ─────────────────────────────────────────────────
+
+interface PickerOption {
+  value: string;
+  label: string;
+  isDb?: boolean;
+}
+
+interface SlotPickerOpts {
+  label: string;
+  options: PickerOption[];
+  current: string;
+  savedOptions: PickerOption[];
+  onChange: (value: string | null) => void;
+}
+
+function createSlotPicker(opts: SlotPickerOpts): HTMLElement {
+  const wrap = document.createElement("div");
+  wrap.className = "cfg-row";
+
+  const lbl = document.createElement("label");
+  lbl.textContent = opts.label;
+  wrap.appendChild(lbl);
+
+  const pickerWrap = document.createElement("div");
+  pickerWrap.className = "slot-picker-wrap";
+
+  const trigger = document.createElement("button");
+  trigger.className = "slot-picker-trigger";
+  trigger.setAttribute("tabindex", "0");
+
+  const valueSpan = document.createElement("span");
+  valueSpan.className = "picker-value";
+  const currentOpt = [...opts.options, ...opts.savedOptions].find(o => o.value === opts.current);
+  valueSpan.textContent = currentOpt?.label ?? "None";
+
+  const clearBtn = document.createElement("span");
+  clearBtn.className = "picker-clear";
+  clearBtn.title = "Clear slot";
+  clearBtn.textContent = "×";
+  clearBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    opts.onChange(null);
+    valueSpan.textContent = "None";
+    dropdown.classList.add("hidden");
+  });
+
+  trigger.appendChild(valueSpan);
+  if (opts.current !== "none") trigger.appendChild(clearBtn);
+
+  // Dropdown
+  const dropdown = document.createElement("div");
+  dropdown.className = "slot-picker-dropdown hidden";
+
+  const searchWrap = document.createElement("div");
+  searchWrap.className = "picker-search";
+  const searchInput = document.createElement("input");
+  searchInput.type = "search";
+  searchInput.placeholder = "Search...";
+  searchInput.autocomplete = "off";
+  searchWrap.appendChild(searchInput);
+  dropdown.appendChild(searchWrap);
+
+  const listEl = document.createElement("div");
+  listEl.className = "picker-list";
+  dropdown.appendChild(listEl);
+
+  function buildList(query: string) {
+    listEl.innerHTML = "";
+    const q = query.toLowerCase();
+
+    // None option
+    const noneOpt = document.createElement("div");
+    noneOpt.className = "picker-option none-opt" + (opts.current === "none" ? " active" : "");
+    noneOpt.textContent = "None";
+    noneOpt.addEventListener("click", () => {
+      opts.onChange(null);
+      valueSpan.textContent = "None";
+      dropdown.classList.add("hidden");
+    });
+    listEl.appendChild(noneOpt);
+
+    // Base model options
+    const filtered = opts.options.filter(o =>
+      !q || o.label.toLowerCase().includes(q) || o.value.includes(q)
+    );
+    if (filtered.length > 0) {
+      const grpLabel = document.createElement("div");
+      grpLabel.className = "picker-group-label";
+      grpLabel.textContent = "Base Models";
+      listEl.appendChild(grpLabel);
+      for (const opt of filtered) {
+        const div = document.createElement("div");
+        div.className = "picker-option" + (opt.value === opts.current ? " active" : "");
+        div.textContent = opt.label;
+        div.addEventListener("click", () => {
+          opts.onChange(opt.value);
+          valueSpan.textContent = opt.label;
+          dropdown.classList.add("hidden");
+        });
+        listEl.appendChild(div);
+      }
+    }
+
+    // Saved DB model options
+    const filteredSaved = opts.savedOptions.filter(o =>
+      !q || o.label.toLowerCase().includes(q) || o.value.includes(q)
+    );
+    if (filteredSaved.length > 0) {
+      const grpLabel = document.createElement("div");
+      grpLabel.className = "picker-group-label";
+      grpLabel.textContent = "Saved (DB)";
+      listEl.appendChild(grpLabel);
+      for (const opt of filteredSaved) {
+        const div = document.createElement("div");
+        div.className = "picker-option" + (opt.value === opts.current ? " active" : "");
+        const nameSpan = document.createElement("span");
+        nameSpan.style.flex = "1";
+        nameSpan.textContent = opt.label;
+        const dbBadge = document.createElement("span");
+        dbBadge.className = "db-badge";
+        dbBadge.textContent = "DB";
+        div.appendChild(nameSpan);
+        div.appendChild(dbBadge);
+        div.addEventListener("click", () => {
+          opts.onChange(opt.value);
+          valueSpan.textContent = opt.label;
+          dropdown.classList.add("hidden");
+        });
+        listEl.appendChild(div);
+      }
+    }
+  }
+
+  searchInput.addEventListener("input", () => buildList(searchInput.value));
+
+  trigger.addEventListener("click", () => {
+    const hidden = dropdown.classList.contains("hidden");
+    // Close all other dropdowns
+    document.querySelectorAll(".slot-picker-dropdown").forEach(d => d.classList.add("hidden"));
+    if (hidden) {
+      dropdown.classList.remove("hidden");
+      buildList("");
+      searchInput.value = "";
+      searchInput.focus();
+    }
+  });
+
+  // Close on outside click
+  document.addEventListener("click", (e) => {
+    if (!pickerWrap.contains(e.target as Node)) {
+      dropdown.classList.add("hidden");
+    }
+  }, { capture: true });
+
+  buildList("");
+
+  pickerWrap.appendChild(trigger);
+  pickerWrap.appendChild(dropdown);
+  wrap.appendChild(pickerWrap);
+  return wrap;
+}
+
+// ─── Config Panel ────────────────────────────────────────────────────────────
+
 /**
- * Right config panel — slot dropdowns, colors, animation controls.
- * Adapts based on whether the selected model has attachment points.
+ * Right config panel — slot pickers, colors, body shape, save/load.
  */
 export function createConfigPanel(
-  container: HTMLElement,
+  _container: HTMLElement,
   state: WorkbenchState,
   api: WorkbenchAPI
 ): { rebuild: () => void } {
+  const scrollEl = document.getElementById("config-scroll")!;
+  const titleEl = document.getElementById("config-title")!;
+  const subtitleEl = document.getElementById("config-subtitle")!;
+
   let armorType: ArmorType = "leather";
 
   function rebuildPalette() {
@@ -50,59 +218,62 @@ export function createConfigPanel(
   }
 
   function rebuild() {
-    container.innerHTML = "";
+    scrollEl.innerHTML = "";
 
-    // Determine if the current model has slots
     const isComposite = state.viewMode === "composite";
-    const selectedModel = state.selectedModelId
-      ? registry.get(state.selectedModelId)
-      : null;
+    const selectedModel = state.selectedModelId ? registry.get(state.selectedModelId) : null;
 
-    // ─── Model info ───
-    const infoLabel = document.createElement("h2");
+    // Update header
     if (isComposite) {
-      infoLabel.textContent = "Composite";
+      const base = registry.get(state.compositeConfig.baseModelId);
+      titleEl.textContent = "Composite";
+      subtitleEl.textContent = base?.name ?? state.compositeConfig.baseModelId;
     } else if (selectedModel) {
-      infoLabel.textContent = selectedModel.name;
-      const catLabels: Record<string, string> = {
-        body: "Body", hair: "Hair", armor: "Armor", weapon: "Weapon",
-        offhand: "Off-hand", headgear: "Headgear", legs: "Legs",
-        feet: "Boots", shoulders: "Shoulders", gauntlets: "Gauntlets", npc: "NPC",
-      };
-      const catSpan = document.createElement("span");
-      catSpan.style.cssText = "font-size:10px;color:#666;font-weight:400;margin-left:6px;text-transform:uppercase;";
-      catSpan.textContent = catLabels[selectedModel.category] ?? selectedModel.category;
-      infoLabel.appendChild(catSpan);
+      titleEl.textContent = selectedModel.name;
+      subtitleEl.textContent = selectedModel.category.toUpperCase();
     }
-    container.appendChild(infoLabel);
 
     const isConstruction = !isComposite && selectedModel?.category === "construction";
-    const isStatic       = !isComposite && selectedModel?.isAnimated === false;
+    const isStatic = !isComposite && selectedModel?.isAnimated === false;
 
-    // ─── Slot dropdowns (composite view) ───
-    if (isComposite) {
-      buildSlotDropdowns();
+    // Offline notice
+    if (!state.serverOnline) {
+      const notice = document.createElement("div");
+      notice.className = "offline-notice";
+      notice.textContent = "Server offline — DB models unavailable";
+      scrollEl.appendChild(notice);
     }
 
-    // ─── Ghost body toggle (individual, non-body, non-construction) ───
+    // ─── Slot pickers (composite view) ───
+    if (isComposite) {
+      buildSlotPickers();
+    }
+
+    // ─── Ghost body toggle (individual non-body non-construction) ───
     if (!isComposite && selectedModel && selectedModel.category !== "body" && !isConstruction) {
-      const div = document.createElement("div");
-      div.className = "control-group";
-      div.style.marginBottom = "10px";
+      const section = addSection("Context");
+      const row = document.createElement("div");
+      row.className = "cfg-row";
       const lbl = document.createElement("label");
       lbl.textContent = "Show body";
       const check = document.createElement("input");
       check.type = "checkbox";
       check.checked = state.showGhostBody;
       check.addEventListener("change", () => api.setShowGhostBody(check.checked));
-      div.appendChild(lbl);
-      div.appendChild(check);
-      container.appendChild(div);
+      row.appendChild(lbl);
+      row.appendChild(check);
+      section.appendChild(row);
     }
 
-    // ─── Body shape (composite view only) ───
+    // ─── Body shape (composite) ───
     if (isComposite) {
-      buildBodySliders();
+      const section = addSection("Body Shape");
+      createSlider(section, "Build", state.compositeConfig.build ?? 1, 0.7, 1.3, 0.05, (v) => {
+        state.compositeConfig.build = v;
+      });
+      createSlider(section, "Height", state.compositeConfig.height ?? 1, 0.85, 1.15, 0.05, (v) => {
+        state.compositeConfig.height = v;
+      });
     }
 
     // ─── Colors ───
@@ -112,209 +283,253 @@ export function createConfigPanel(
       buildColorPickers();
     }
 
-    // ─── Animation (hidden for static models) ───
+    // ─── Animation ───
     if (!isStatic) {
       buildAnimationControls();
     }
 
+    // ─── Save / Load ───
+    buildSaveLoad();
   }
 
-  function buildSlotDropdowns() {
-    const divider = document.createElement("div");
-    divider.className = "section-divider";
-    container.appendChild(divider);
+  function addSection(title: string): HTMLElement {
+    const sec = document.createElement("div");
+    sec.className = "cfg-section";
+    const titleEl = document.createElement("div");
+    titleEl.className = "cfg-section-title";
+    titleEl.textContent = title;
+    sec.appendChild(titleEl);
+    scrollEl.appendChild(sec);
+    return sec;
+  }
 
-    // Get attachment slots from base model
+  function buildSlotPickers() {
     const baseModel = registry.get(state.compositeConfig.baseModelId);
     if (!baseModel) return;
 
     const skeleton = computeHumanoidSkeleton(0 as Direction, 0);
     const attachments = baseModel.getAttachmentPoints(skeleton);
 
-    for (const [slotName, _point] of Object.entries(attachments)) {
+    const slots = Object.entries(attachments);
+    if (slots.length === 0) return;
+
+    const section = addSection("Equipment Slots");
+
+    for (const [slotName] of slots) {
       const categories = SLOT_CATEGORIES[slotName];
       if (!categories || categories.length === 0) continue;
-
 
       const compatibleModels = categories.flatMap((cat) => registry.list(cat as any));
       if (compatibleModels.length === 0) continue;
 
-      appendHeading(SLOT_LABELS[slotName] ?? slotName);
-
       const existingAtt = state.compositeConfig.attachments.find((a) => a.slot === slotName);
       const currentModelId = existingAtt?.modelId ?? "none";
 
-      const div = document.createElement("div");
-      div.className = "control-group";
-      const select = document.createElement("select");
+      // Saved models that could go in this slot — for now use all saved models as alternatives
+      const savedOpts: PickerOption[] = state.savedModels
+        .filter(m => {
+          const base = registry.get(m.baseModelId);
+          return base && categories.includes(base.category);
+        })
+        .map(m => ({ value: `saved:${m.id}`, label: m.name, isDb: true }));
 
-      const noneOpt = document.createElement("option");
-      noneOpt.value = "none";
-      noneOpt.textContent = "None";
-      noneOpt.selected = currentModelId === "none";
-      select.appendChild(noneOpt);
-
-      for (const model of compatibleModels) {
-        const opt = document.createElement("option");
-        opt.value = model.id;
-        opt.textContent = model.name;
-        opt.selected = model.id === currentModelId;
-        select.appendChild(opt);
-      }
-
-      select.addEventListener("change", () => {
-        api.setSlot(slotName, select.value === "none" ? null : select.value);
+      const pickerEl = createSlotPicker({
+        label: SLOT_LABELS[slotName] ?? slotName,
+        options: compatibleModels.map(m => ({ value: m.id, label: m.name })),
+        savedOptions: savedOpts,
+        current: currentModelId,
+        onChange: (value) => {
+          api.setSlot(slotName, value);
+          rebuild();
+        },
       });
-
-      div.appendChild(select);
-      container.appendChild(div);
+      section.appendChild(pickerEl);
     }
   }
 
-  function buildBodySliders() {
-    const divider = document.createElement("div");
-    divider.className = "section-divider";
-    container.appendChild(divider);
-
-    appendHeading("Body Shape");
-
-    // Build (width) slider
-    createSlider("Build", state.compositeConfig.build ?? 1, 0.7, 1.3, 0.05, (v) => {
-      state.compositeConfig.build = v;
-    });
-
-    // Height slider
-    createSlider("Height", state.compositeConfig.height ?? 1, 0.85, 1.15, 0.05, (v) => {
-      state.compositeConfig.height = v;
-    });
-  }
-
   function buildConstructionControls() {
-    const divider = document.createElement("div");
-    divider.className = "section-divider";
-    container.appendChild(divider);
-
     const CONSTRUCTION_DEFAULT_PRIMARY = 0xc4b8aa;
+    const section = addSection("Color");
 
-    appendHeading("Color");
-    createColorPicker("Primary", state.compositeConfig.palette.primary, (v) => {
+    createColorPicker(section, "Primary", state.compositeConfig.palette.primary, (v) => {
       state.compositeConfig.palette.primary = v;
     });
 
-    const resetDiv = document.createElement("div");
-    resetDiv.className = "control-group";
+    const resetRow = document.createElement("div");
+    resetRow.className = "cfg-row";
     const resetBtn = document.createElement("button");
+    resetBtn.className = "btn btn-secondary btn-sm";
     resetBtn.textContent = "Reset to default";
-    resetBtn.style.cssText = "width:auto;padding:3px 10px;font-size:11px;background:#444;";
     resetBtn.addEventListener("click", () => {
       state.compositeConfig.palette.primary = CONSTRUCTION_DEFAULT_PRIMARY;
       rebuild();
     });
-    resetDiv.appendChild(resetBtn);
-    container.appendChild(resetDiv);
+    resetRow.appendChild(resetBtn);
+    section.appendChild(resetRow);
 
-    appendHeading("Texture");
+    const texSection = addSection("Texture");
     const div = document.createElement("div");
-    div.className = "control-group";
-    div.style.flexDirection = "column";
-    div.style.alignItems = "flex-start";
-    div.style.gap = "6px";
+    div.style.cssText = "display:flex;flex-direction:column;gap:6px;";
 
     const fileInput = document.createElement("input");
     fileInput.type = "file";
     fileInput.accept = "image/*";
-    fileInput.style.cssText = "font-size:11px;color:#aaa;width:100%;";
+    fileInput.style.cssText = "font-size:11px;color:var(--text-muted);width:100%;";
 
     const statusLbl = document.createElement("span");
-    statusLbl.style.cssText = "font-size:10px;color:#666;";
-    statusLbl.textContent = "No texture";
+    statusLbl.style.cssText = "font-size:10px;color:var(--text-faint);";
+    statusLbl.textContent = "No texture loaded";
 
     fileInput.addEventListener("change", () => {
       const file = fileInput.files?.[0];
       if (!file) return;
       const url = URL.createObjectURL(file);
-      // Store on state for the renderer to pick up
       (state as any)._constructionTextureUrl = url;
       statusLbl.textContent = file.name;
-      api.onChange(() => {}); // trigger re-render by notifying (no-op listener)
-      // Directly notify: force a redraw by touching walkPhase
-      (state as any)._constructionTextureUrl = url;
     });
 
     const clearBtn = document.createElement("button");
+    clearBtn.className = "btn btn-secondary btn-sm";
     clearBtn.textContent = "Clear texture";
-    clearBtn.style.cssText = "width:auto;padding:2px 8px;font-size:11px;background:#444;";
     clearBtn.addEventListener("click", () => {
       (state as any)._constructionTextureUrl = null;
       fileInput.value = "";
-      statusLbl.textContent = "No texture";
+      statusLbl.textContent = "No texture loaded";
     });
 
     div.appendChild(fileInput);
     div.appendChild(statusLbl);
     div.appendChild(clearBtn);
-    container.appendChild(div);
+    texSection.appendChild(div);
   }
 
   function buildColorPickers() {
-    const divider = document.createElement("div");
-    divider.className = "section-divider";
-    container.appendChild(divider);
-
-    appendHeading("Colors");
+    const section = addSection("Colors");
     const p = state.compositeConfig.palette;
-    createColorPicker("Skin", p.skin, (v) => { state.compositeConfig.palette.skin = v; rebuildPalette(); });
-    createColorPicker("Hair", p.hair, (v) => { state.compositeConfig.palette.hair = v; rebuildPalette(); });
-    createColorPicker("Eyes", p.eyes, (v) => { state.compositeConfig.palette.eyes = v; rebuildPalette(); });
-    createColorPicker("Primary", p.primary, (v) => { state.compositeConfig.palette.primary = v; rebuildPalette(); });
-    createColorPicker("Secondary", p.secondary, (v) => { state.compositeConfig.palette.secondary = v; rebuildPalette(); });
+    createColorPicker(section, "Skin", p.skin, (v) => { state.compositeConfig.palette.skin = v; rebuildPalette(); });
+    createColorPicker(section, "Hair", p.hair, (v) => { state.compositeConfig.palette.hair = v; rebuildPalette(); });
+    createColorPicker(section, "Eyes", p.eyes, (v) => { state.compositeConfig.palette.eyes = v; rebuildPalette(); });
+    createColorPicker(section, "Primary", p.primary, (v) => { state.compositeConfig.palette.primary = v; rebuildPalette(); });
+    createColorPicker(section, "Secondary", p.secondary, (v) => { state.compositeConfig.palette.secondary = v; rebuildPalette(); });
   }
 
   function buildAnimationControls() {
-    const divider = document.createElement("div");
-    divider.className = "section-divider";
-    container.appendChild(divider);
-
-    appendHeading("Animation");
-    const div = document.createElement("div");
-    div.className = "control-group";
+    const section = addSection("Animation");
+    const row = document.createElement("div");
+    row.className = "cfg-row anim-controls";
 
     const playBtn = document.createElement("button");
+    playBtn.className = "btn btn-secondary btn-sm";
     playBtn.textContent = state.playing ? "\u23f8 Pause" : "\u25b6 Play";
-    playBtn.style.cssText = "width:auto;padding:4px 10px;";
     playBtn.addEventListener("click", () => {
       api.toggleAnimation();
       playBtn.textContent = state.playing ? "\u23f8 Pause" : "\u25b6 Play";
     });
 
-    const speedLbl = document.createElement("label");
-    speedLbl.textContent = "Speed";
-    speedLbl.style.minWidth = "36px";
+    row.appendChild(playBtn);
+    section.appendChild(row);
 
-    const slider = document.createElement("input");
-    slider.type = "range";
-    slider.min = "0.1";
-    slider.max = "3.0";
-    slider.step = "0.1";
-    slider.value = String(state.animSpeed);
-    slider.addEventListener("input", () => api.setAnimSpeed(parseFloat(slider.value)));
-
-    div.appendChild(playBtn);
-    div.appendChild(speedLbl);
-    div.appendChild(slider);
-    container.appendChild(div);
+    createSlider(section, "Speed", state.animSpeed, 0.1, 3.0, 0.1, (v) => api.setAnimSpeed(v));
   }
 
+  function buildSaveLoad() {
+    const section = addSection("Save / Load");
+
+    // Save to DB
+    const saveRow = document.createElement("div");
+    saveRow.className = "save-row";
+    const nameInput = document.createElement("input");
+    nameInput.type = "text";
+    nameInput.placeholder = "Model name...";
+    nameInput.maxLength = 128;
+    const saveBtn = document.createElement("button");
+    saveBtn.className = "btn btn-primary btn-sm";
+    saveBtn.textContent = "Save";
+    saveBtn.addEventListener("click", async () => {
+      const name = nameInput.value.trim();
+      if (!name) { nameInput.focus(); return; }
+      saveBtn.textContent = "...";
+      saveBtn.disabled = true;
+      try {
+        await api.saveModel(name);
+        nameInput.value = "";
+        rebuild();
+      } catch (err) {
+        alert(`Save failed: ${err}`);
+      } finally {
+        saveBtn.textContent = "Save";
+        saveBtn.disabled = false;
+      }
+    });
+    saveRow.appendChild(nameInput);
+    saveRow.appendChild(saveBtn);
+    section.appendChild(saveRow);
+
+    // Saved model list
+    if (state.savedModels.length > 0) {
+      const listDiv = document.createElement("div");
+      for (const saved of state.savedModels) {
+        const item = document.createElement("div");
+        item.className = "db-model-item";
+
+        const nameSpan = document.createElement("span");
+        nameSpan.className = "item-name";
+        nameSpan.textContent = saved.name;
+        nameSpan.title = saved.description ?? saved.name;
+
+        const loadBtn = document.createElement("button");
+        loadBtn.className = "btn btn-secondary btn-sm";
+        loadBtn.textContent = "Load";
+        loadBtn.addEventListener("click", () => {
+          api.loadSavedModel(saved.id);
+          rebuild();
+        });
+
+        const delBtn = document.createElement("button");
+        delBtn.className = "btn btn-danger btn-sm";
+        delBtn.textContent = "×";
+        delBtn.title = "Delete saved model";
+        delBtn.addEventListener("click", async () => {
+          if (!confirm(`Delete "${saved.name}"?`)) return;
+          try {
+            await api.deleteSavedModel(saved.id);
+            rebuild();
+          } catch (err) {
+            alert(`Delete failed: ${err}`);
+          }
+        });
+
+        item.appendChild(nameSpan);
+        item.appendChild(loadBtn);
+        item.appendChild(delBtn);
+        listDiv.appendChild(item);
+      }
+      section.appendChild(listDiv);
+    } else if (state.serverOnline) {
+      const empty = document.createElement("div");
+      empty.style.cssText = "font-size:10px;color:var(--text-faint);padding:4px 0;";
+      empty.textContent = "No saved models yet";
+      section.appendChild(empty);
+    }
+  }
 
   // ─── Helpers ───
 
-  function createSlider(label: string, initial: number, min: number, max: number, step: number, onChange: (v: number) => void) {
-    const div = document.createElement("div");
-    div.className = "control-group";
+  function createSlider(
+    parent: HTMLElement,
+    label: string,
+    initial: number,
+    min: number,
+    max: number,
+    step: number,
+    onChange: (v: number) => void
+  ) {
+    const row = document.createElement("div");
+    row.className = "cfg-row";
     const lbl = document.createElement("label");
     lbl.textContent = label;
     const valSpan = document.createElement("span");
-    valSpan.style.cssText = "min-width:30px;text-align:right;font-size:11px;color:#888;";
+    valSpan.className = "cfg-value";
     valSpan.textContent = initial.toFixed(2);
     const input = document.createElement("input");
     input.type = "range";
@@ -327,50 +542,29 @@ export function createConfigPanel(
       valSpan.textContent = v.toFixed(2);
       onChange(v);
     });
-    div.appendChild(lbl);
-    div.appendChild(input);
-    div.appendChild(valSpan);
-    container.appendChild(div);
+    row.appendChild(lbl);
+    row.appendChild(input);
+    row.appendChild(valSpan);
+    parent.appendChild(row);
   }
 
-  function appendHeading(text: string) {
-    const h2 = document.createElement("h2");
-    h2.textContent = text;
-    container.appendChild(h2);
-  }
-
-  function createRadioGroup(name: string, options: string[], current: string, onChange: (v: string) => void) {
-    const group = document.createElement("div");
-    group.className = "radio-group";
-    for (const opt of options) {
-      const label = document.createElement("label");
-      const input = document.createElement("input");
-      input.type = "radio";
-      input.name = name;
-      input.value = opt;
-      input.checked = opt === current;
-      input.addEventListener("change", () => { if (input.checked) onChange(opt); });
-      const span = document.createElement("span");
-      span.textContent = opt;
-      label.appendChild(input);
-      label.appendChild(span);
-      group.appendChild(label);
-    }
-    container.appendChild(group);
-  }
-
-  function createColorPicker(label: string, initial: number, onChange: (v: number) => void) {
-    const div = document.createElement("div");
-    div.className = "control-group";
+  function createColorPicker(
+    parent: HTMLElement,
+    label: string,
+    initial: number,
+    onChange: (v: number) => void
+  ) {
+    const row = document.createElement("div");
+    row.className = "cfg-row";
     const lbl = document.createElement("label");
     lbl.textContent = label;
     const input = document.createElement("input");
     input.type = "color";
     input.value = "#" + initial.toString(16).padStart(6, "0");
     input.addEventListener("input", () => onChange(parseInt(input.value.slice(1), 16)));
-    div.appendChild(lbl);
-    div.appendChild(input);
-    container.appendChild(div);
+    row.appendChild(lbl);
+    row.appendChild(input);
+    parent.appendChild(row);
   }
 
   rebuild();
