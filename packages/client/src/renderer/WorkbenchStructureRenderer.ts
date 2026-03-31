@@ -3,7 +3,7 @@ import "../../../../tools/model-workbench/src/models/structures/index";
 import { renderModel } from "../../../../tools/model-workbench/src/models/composite";
 import { computePalette } from "../../../../tools/model-workbench/src/models/palette";
 import type { WallPiece } from "./StructureRenderer";
-import { worldToScreen, TILE_WIDTH_HALF, TILE_HEIGHT_HALF } from "./IsometricRenderer";
+import { worldToScreen, screenToWorld, TILE_WIDTH_HALF, TILE_HEIGHT_HALF } from "./IsometricRenderer";
 
 /**
  * WorkbenchStructureRenderer — replaces StructureRenderer with workbench wall sprites.
@@ -97,63 +97,196 @@ function modelsForPiece(piece: WallPiece): string[] {
   }
 }
 
-interface WallSprite {
-  sprite: Sprite;
-  elevation: number;
+// ─── Tracked piece ────────────────────────────────────────────────────────────
+
+export interface TrackedPiece {
+  sprites: Sprite[];
+  piece: WallPiece;
+  /** Index within the source array passed to loadWalls (for tiled pieces), or
+   *  a sequential ID for dynamically placed pieces. */
+  pieceIndex: number;
+  source: "tiled" | "placed";
+  /** DB id — only present for source="placed" pieces. */
+  dbId?: string;
 }
+
+// ─── Renderer ─────────────────────────────────────────────────────────────────
 
 export class WorkbenchStructureRenderer {
   private app: Application;
   private textureCache = new Map<string, RenderTexture>();
-  private wallSprites: WallSprite[] = [];
+  private trackedPieces: TrackedPiece[] = [];
   private worldContainer: Container | null = null;
+  private ghostSprites: Sprite[] = [];
+  private nextPlacedIndex = 100_000; // distinct from tiled indices (0-based)
 
   constructor(app: Application) {
     this.app = app;
   }
 
+  // ─── Load all Tiled wall pieces at once ────────────────────────────────────
+
   loadWalls(pieces: WallPiece[], worldContainer: Container): void {
     this.worldContainer = worldContainer;
-    for (const piece of pieces) {
-      const models = modelsForPiece(piece);
-      if (models.length === 0) continue;
-
-      const elevation = piece.elevation ?? 0;
-      const { sx, sy } = worldToScreen(piece.tileX, piece.tileZ, elevation);
-      const zBase = (piece.tileX + piece.tileZ) * 10 + elevation * 1000 + 3;
-
-      for (const modelId of models) {
-        const texture = this.getTexture(modelId, piece.material);
-        const sprite = new Sprite(texture);
-        sprite.anchor.set(ANCHOR_X, ANCHOR_Y);
-        sprite.scale.set(DISPLAY_SCALE);
-        sprite.position.set(sx, sy);
-        sprite.zIndex = zBase + (MODEL_DIR_OFFSET[modelId] ?? 0);
-
-        worldContainer.addChild(sprite);
-        this.wallSprites.push({ sprite, elevation });
+    for (let i = 0; i < pieces.length; i++) {
+      const piece = pieces[i];
+      const sprites = this.buildSprites(piece, worldContainer);
+      if (sprites.length > 0) {
+        this.trackedPieces.push({ sprites, piece, pieceIndex: i, source: "tiled" });
       }
     }
   }
 
-  /** Match StructureRenderer API: fade upper-floor walls when player is on ground floor. */
-  updateFloorVisibility(playerFloor: number, _underCover: boolean): void {
-    for (const { sprite, elevation } of this.wallSprites) {
-      sprite.alpha = elevation === 0 || playerFloor >= elevation ? 1 : 0.1;
+  // ─── Dynamic piece management (world builder) ──────────────────────────────
+
+  /** Add a piece that was loaded from the DB (placed by world builder). */
+  addPlacedPiece(piece: WallPiece, dbId: string): void {
+    if (!this.worldContainer) return;
+    const sprites = this.buildSprites(piece, this.worldContainer);
+    if (sprites.length === 0) return;
+    const pieceIndex = this.nextPlacedIndex++;
+    this.trackedPieces.push({ sprites, piece, pieceIndex, source: "placed", dbId });
+  }
+
+  /** Remove a piece from the rendered world. */
+  removePiece(pieceIndex: number, source: "tiled" | "placed"): void {
+    const idx = this.trackedPieces.findIndex(
+      p => p.pieceIndex === pieceIndex && p.source === source,
+    );
+    if (idx === -1) return;
+    const tp = this.trackedPieces.splice(idx, 1)[0];
+    for (const s of tp.sprites) { s.parent?.removeChild(s); s.destroy(); }
+  }
+
+  // ─── Hit testing ──────────────────────────────────────────────────────────
+
+  /**
+   * Given world-pixel coordinates (as returned by screen → worldContainer transform),
+   * return the TrackedPiece whose tile the cursor is over, or null.
+   */
+  hitTestPiece(worldPxX: number, worldPxY: number): TrackedPiece | null {
+    const { tileX, tileZ } = screenToWorld(worldPxX, worldPxY);
+    // Exact tile match first
+    for (const tp of this.trackedPieces) {
+      if (tp.piece.tileX === Math.round(tileX) && tp.piece.tileZ === Math.round(tileZ)) {
+        return tp;
+      }
+    }
+    // Fuzzy match — useful near tile edges
+    let best: TrackedPiece | null = null;
+    let bestDist = 0.65; // threshold in tile units
+    for (const tp of this.trackedPieces) {
+      const dx = Math.abs(tp.piece.tileX - tileX);
+      const dz = Math.abs(tp.piece.tileZ - tileZ);
+      const d = Math.max(dx, dz);
+      if (d < bestDist) { bestDist = d; best = tp; }
+    }
+    return best;
+  }
+
+  // ─── Highlighting ─────────────────────────────────────────────────────────
+
+  /** Tint a specific piece (by pieceIndex + source) to indicate hover/selection.
+   *  Pass null to clear all highlights. */
+  setHighlight(pieceIndex: number | null, source: "tiled" | "placed" = "tiled"): void {
+    for (const tp of this.trackedPieces) {
+      for (const s of tp.sprites) s.tint = 0xffffff;
+    }
+    if (pieceIndex === null) return;
+    const tp = this.trackedPieces.find(
+      p => p.pieceIndex === pieceIndex && p.source === source,
+    );
+    if (!tp) return;
+    for (const s of tp.sprites) s.tint = 0x88bbff;
+  }
+
+  /** Highlight multiple pieces (multi-select). */
+  setMultiHighlight(refs: Array<{ pieceIndex: number; source: "tiled" | "placed" }>): void {
+    for (const tp of this.trackedPieces) {
+      for (const s of tp.sprites) s.tint = 0xffffff;
+    }
+    for (const ref of refs) {
+      const tp = this.trackedPieces.find(p => p.pieceIndex === ref.pieceIndex && p.source === ref.source);
+      if (tp) for (const s of tp.sprites) s.tint = 0x88bbff;
     }
   }
 
-  dispose(): void {
-    for (const { sprite } of this.wallSprites) {
-      sprite.parent?.removeChild(sprite);
-      sprite.destroy();
+  // ─── Ghost preview ────────────────────────────────────────────────────────
+
+  /** Show a semi-transparent ghost of `piece` snapped to (tileX, tileZ).
+   *  Call with piece=null to hide the ghost. */
+  setGhost(piece: WallPiece | null, tileX: number, tileZ: number): void {
+    for (const s of this.ghostSprites) { s.parent?.removeChild(s); s.destroy(); }
+    this.ghostSprites = [];
+    if (!piece || !this.worldContainer) return;
+
+    const ghostPiece = { ...piece, tileX, tileZ };
+    const models = modelsForPiece(ghostPiece);
+    const elevation = ghostPiece.elevation ?? 0;
+    const { sx, sy } = worldToScreen(tileX, tileZ, elevation);
+    const zBase = (tileX + tileZ) * 10 + elevation * 1000 + 50_000;
+
+    for (const modelId of models) {
+      const texture = this.getTexture(modelId, ghostPiece.material);
+      const sprite = new Sprite(texture);
+      sprite.anchor.set(ANCHOR_X, ANCHOR_Y);
+      sprite.scale.set(DISPLAY_SCALE);
+      sprite.position.set(sx, sy);
+      sprite.zIndex = zBase + (MODEL_DIR_OFFSET[modelId] ?? 0);
+      sprite.alpha = 0.55;
+      sprite.tint = 0x88aaff;
+      this.worldContainer.addChild(sprite);
+      this.ghostSprites.push(sprite);
     }
-    this.wallSprites = [];
+  }
+
+  // ─── Floor visibility (existing API) ─────────────────────────────────────
+
+  /** Match StructureRenderer API: fade upper-floor walls when player is on ground floor. */
+  updateFloorVisibility(playerFloor: number, _underCover: boolean): void {
+    for (const { sprites, piece } of this.trackedPieces) {
+      const elev = piece.elevation ?? 0;
+      const visible = elev === 0 || playerFloor >= elev;
+      for (const s of sprites) s.alpha = visible ? 1 : 0.1;
+    }
+  }
+
+  // ─── Cleanup ──────────────────────────────────────────────────────────────
+
+  dispose(): void {
+    for (const tp of this.trackedPieces) {
+      for (const s of tp.sprites) { s.parent?.removeChild(s); s.destroy(); }
+    }
+    this.trackedPieces = [];
+    for (const s of this.ghostSprites) { s.parent?.removeChild(s); s.destroy(); }
+    this.ghostSprites = [];
     for (const rt of this.textureCache.values()) rt.destroy();
     this.textureCache.clear();
   }
 
-  // ─── Private ─────────────────────────────────────────────────────
+  // ─── Private helpers ──────────────────────────────────────────────────────
+
+  private buildSprites(piece: WallPiece, worldContainer: Container): Sprite[] {
+    const models = modelsForPiece(piece);
+    if (models.length === 0) return [];
+
+    const elevation = piece.elevation ?? 0;
+    const { sx, sy } = worldToScreen(piece.tileX, piece.tileZ, elevation);
+    const zBase = (piece.tileX + piece.tileZ) * 10 + elevation * 1000 + 3;
+
+    const sprites: Sprite[] = [];
+    for (const modelId of models) {
+      const texture = this.getTexture(modelId, piece.material);
+      const sprite = new Sprite(texture);
+      sprite.anchor.set(ANCHOR_X, ANCHOR_Y);
+      sprite.scale.set(DISPLAY_SCALE);
+      sprite.position.set(sx, sy);
+      sprite.zIndex = zBase + (MODEL_DIR_OFFSET[modelId] ?? 0);
+      worldContainer.addChild(sprite);
+      sprites.push(sprite);
+    }
+    return sprites;
+  }
 
   private getTexture(modelId: string, material: WallPiece["material"]): RenderTexture {
     const key = `${modelId}:${material}`;

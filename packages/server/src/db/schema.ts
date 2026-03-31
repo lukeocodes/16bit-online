@@ -86,6 +86,24 @@ export const savedModels = pgTable("saved_models", {
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
 });
 
+// Placed objects — world builder pieces placed or overridden per zone
+export const placedObjects = pgTable("placed_objects", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  zoneId: varchar("zone_id", { length: 50 }).notNull(),
+  tileX: integer("tile_x").notNull(),
+  tileZ: integer("tile_z").notNull(),
+  pieceType: varchar("piece_type", { length: 30 }).notNull(),
+  material: varchar("material", { length: 20 }).notNull().default("stone"),
+  elevation: integer("elevation").default(0).notNull(),
+  flip: boolean("flip").default(false).notNull(),
+  flipL: boolean("flip_l").default(false).notNull(),
+  flipR: boolean("flip_r").default(false).notNull(),
+  /** "placed" = new object added by player; "tiled_tombstone" = tiled object deleted by player */
+  source: varchar("source", { length: 20 }).notNull().default("placed"),
+  placedBy: uuid("placed_by"),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
 // Character inventory — items owned by a character
 export const characterInventory = pgTable("character_inventory", {
   id: uuid("id").primaryKey().defaultRandom(),

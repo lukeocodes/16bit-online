@@ -42,7 +42,19 @@ import type { CombatComponent } from "../ecs/components/Combat";
 import type { StatsComponent } from "../ecs/components/Stats";
 import type { IdentityComponent } from "../ecs/components/Identity";
 import type { GameHUD } from "../ui/screens/GameHUD";
+import { WorldBuilderMode } from "./WorldBuilderMode";
+import type { WBPieceRef } from "./WorldBuilderMode";
+import { WorldBuilderHUD } from "../ui/screens/WorldBuilderHUD";
+import type { WallPiece } from "../renderer/StructureRenderer";
 import { WORLD_WIDTH, WORLD_HEIGHT } from "../world/WorldConstants";
+
+const MAP_FILE_TO_ZONE_ID: Record<string, string> = {
+  "starter.json":         "human-meadows",
+  "skeleton-wastes.json": "skeleton-wastes",
+  "elf-grove.json":       "elf-grove",
+  "orc-wastes.json":      "orc-wastes",
+  "crossroads.json":      "crossroads",
+};
 
 const PLAYER_SPEED = 7.0;
 const POSITION_SEND_INTERVAL = 1000 / 20; // Match server tick rate (20Hz)
@@ -98,6 +110,10 @@ export class Game {
   private zoneChangeRequested = false;
   private dungeonExitReady = false;
   private renderTime = 0;
+  private currentZoneId = "human-meadows";
+  private worldBuilderMode: WorldBuilderMode;
+  private worldBuilderHUD: WorldBuilderHUD;
+  private wbMetaKey = false; // tracks ctrl/meta key for multi-select
   // Cache tile position for zone/exit/entrance checks — only re-check on tile change
   private lastCheckedTileX = -1;
   private lastCheckedTileZ = -1;
@@ -126,6 +142,53 @@ export class Game {
     );
 
     this.stateSync = new StateSync(this.entityManager);
+
+    // World builder
+    this.worldBuilderMode = new WorldBuilderMode();
+    this.worldBuilderHUD  = new WorldBuilderHUD();
+    this.worldBuilderHUD.onExit    = () => this.deactivateWorldBuilder();
+    this.worldBuilderHUD.onAddItem = (piece) => this.worldBuilderMode.startPlacing(piece);
+
+    // Track meta/ctrl key for WB multi-select
+    window.addEventListener("keydown", (e) => {
+      if (e.key === "Meta" || e.key === "Control") this.wbMetaKey = true;
+      if (e.key === "Escape" && this.worldBuilderMode.isPlacing) {
+        this.worldBuilderMode.cancelPlacing();
+      } else if (e.key === "Escape" && this.worldBuilderMode.isActive) {
+        this.deactivateWorldBuilder();
+      }
+    });
+    window.addEventListener("keyup", (e) => {
+      if (e.key === "Meta" || e.key === "Control") this.wbMetaKey = false;
+    });
+
+    // Pointer move for WB hover
+    canvas.addEventListener("pointermove", (e) => {
+      if (!this.worldBuilderMode.isActive) return;
+      const wc   = this.pixiApp.worldContainer;
+      const zoom = this.camera.getZoom();
+      const worldPxX = (e.offsetX - wc.x) / zoom;
+      const worldPxY = (e.offsetY - wc.y) / zoom;
+      this.worldBuilderMode.handleMouseMove(worldPxX, worldPxY);
+    });
+
+    // Pointer down/up for WB drag selection
+    canvas.addEventListener("pointerdown", (e) => {
+      if (e.button !== 0 || !this.worldBuilderMode.isActive) return;
+      const wc   = this.pixiApp.worldContainer;
+      const zoom = this.camera.getZoom();
+      const worldPxX = (e.offsetX - wc.x) / zoom;
+      const worldPxY = (e.offsetY - wc.y) / zoom;
+      this.worldBuilderMode.handlePointerDown(worldPxX, worldPxY);
+    });
+    canvas.addEventListener("pointerup", (e) => {
+      if (e.button !== 0 || !this.worldBuilderMode.isActive) return;
+      const wc   = this.pixiApp.worldContainer;
+      const zoom = this.camera.getZoom();
+      const worldPxX = (e.offsetX - wc.x) / zoom;
+      const worldPxY = (e.offsetY - wc.y) / zoom;
+      this.worldBuilderMode.handlePointerUp(worldPxX, worldPxY);
+    });
 
     // Initialize audio system
     this.audioSystem = new AudioSystem();
@@ -402,9 +465,16 @@ export class Game {
         }
         this.tiledMap = new TiledMapRenderer();
         await this.tiledMap.loadMap(`/maps/${mapFile}`);
+        this.currentZoneId = MAP_FILE_TO_ZONE_ID[mapFile] ?? mapFile.replace(".json", "");
         // Ground tiles always below entities and walls — give a large negative zIndex
         this.tiledMap.container.zIndex = -100000;
         this.pixiApp.worldContainer.addChild(this.tiledMap.container);
+        // Reload structures for new zone
+        if (this.tiledMap.wallPieces.length > 0) {
+          this.structureRenderer = new WorkbenchStructureRenderer(this.pixiApp.app);
+          this.structureRenderer.loadWalls(this.tiledMap.wallPieces, this.pixiApp.worldContainer);
+          await this.applyWBOverrides(this.currentZoneId);
+        }
         // Update walkability resolver
         this.movementSystem.setTerrainResolvers(
           (_x, _z) => 0,
@@ -468,6 +538,7 @@ export class Game {
       try {
         this.tiledMap = new TiledMapRenderer();
         await this.tiledMap.loadMap("/maps/starter.json");
+        this.currentZoneId = MAP_FILE_TO_ZONE_ID["starter.json"] ?? "human-meadows";
         this.useTiledMap = true;
         this.tiledMap.container.zIndex = -100000;
         this.pixiApp.worldContainer.addChild(this.tiledMap.container);
@@ -488,6 +559,8 @@ export class Game {
         if (this.tiledMap.wallPieces.length > 0) {
           this.structureRenderer = new WorkbenchStructureRenderer(this.pixiApp.app);
           this.structureRenderer.loadWalls(this.tiledMap.wallPieces, this.pixiApp.worldContainer);
+          // Apply world-builder overrides (DB-placed pieces + tombstones for deleted Tiled pieces)
+          await this.applyWBOverrides(this.currentZoneId);
         }
 
         console.log("[Game] Using Tiled map for terrain");
@@ -769,8 +842,12 @@ export class Game {
       }
     });
 
-    // Wire chat send — all text (including / commands) goes to the server
+    // Wire chat send — all text goes to the server; /wb is intercepted client-side
     hud.chatBox.setOnSend((text) => {
+      if (text.trim().toLowerCase() === "/wb") {
+        this.toggleWorldBuilder();
+        return;
+      }
       if (this.network?.isConnected()) {
         this.network.sendReliable(packReliable(20 /* CHAT_MESSAGE */, { text }));
       }
@@ -964,7 +1041,18 @@ export class Game {
   }
 
   private handleLeftClick(sx: number, sy: number) {
-    // Left-click: select entity only, no movement
+    // In WB mode, route all left-clicks through the world builder
+    if (this.worldBuilderMode.isActive) {
+      const wc   = this.pixiApp.worldContainer;
+      const zoom = this.camera.getZoom();
+      this.worldBuilderMode.handleLeftClick(
+        (sx - wc.x) / zoom,
+        (sy - wc.y) / zoom,
+        this.wbMetaKey,
+      );
+      return;
+    }
+    // Normal mode: select entity only, no movement
     const entityId = this.pickEntityAt(sx, sy);
     if (entityId) {
       this.selectTarget(entityId);
@@ -1276,5 +1364,123 @@ export class Game {
     this.entityManager.addComponent(characterId, createRenderable("player", "#4466aa", "#e8c4a0", "#2c1b0e"));
     this.entityManager.addComponent(characterId, createStats(10, 10, 10));
     this.entityManager.addComponent(characterId, createCombat("melee", 5, 2.0));
+  }
+
+  // ─── World Builder ────────────────────────────────────────────────────────
+
+  private toggleWorldBuilder(): void {
+    if (this.worldBuilderMode.isActive) {
+      this.deactivateWorldBuilder();
+    } else {
+      this.activateWorldBuilder();
+    }
+  }
+
+  private activateWorldBuilder(): void {
+    if (!this.structureRenderer || !this.tiledMap) {
+      this.hud?.chatBox.addSystemMessage("[WB] No map loaded — cannot enter world builder");
+      return;
+    }
+    this.worldBuilderMode.activate(
+      this.structureRenderer,
+      this.tiledMap,
+      this.pixiApp,
+      this.currentZoneId,
+    );
+    this.worldBuilderMode.onPlaced    = (piece, tx, tz) => this.wbPlacePiece(piece, tx, tz);
+    this.worldBuilderMode.onDeleted   = (ref)           => this.wbDeletePiece(ref);
+    this.worldBuilderMode.onDuplicated = (ref)          => this.worldBuilderMode.startPlacing({ ...ref.piece });
+    this.worldBuilderHUD.show();
+    this.hud?.chatBox.addSystemMessage("[WB] World builder active — /wb to exit");
+  }
+
+  deactivateWorldBuilder(): void {
+    this.worldBuilderMode.deactivate();
+    this.worldBuilderHUD.hide();
+    this.hud?.chatBox.addSystemMessage("[WB] World builder closed");
+  }
+
+  /** Persist a newly placed piece and add it to the renderer. */
+  private async wbPlacePiece(piece: WallPiece, tileX: number, tileZ: number): Promise<void> {
+    try {
+      const res = await fetch(`/api/world-builder/${this.currentZoneId}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          tileX, tileZ,
+          pieceType: piece.type,
+          material:  piece.material,
+          elevation: piece.elevation ?? 0,
+          flip:  piece.flip  ?? false,
+          flipL: piece.flipL ?? false,
+          flipR: piece.flipR ?? false,
+        }),
+      });
+      const data = await res.json() as { object: { id: string } };
+      const placed: WallPiece = { ...piece, tileX, tileZ };
+      this.structureRenderer?.addPlacedPiece(placed, data.object.id);
+    } catch (e) {
+      console.error("[WB] Place failed:", e);
+      this.hud?.chatBox.addSystemMessage("[WB] Failed to save piece");
+    }
+  }
+
+  /** Remove a piece from the world and DB / create tombstone for Tiled pieces. */
+  private async wbDeletePiece(ref: WBPieceRef): Promise<void> {
+    try {
+      if (ref.source === "placed" && ref.dbId) {
+        await fetch(`/api/world-builder/${ref.dbId}`, { method: "DELETE" });
+      } else if (ref.source === "tiled") {
+        await fetch(`/api/world-builder/tiled:${this.currentZoneId}`, {
+          method: "DELETE",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            tileX:     ref.piece.tileX,
+            tileZ:     ref.piece.tileZ,
+            pieceType: ref.piece.type,
+            material:  ref.piece.material,
+            zoneId:    this.currentZoneId,
+          }),
+        });
+      }
+    } catch (e) {
+      console.error("[WB] Delete failed:", e);
+    }
+  }
+
+  /** Fetch WB overrides for a zone and apply them to the current structureRenderer. */
+  private async applyWBOverrides(zoneId: string): Promise<void> {
+    if (!this.structureRenderer || !this.tiledMap) return;
+    try {
+      const res  = await fetch(`/api/world-builder/${zoneId}`);
+      if (!res.ok) return;
+      const data = await res.json() as {
+        objects: Array<{
+          id: string; source: string;
+          tileX: number; tileZ: number; pieceType: string; material: string;
+          elevation: number; flip: boolean; flipL: boolean; flipR: boolean;
+        }>
+      };
+      for (const obj of data.objects) {
+        if (obj.source === "placed") {
+          const piece: WallPiece = {
+            tileX: obj.tileX, tileZ: obj.tileZ,
+            type:  obj.pieceType as WallPiece["type"],
+            material: obj.material as WallPiece["material"],
+            elevation: obj.elevation,
+            flip: obj.flip, flipL: obj.flipL, flipR: obj.flipR,
+          };
+          this.structureRenderer.addPlacedPiece(piece, obj.id);
+        } else if (obj.source === "tiled_tombstone") {
+          // Remove the corresponding Tiled piece from the renderer
+          const idx = this.tiledMap.wallPieces.findIndex(
+            p => p.tileX === obj.tileX && p.tileZ === obj.tileZ && p.type === obj.pieceType,
+          );
+          if (idx >= 0) this.structureRenderer.removePiece(idx, "tiled");
+        }
+      }
+    } catch (e) {
+      console.warn("[WB] Failed to load overrides:", e);
+    }
   }
 }
