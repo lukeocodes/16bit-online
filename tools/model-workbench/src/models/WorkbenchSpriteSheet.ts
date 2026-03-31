@@ -24,8 +24,12 @@ import { registry } from "./registry";
  */
 
 const WALK_PHASES = 8;
+/** Attack phase count — placeholder reuses walk frames until attack poses are added */
+export const ATTACK_PHASES = 4;
 const NATIVE_FRAME_W = 48;
 const NATIVE_FRAME_H = 64;
+
+export type AnimationState = "peace" | "attack-stationary" | "attack-moving";
 
 export type RenderQuality = "low" | "medium" | "high" | "ultra";
 
@@ -139,6 +143,36 @@ export class WorkbenchSpriteSheet {
   has(entityType: string): boolean {
     const modelId = resolveModelId(entityType);
     return registry.has(modelId);
+  }
+
+  /**
+   * Get an attack frame for a named entity type.
+   * Currently stubbed — reuses the corresponding walk frame.
+   * Phase index is in range [0, ATTACK_PHASES).
+   */
+  getAttackFrame(
+    entityType: string,
+    direction: number,
+    phase: number,
+    _isMoving: boolean
+  ): Texture {
+    // Remap attack phase (0..ATTACK_PHASES-1) to a walk phase index (0..WALK_PHASES-1)
+    const walkPhaseIndex = Math.round((phase / ATTACK_PHASES) * WALK_PHASES) % WALK_PHASES;
+    return this.getFrame(entityType, direction, walkPhaseIndex);
+  }
+
+  /**
+   * Get an attack frame for a composite config.
+   * Currently stubbed — reuses the corresponding walk frame.
+   */
+  getCompositeAttackFrame(
+    config: CompositeConfig,
+    direction: number,
+    phase: number,
+    _isMoving: boolean
+  ): Texture {
+    const walkPhaseIndex = Math.round((phase / ATTACK_PHASES) * WALK_PHASES) % WALK_PHASES;
+    return this.getCompositeFrame(config, direction, walkPhaseIndex);
   }
 
   getCompositeFrame(config: CompositeConfig, direction: number, walkPhaseIndex = 0): Texture {
