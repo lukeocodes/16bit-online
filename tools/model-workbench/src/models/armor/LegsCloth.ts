@@ -20,10 +20,9 @@ export class LegsCloth implements Model {
     const calls: DrawCall[] = [];
 
     const sz = ctx.slotParams.size;
-    for (const side of [farSide, nearSide]) {
-      const d = side === farSide ? DEPTH_FAR_LIMB + 0 : DEPTH_FAR_LIMB + 2;
-      calls.push({ depth: d, draw: (g, s) => this.drawLeg(g, j, palette.body, palette.bodyDk, palette.outline, s, side, sz) });
-    }
+    // Far leg: darker and slightly wider; near leg: base color
+    calls.push({ depth: DEPTH_FAR_LIMB + 0, draw: (g, s) => this.drawLeg(g, j, palette.body, palette.bodyDk, palette.outline, s, farSide, sz, false) });
+    calls.push({ depth: DEPTH_FAR_LIMB + 2, draw: (g, s) => this.drawLeg(g, j, palette.body, palette.bodyDk, palette.outline, s, nearSide, sz, true) });
 
     // Waist sash
     calls.push({
@@ -66,21 +65,37 @@ export class LegsCloth implements Model {
     return calls;
   }
 
-  private drawLeg(g: Graphics, j: Record<string, V>, color: number, dk: number, outline: number, s: number, side: "L" | "R", sz = 1): void {
+  private drawLeg(
+    g: Graphics,
+    j: Record<string, V>,
+    color: number,
+    dk: number,
+    outline: number,
+    s: number,
+    side: "L" | "R",
+    sz = 1,
+    isNear = false
+  ): void {
     const hip = j[`hip${side}`];
     const knee = j[`knee${side}`];
     const ankle = j[`ankle${side}`];
     const legTop: V = { x: hip.x * 0.5, y: hip.y };
 
+    // Near leg uses base color; far leg darkened 10% and slightly wider for loose cloth effect
+    const legColor = isNear ? color : darken(color, 0.1);
+    const legDk = isNear ? dk : darken(dk, 0.1);
+    const thighW = isNear ? 7 * sz : 7.3 * sz;
+    const calfW  = isNear ? 5.5 * sz : 5.7 * sz;
+
     // Loose cloth over thigh
-    drawTaperedLimb(g, legTop, knee, 7 * sz, 5.5 * sz, color, dk, outline, s);
+    drawTaperedLimb(g, legTop, knee, thighW, calfW * 0.94, legColor, legDk, outline, s);
 
     // Cloth over calf — flows wider
-    drawTaperedLimb(g, knee, ankle, 5.5 * sz, 5 * sz, color, dk, outline, s);
+    drawTaperedLimb(g, knee, ankle, calfW, 5 * sz, legColor, legDk, outline, s);
 
     // Hem at ankle
     g.ellipse(ankle.x * s, ankle.y * s, 3 * s, 1.5 * s);
-    g.fill(dk);
+    g.fill(legDk);
   }
 
   getAttachmentPoints(): Record<string, AttachmentPoint> { return {}; }

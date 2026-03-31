@@ -1,6 +1,7 @@
 import type { Graphics } from "pixi.js";
 import type { Model, RenderContext, DrawCall, AttachmentPoint, V } from "../types";
 import { DEPTH_FAR_LIMB, DEPTH_NEAR_LIMB } from "../types";
+import { darken } from "../palette";
 import { drawTaperedLimb } from "../draw-helpers";
 
 /**
@@ -19,24 +20,38 @@ export class GauntletsPlate implements Model {
     const calls: DrawCall[] = [];
 
     const sz = ctx.slotParams.size;
+    // Far arm (isNear=false) darkened 10%; near arm (isNear=true) base color
     calls.push({
       depth: facingCamera ? DEPTH_FAR_LIMB + 4 : DEPTH_NEAR_LIMB + 0,
-      draw: (g, s) => this.drawGauntlet(g, j, palette, s, farSide, sz),
+      draw: (g, s) => this.drawGauntlet(g, j, palette, s, farSide, sz, false),
     });
     calls.push({
       depth: facingCamera ? DEPTH_NEAR_LIMB + 5 : DEPTH_FAR_LIMB + 5,
-      draw: (g, s) => this.drawGauntlet(g, j, palette, s, nearSide, sz),
+      draw: (g, s) => this.drawGauntlet(g, j, palette, s, nearSide, sz, true),
     });
 
     return calls;
   }
 
-  private drawGauntlet(g: Graphics, j: Record<string, V>, p: any, s: number, side: "L" | "R", sz = 1): void {
+  private drawGauntlet(
+    g: Graphics,
+    j: Record<string, V>,
+    p: any,
+    s: number,
+    side: "L" | "R",
+    sz = 1,
+    isNear = false
+  ): void {
     const elbow = j[`elbow${side}`];
     const wrist = j[`wrist${side}`];
 
+    // Near arm uses base color, far arm darkened 10%
+    const armColor = isNear ? p.body : darken(p.body, 0.1);
+    const armLt = isNear ? p.bodyLt : darken(p.bodyLt, 0.1);
+    const armDk = isNear ? p.bodyDk : darken(p.bodyDk, 0.1);
+
     // Plate vambrace (thicker coverage)
-    drawTaperedLimb(g, elbow, wrist, 4.5 * sz, 4 * sz, p.body, p.bodyDk, p.outline, s);
+    drawTaperedLimb(g, elbow, wrist, 4.5 * sz, 4 * sz, armColor, armDk, p.outline, s);
 
     const dx = wrist.x - elbow.x;
     const dy = wrist.y - elbow.y;
@@ -47,7 +62,7 @@ export class GauntletsPlate implements Model {
     // Highlight ridge along vambrace
     g.moveTo(elbow.x * s, elbow.y * s);
     g.lineTo(wrist.x * s, wrist.y * s);
-    g.stroke({ width: s * 0.5, color: p.bodyLt, alpha: 0.2 });
+    g.stroke({ width: s * 0.5, color: armLt, alpha: 0.2 });
 
     // Articulation lines on vambrace
     for (let i = 1; i <= 2; i++) {
@@ -62,7 +77,7 @@ export class GauntletsPlate implements Model {
 
     // Elbow cop (flared plate)
     g.ellipse(elbow.x * s, elbow.y * s, 3.2 * s, 2.2 * s);
-    g.fill(p.bodyLt);
+    g.fill(armLt);
     g.ellipse(elbow.x * s, elbow.y * s, 3.2 * s, 2.2 * s);
     g.stroke({ width: s * 0.5, color: p.outline, alpha: 0.4 });
 
@@ -72,7 +87,7 @@ export class GauntletsPlate implements Model {
 
     // Plate gauntlet hand (angular, wider)
     g.roundRect((wrist.x - 3) * s, (wrist.y - 2) * s, 6 * s, 4 * s, 1.5 * s);
-    g.fill(p.body);
+    g.fill(armColor);
     g.roundRect((wrist.x - 3) * s, (wrist.y - 2) * s, 6 * s, 4 * s, 1.5 * s);
     g.stroke({ width: s * 0.4, color: p.outline, alpha: 0.35 });
 
@@ -84,9 +99,9 @@ export class GauntletsPlate implements Model {
       const fy = wrist.y + handDy * 2 + py * i * 1;
       g.moveTo(wrist.x * s, wrist.y * s);
       g.lineTo(fx * s, fy * s);
-      g.stroke({ width: s * 0.6, color: p.body });
+      g.stroke({ width: s * 0.6, color: armColor });
       g.circle(fx * s, fy * s, 0.5 * s);
-      g.fill(p.bodyDk);
+      g.fill(armDk);
     }
 
     // Wrist flare
@@ -94,7 +109,7 @@ export class GauntletsPlate implements Model {
     const wfy = wrist.y - dy / len * 1;
     g.moveTo((wfx + px * 3.5) * s, (wfy + py * 3.5) * s);
     g.lineTo((wfx - px * 3.5) * s, (wfy - py * 3.5) * s);
-    g.stroke({ width: s * 1.2, color: p.bodyLt, alpha: 0.3 });
+    g.stroke({ width: s * 1.2, color: armLt, alpha: 0.3 });
   }
 
   getAttachmentPoints(): Record<string, AttachmentPoint> { return {}; }

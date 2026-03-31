@@ -1,6 +1,7 @@
 import type { Graphics } from "pixi.js";
 import type { Model, RenderContext, DrawCall, AttachmentPoint, V } from "../types";
 import { DEPTH_FAR_LIMB } from "../types";
+import { darken } from "../palette";
 
 /**
  * Plate boots — heavy armored sabatons with articulated toe plates.
@@ -18,17 +19,28 @@ export class BootsPlate implements Model {
     const calls: DrawCall[] = [];
 
     const sz = ctx.slotParams.size;
-    for (const side of [farSide, nearSide]) {
-      const d = side === farSide ? DEPTH_FAR_LIMB + 0 : DEPTH_FAR_LIMB + 2;
-      calls.push({ depth: d, draw: (g, s) => this.drawBoot(g, j, iso, palette, s, side, sz) });
-    }
+    // Far boot darkened, near boot base color
+    calls.push({ depth: DEPTH_FAR_LIMB + 0, draw: (g, s) => this.drawBoot(g, j, iso, palette, s, farSide, sz, false) });
+    calls.push({ depth: DEPTH_FAR_LIMB + 2, draw: (g, s) => this.drawBoot(g, j, iso, palette, s, nearSide, sz, true) });
     return calls;
   }
 
-  private drawBoot(g: Graphics, j: Record<string, V>, iso: V, p: any, s: number, side: "L" | "R", sz = 1): void {
+  private drawBoot(
+    g: Graphics,
+    j: Record<string, V>,
+    iso: V,
+    p: any,
+    s: number,
+    side: "L" | "R",
+    sz = 1,
+    isNear = false
+  ): void {
     const ankle = j[`ankle${side}`];
     const knee = j[`knee${side}`];
-    const color = p.body;
+
+    // Near boot uses base color, far boot darkened 10%
+    const color = isNear ? p.body : darken(p.body, 0.1);
+    const bodyLt = isNear ? p.bodyLt : darken(p.bodyLt, 0.1);
 
     // Armored shin guard (extends up)
     const shaftTopY = ankle.y - 4 * sz;
@@ -41,11 +53,11 @@ export class BootsPlate implements Model {
     // Highlight ridge
     g.moveTo(shaftTopX * s, (shaftTopY + 1) * s);
     g.lineTo(ankle.x * s, (ankle.y - 0.5) * s);
-    g.stroke({ width: s * 0.5, color: p.bodyLt, alpha: 0.2 });
+    g.stroke({ width: s * 0.5, color: bodyLt, alpha: 0.2 });
 
     // Top flare
     g.ellipse(shaftTopX * s, shaftTopY * s, 3.5 * s, 1.3 * s);
-    g.fill(p.bodyLt);
+    g.fill(bodyLt);
     g.ellipse(shaftTopX * s, shaftTopY * s, 3.5 * s, 1.3 * s);
     g.stroke({ width: s * 0.3, color: p.outline, alpha: 0.3 });
 

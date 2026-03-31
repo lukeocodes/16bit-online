@@ -1,6 +1,7 @@
 import type { Graphics } from "pixi.js";
 import type { Model, RenderContext, DrawCall, AttachmentPoint, V } from "../types";
 import { DEPTH_FAR_LIMB } from "../types";
+import { darken } from "../palette";
 
 /**
  * Mail boots — chain mail sabatons with leather sole.
@@ -18,18 +19,28 @@ export class BootsMail implements Model {
     const calls: DrawCall[] = [];
 
     const sz = ctx.slotParams.size;
-    for (const side of [farSide, nearSide]) {
-      const d = side === farSide ? DEPTH_FAR_LIMB + 0 : DEPTH_FAR_LIMB + 2;
-      calls.push({ depth: d, draw: (g, s) => this.drawBoot(g, j, iso, palette, s, side, sz) });
-    }
+    // Far boot darkened, near boot base color
+    calls.push({ depth: DEPTH_FAR_LIMB + 0, draw: (g, s) => this.drawBoot(g, j, iso, palette, s, farSide, sz, false) });
+    calls.push({ depth: DEPTH_FAR_LIMB + 2, draw: (g, s) => this.drawBoot(g, j, iso, palette, s, nearSide, sz, true) });
     return calls;
   }
 
-  private drawBoot(g: Graphics, j: Record<string, V>, iso: V, p: any, s: number, side: "L" | "R", sz = 1): void {
+  private drawBoot(
+    g: Graphics,
+    j: Record<string, V>,
+    iso: V,
+    p: any,
+    s: number,
+    side: "L" | "R",
+    sz = 1,
+    isNear = false
+  ): void {
     const ankle = j[`ankle${side}`];
     const knee = j[`knee${side}`];
-    const color = p.body;
-    const dk = p.bodyDk;
+
+    // Near boot uses base color, far boot darkened 10%
+    const color = isNear ? p.body : darken(p.body, 0.1);
+    const bodyLt = isNear ? p.bodyLt : darken(p.bodyLt, 0.1);
 
     // Mail shaft (shorter than leather, to the ankle)
     const shaftTopY = ankle.y - 3.5 * sz;
@@ -45,7 +56,7 @@ export class BootsMail implements Model {
       for (let col = 0; col < 3; col++) {
         const rx = shaftTopX - 1.5 + col * 1.5;
         g.circle(rx * s, ry * s, 0.4 * s);
-        g.stroke({ width: s * 0.2, color: p.bodyLt, alpha: 0.3 });
+        g.stroke({ width: s * 0.2, color: bodyLt, alpha: 0.3 });
       }
     }
 
@@ -93,7 +104,7 @@ export class BootsMail implements Model {
       const fx = ankle.x + fdx * t;
       const fy = ankle.y + fdy * t;
       g.circle(fx * s, fy * s, 0.4 * s);
-      g.stroke({ width: s * 0.2, color: p.bodyLt, alpha: 0.25 });
+      g.stroke({ width: s * 0.2, color: bodyLt, alpha: 0.25 });
     }
   }
 

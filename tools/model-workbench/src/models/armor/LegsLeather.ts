@@ -20,10 +20,9 @@ export class LegsLeather implements Model {
     const calls: DrawCall[] = [];
 
     const sz = ctx.slotParams.size;
-    for (const side of [farSide, nearSide]) {
-      const d = side === farSide ? DEPTH_FAR_LIMB + 0 : DEPTH_FAR_LIMB + 2;
-      calls.push({ depth: d, draw: (g, s) => this.drawLeg(g, j, palette, s, side, sz) });
-    }
+    // Far leg: darker; near leg: base color
+    calls.push({ depth: DEPTH_FAR_LIMB + 0, draw: (g, s) => this.drawLeg(g, j, palette, s, farSide, sz, false) });
+    calls.push({ depth: DEPTH_FAR_LIMB + 2, draw: (g, s) => this.drawLeg(g, j, palette, s, nearSide, sz, true) });
 
     // Belt/waist panel
     calls.push({
@@ -48,18 +47,23 @@ export class LegsLeather implements Model {
     return calls;
   }
 
-  private drawLeg(g: Graphics, j: Record<string, V>, p: any, s: number, side: "L" | "R", sz = 1): void {
+  private drawLeg(g: Graphics, j: Record<string, V>, p: any, s: number, side: "L" | "R", sz = 1, isNear = false): void {
     const hip = j[`hip${side}`];
     const knee = j[`knee${side}`];
     const ankle = j[`ankle${side}`];
     const legTop: V = { x: hip.x * 0.5, y: hip.y };
 
+    // Near leg uses base color, far leg darkened 10%
+    const legColor = isNear ? p.body : darken(p.body, 0.1);
+    const legDk = isNear ? p.bodyDk : darken(p.bodyDk, 0.1);
+    const accentColor = isNear ? p.accent : darken(p.accent, 0.1);
+
     // Fitted leather thigh
-    drawTaperedLimb(g, legTop, knee, 6.2 * sz, 4.8 * sz, p.body, p.bodyDk, p.outline, s);
+    drawTaperedLimb(g, legTop, knee, 6.2 * sz, 4.8 * sz, legColor, legDk, p.outline, s);
 
     // Knee pad (reinforced)
     g.ellipse(knee.x * s, knee.y * s, 3.5 * sz * s, 2.2 * sz * s);
-    g.fill(p.accent);
+    g.fill(accentColor);
     g.ellipse(knee.x * s, knee.y * s, 3.5 * s, 2.2 * s);
     g.stroke({ width: s * 0.4, color: p.accentDk, alpha: 0.4 });
 
@@ -68,11 +72,9 @@ export class LegsLeather implements Model {
     g.fill(p.accentDk);
 
     // Fitted leather calf
-    drawTaperedLimb(g, knee, ankle, 5 * sz, 3.8 * sz, p.body, p.bodyDk, p.outline, s);
+    drawTaperedLimb(g, knee, ankle, 5 * sz, 3.8 * sz, legColor, legDk, p.outline, s);
 
     // Stitching line down the side
-    const mx = (legTop.x + knee.x) / 2 + 2.5;
-    const my = (legTop.y + knee.y) / 2;
     g.moveTo((legTop.x + 2.5) * s, legTop.y * s);
     g.lineTo((knee.x + 2) * s, knee.y * s);
     g.stroke({ width: s * 0.3, color: p.accentDk, alpha: 0.3 });

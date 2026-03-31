@@ -6,6 +6,7 @@ import { darken, lighten } from "../palette";
 /**
  * Dragon armor — dark red/black plate with scale pattern, fiery accents.
  * Forged from dragonscale and obsidian. Heavy, prestigious.
+ * When facing away: back spine scales replace front crest emblem.
  */
 export class ArmorDragon implements Model {
   readonly id = "armor-dragon";
@@ -21,7 +22,7 @@ export class ArmorDragon implements Model {
   private readonly GOLD = 0xccaa44;      // gold trim
 
   getDrawCalls(ctx: RenderContext): DrawCall[] {
-    const { skeleton } = ctx;
+    const { skeleton, facingCamera } = ctx;
     const j = skeleton.joints;
     const wf = skeleton.wf;
 
@@ -63,36 +64,60 @@ export class ArmorDragon implements Model {
           g.quadraticCurveTo(cx * s, (neckBase.y - 0.5) * s, (shoulderR.x + 0.5) * s, (neckBase.y + 1) * s);
           g.stroke({ width: s * 1.2, color: this.GOLD, alpha: 0.6 });
 
-          // Dragon crest emblem (center chest)
-          const embX = cx;
-          const embY = (neckBase.y + waistL.y) / 2 - 1;
+          if (facingCamera) {
+            // Front: dragon crest emblem (center chest)
+            const embX = cx;
+            const embY = (neckBase.y + waistL.y) / 2 - 1;
 
-          // Wings of crest
-          g.moveTo(embX * s, (embY - 1) * s);
-          g.quadraticCurveTo((embX - 3 * wf) * s, (embY - 2) * s, (embX - 4 * wf) * s, embY * s);
-          g.quadraticCurveTo((embX - 2 * wf) * s, (embY + 1) * s, embX * s, (embY + 0.5) * s);
-          g.quadraticCurveTo((embX + 2 * wf) * s, (embY + 1) * s, (embX + 4 * wf) * s, embY * s);
-          g.quadraticCurveTo((embX + 3 * wf) * s, (embY - 2) * s, embX * s, (embY - 1) * s);
-          g.closePath();
-          g.fill({ color: this.FIRE, alpha: 0.5 });
+            // Wings of crest
+            g.moveTo(embX * s, (embY - 1) * s);
+            g.quadraticCurveTo((embX - 3 * wf) * s, (embY - 2) * s, (embX - 4 * wf) * s, embY * s);
+            g.quadraticCurveTo((embX - 2 * wf) * s, (embY + 1) * s, embX * s, (embY + 0.5) * s);
+            g.quadraticCurveTo((embX + 2 * wf) * s, (embY + 1) * s, (embX + 4 * wf) * s, embY * s);
+            g.quadraticCurveTo((embX + 3 * wf) * s, (embY - 2) * s, embX * s, (embY - 1) * s);
+            g.closePath();
+            g.fill({ color: this.FIRE, alpha: 0.5 });
 
-          // Central diamond
-          g.poly([
-            embX * s, (embY - 2) * s,
-            (embX + 1.5 * wf) * s, embY * s,
-            embX * s, (embY + 2) * s,
-            (embX - 1.5 * wf) * s, embY * s,
-          ]);
-          g.fill(this.FIRE_DK);
-          g.poly([
-            embX * s, (embY - 2) * s,
-            (embX + 1.5 * wf) * s, embY * s,
-            embX * s, (embY + 2) * s,
-            (embX - 1.5 * wf) * s, embY * s,
-          ]);
-          g.stroke({ width: s * 0.4, color: this.GOLD, alpha: 0.6 });
+            // Central diamond
+            g.poly([
+              embX * s, (embY - 2) * s,
+              (embX + 1.5 * wf) * s, embY * s,
+              embX * s, (embY + 2) * s,
+              (embX - 1.5 * wf) * s, embY * s,
+            ]);
+            g.fill(this.FIRE_DK);
+            g.poly([
+              embX * s, (embY - 2) * s,
+              (embX + 1.5 * wf) * s, embY * s,
+              embX * s, (embY + 2) * s,
+              (embX - 1.5 * wf) * s, embY * s,
+            ]);
+            g.stroke({ width: s * 0.4, color: this.GOLD, alpha: 0.6 });
+          } else {
+            // Back view: spine scale column instead of front emblem
+            const spineX = cx;
+            const spineTop = neckBase.y + 2;
+            const spineBot = (waistL.y + hipL.y) / 2;
+            const spineH = spineBot - spineTop;
 
-          // Belt with fiery buckle
+            // Central spine ridge
+            g.moveTo(spineX * s, spineTop * s);
+            g.lineTo(spineX * s, spineBot * s);
+            g.stroke({ width: s * 1.0, color: this.GOLD, alpha: 0.4 });
+
+            // Back spine scale bumps (overlapping ovals along the ridge)
+            const spineScales = 5;
+            for (let i = 0; i < spineScales; i++) {
+              const t = (i + 0.5) / spineScales;
+              const sy = spineTop + spineH * t;
+              g.ellipse(spineX * s, sy * s, 1.5 * s, 1.2 * s);
+              g.fill({ color: this.SCALE_LT, alpha: 0.35 });
+              g.ellipse(spineX * s, sy * s, 1.5 * s, 1.2 * s);
+              g.stroke({ width: s * 0.3, color: this.GOLD, alpha: 0.3 });
+            }
+          }
+
+          // Belt with fiery buckle (visible from both sides)
           const beltY = waistL.y + 0.5;
           g.rect((waistL.x + 0.5) * s, (beltY - 1) * s, (waistR.x - waistL.x - 1) * s, 2.5 * s);
           g.fill(this.SCALE_DK);

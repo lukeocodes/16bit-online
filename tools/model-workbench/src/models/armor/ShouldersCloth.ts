@@ -1,6 +1,7 @@
 import type { Graphics } from "pixi.js";
 import type { Model, RenderContext, DrawCall, AttachmentPoint } from "../types";
 import { DEPTH_NEAR_LIMB } from "../types";
+import { darken } from "../palette";
 
 /**
  * Cloth Mantle — wide shoulder drape that hangs from the shoulders
@@ -19,13 +20,13 @@ export class ShouldersCloth implements Model {
     const wf = skeleton.wf;
     const calls: DrawCall[] = [];
 
-    // Far side drape — over far arm
+    // Far side drape — over far arm (darkened 10%)
     calls.push({
       depth: DEPTH_NEAR_LIMB + 6,
-      draw: (g, s) => this.drawDrape(g, j, palette, s, farSide, sz, wf),
+      draw: (g, s) => this.drawDrape(g, j, palette, s, farSide, sz, wf, false),
     });
 
-    // Yoke connecting panel
+    // Yoke connecting panel — center stays at base color
     calls.push({
       depth: DEPTH_NEAR_LIMB + 7,
       draw: (g, s) => {
@@ -45,10 +46,10 @@ export class ShouldersCloth implements Model {
       },
     });
 
-    // Near side drape — over near arm (highest depth = front of everything)
+    // Near side drape — over near arm (highest depth = front of everything, base color)
     calls.push({
       depth: DEPTH_NEAR_LIMB + 8,
-      draw: (g, s) => this.drawDrape(g, j, palette, s, nearSide, sz, wf),
+      draw: (g, s) => this.drawDrape(g, j, palette, s, nearSide, sz, wf, true),
     });
 
     return calls;
@@ -61,10 +62,14 @@ export class ShouldersCloth implements Model {
     s: number,
     side: "L" | "R",
     sz: number,
-    wf: number
+    wf: number,
+    isNear: boolean
   ): void {
     const shoulder = j[`shoulder${side}`];
     const sign     = side === "L" ? -1 : 1;
+
+    // Near drape uses base body color; far drape is darkened 10%
+    const fillColor = isNear ? p.body : darken(p.body, 0.1);
 
     // Drape covers shoulders only — hem sits just below the deltoid
     const outerX  = shoulder.x + sign * 5 * sz * wf;
@@ -82,7 +87,7 @@ export class ShouldersCloth implements Model {
     );
     g.lineTo(innerX * s, (shoulder.y + 4 * sz) * s);
     g.closePath();
-    g.fill(p.body);
+    g.fill(fillColor);
 
     // Hem edge
     g.moveTo(outerX * s, (shoulder.y + (hemY - shoulder.y) * 0.6) * s);

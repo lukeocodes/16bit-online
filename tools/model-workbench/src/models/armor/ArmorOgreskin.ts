@@ -7,6 +7,7 @@ import { darken, lighten } from "../palette";
  * Ogre skin armor — crude beast-hide armor with stitched seams.
  * Made from thick monster hide, bone toggles, rough fur trim.
  * Leather-type armor mapped to a monster theme.
+ * When facing away: back stitching pattern (vertical), no front toggles.
  */
 export class ArmorOgreskin implements Model {
   readonly id = "armor-ogreskin";
@@ -22,7 +23,7 @@ export class ArmorOgreskin implements Model {
   private readonly FUR = 0x7a6a5a;      // fur trim
 
   getDrawCalls(ctx: RenderContext): DrawCall[] {
-    const { skeleton } = ctx;
+    const { skeleton, facingCamera } = ctx;
     const j = skeleton.joints;
     const wf = skeleton.wf;
 
@@ -43,55 +44,90 @@ export class ArmorOgreskin implements Model {
           g.closePath();
           g.fill(this.HIDE);
 
-          // Hide texture — irregular patches
+          // Hide texture — irregular patches (visible from both sides)
           for (const [px, py, pr] of [[2, -25, 3], [-3, -22, 2.5], [4, -19, 2], [-2, -17, 3.5], [1, -21, 2]]) {
             g.ellipse((cx + px) * s, (neckBase.y + py + 20) * s, (pr * wf) * s, pr * 0.7 * s);
             g.fill({ color: this.HIDE_LT, alpha: 0.15 });
           }
 
-          // Rough stitching lines (asymmetric, crude)
-          // Center seam
-          g.moveTo((cx + 0.5) * s, (neckBase.y + 1) * s);
-          for (let i = 0; i < 6; i++) {
-            const y = neckBase.y + 2 + i * 2.5;
-            const offset = i % 2 === 0 ? 0.8 : -0.5;
-            g.lineTo((cx + offset) * s, y * s);
-          }
-          g.stroke({ width: s * 0.5, color: this.STITCH, alpha: 0.4 });
+          if (facingCamera) {
+            // Front: zigzag center seam stitching
+            g.moveTo((cx + 0.5) * s, (neckBase.y + 1) * s);
+            for (let i = 0; i < 6; i++) {
+              const y = neckBase.y + 2 + i * 2.5;
+              const offset = i % 2 === 0 ? 0.8 : -0.5;
+              g.lineTo((cx + offset) * s, y * s);
+            }
+            g.stroke({ width: s * 0.5, color: this.STITCH, alpha: 0.4 });
 
-          // Cross-stitch marks along center
-          for (let i = 0; i < 5; i++) {
-            const y = neckBase.y + 3 + i * 2.8;
-            g.moveTo((cx - 1) * s, (y - 0.5) * s);
-            g.lineTo((cx + 1) * s, (y + 0.5) * s);
-            g.moveTo((cx + 1) * s, (y - 0.5) * s);
-            g.lineTo((cx - 1) * s, (y + 0.5) * s);
-            g.stroke({ width: s * 0.4, color: this.STITCH, alpha: 0.35 });
-          }
+            // Cross-stitch marks along center (front only)
+            for (let i = 0; i < 5; i++) {
+              const y = neckBase.y + 3 + i * 2.8;
+              g.moveTo((cx - 1) * s, (y - 0.5) * s);
+              g.lineTo((cx + 1) * s, (y + 0.5) * s);
+              g.moveTo((cx + 1) * s, (y - 0.5) * s);
+              g.lineTo((cx - 1) * s, (y + 0.5) * s);
+              g.stroke({ width: s * 0.4, color: this.STITCH, alpha: 0.35 });
+            }
 
-          // Bone toggles (instead of metal buckles)
-          for (let i = 0; i < 3; i++) {
-            const ty = neckBase.y + 4 + i * 4;
-            g.roundRect((cx - 0.5) * s, (ty - 0.5) * s, 1.5 * s, 1.5 * s, 0.5 * s);
+            // Bone toggles — front only
+            for (let i = 0; i < 3; i++) {
+              const ty = neckBase.y + 4 + i * 4;
+              g.roundRect((cx - 0.5) * s, (ty - 0.5) * s, 1.5 * s, 1.5 * s, 0.5 * s);
+              g.fill(this.BONE_TOG);
+              g.roundRect((cx - 0.5) * s, (ty - 0.5) * s, 1.5 * s, 1.5 * s, 0.5 * s);
+              g.stroke({ width: s * 0.3, color: darken(this.BONE_TOG, 0.2), alpha: 0.4 });
+            }
+
+            // Fur trim at neckline (front)
+            const furY = neckBase.y + 1;
+            for (let i = 0; i < 8; i++) {
+              const fx = shoulderL.x - 1 + i * ((shoulderR.x - shoulderL.x + 2) / 7);
+              const fy = furY + Math.sin(i * 1.8) * 0.8;
+              g.circle(fx * s, fy * s, 1.2 * s);
+              g.fill(this.FUR);
+            }
+            g.moveTo((shoulderL.x - 1) * s, furY * s);
+            g.quadraticCurveTo(cx * s, (furY + 1) * s, (shoulderR.x + 1) * s, furY * s);
+            g.stroke({ width: s * 0.4, color: darken(this.FUR, 0.2), alpha: 0.3 });
+
+            // Hanging bone charm (front)
+            const beltYf = waistL.y + 0.5;
+            g.moveTo(cx * s, (beltYf + 1) * s);
+            g.lineTo(cx * s, (beltYf + 4) * s);
+            g.stroke({ width: s * 0.4, color: 0x4a3a2a });
+            g.circle(cx * s, (beltYf + 4.5) * s, 1 * s);
             g.fill(this.BONE_TOG);
-            g.roundRect((cx - 0.5) * s, (ty - 0.5) * s, 1.5 * s, 1.5 * s, 0.5 * s);
-            g.stroke({ width: s * 0.3, color: darken(this.BONE_TOG, 0.2), alpha: 0.4 });
+          } else {
+            // Back view: vertical back stitching along spine, no front toggles/charm
+            // Vertical back seam (straight, crude)
+            g.moveTo(cx * s, (neckBase.y + 1) * s);
+            for (let i = 0; i < 7; i++) {
+              const y = neckBase.y + 2 + i * 2.2;
+              // Vertical stitches with slight offset — cruder than front
+              g.lineTo((cx + (i % 2 === 0 ? 0.4 : -0.4)) * s, y * s);
+            }
+            g.stroke({ width: s * 0.5, color: this.STITCH, alpha: 0.35 });
+
+            // Horizontal back strap stitches (crude binding lines)
+            for (let i = 0; i < 3; i++) {
+              const y = neckBase.y + 4 + i * 4;
+              g.moveTo((cx - 3 * wf) * s, y * s);
+              g.lineTo((cx + 3 * wf) * s, y * s);
+              g.stroke({ width: s * 0.4, color: this.STITCH, alpha: 0.25 });
+            }
+
+            // Back fur trim at neckline (thinner, same fur)
+            const furYb = neckBase.y + 1;
+            for (let i = 0; i < 6; i++) {
+              const fx = shoulderL.x + i * ((shoulderR.x - shoulderL.x) / 5);
+              const fy = furYb + Math.sin(i * 1.5) * 0.6;
+              g.circle(fx * s, fy * s, 1.0 * s);
+              g.fill(this.FUR);
+            }
           }
 
-          // Fur trim at neckline
-          const furY = neckBase.y + 1;
-          for (let i = 0; i < 8; i++) {
-            const fx = shoulderL.x - 1 + i * ((shoulderR.x - shoulderL.x + 2) / 7);
-            const fy = furY + Math.sin(i * 1.8) * 0.8;
-            g.circle(fx * s, fy * s, 1.2 * s);
-            g.fill(this.FUR);
-          }
-          // Fur trim outline
-          g.moveTo((shoulderL.x - 1) * s, furY * s);
-          g.quadraticCurveTo(cx * s, (furY + 1) * s, (shoulderR.x + 1) * s, furY * s);
-          g.stroke({ width: s * 0.4, color: darken(this.FUR, 0.2), alpha: 0.3 });
-
-          // Rough rope belt
+          // Rough rope belt (visible from both sides)
           const beltY = waistL.y + 0.5;
           g.moveTo((waistL.x + 0.5) * s, beltY * s);
           for (let i = 0; i < 6; i++) {
@@ -100,13 +136,6 @@ export class ArmorOgreskin implements Model {
             g.lineTo(bx * s, by * s);
           }
           g.stroke({ width: s * 1.5, color: 0x5a4a3a });
-
-          // Hanging bone charm
-          g.moveTo(cx * s, (beltY + 1) * s);
-          g.lineTo(cx * s, (beltY + 4) * s);
-          g.stroke({ width: s * 0.4, color: 0x4a3a2a });
-          g.circle(cx * s, (beltY + 4.5) * s, 1 * s);
-          g.fill(this.BONE_TOG);
 
           // Outline (rough/organic)
           g.moveTo((cx + 1) * s, neckBase.y * s);

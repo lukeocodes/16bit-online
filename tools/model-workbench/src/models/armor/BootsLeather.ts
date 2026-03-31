@@ -1,6 +1,7 @@
 import type { Graphics } from "pixi.js";
 import type { Model, RenderContext, DrawCall, AttachmentPoint, V } from "../types";
 import { DEPTH_FAR_LIMB } from "../types";
+import { darken } from "../palette";
 
 /**
  * Leather boots — sturdy mid-calf boots with buckle straps.
@@ -18,19 +19,29 @@ export class BootsLeather implements Model {
     const calls: DrawCall[] = [];
 
     const sz = ctx.slotParams.size;
-    for (const side of [farSide, nearSide]) {
-      const d = side === farSide ? DEPTH_FAR_LIMB + 0 : DEPTH_FAR_LIMB + 2;
-      calls.push({ depth: d, draw: (g, s) => this.drawBoot(g, j, iso, palette, s, side, sz) });
-    }
+    // Far boot darkened, near boot base color
+    calls.push({ depth: DEPTH_FAR_LIMB + 0, draw: (g, s) => this.drawBoot(g, j, iso, palette, s, farSide, sz, false) });
+    calls.push({ depth: DEPTH_FAR_LIMB + 2, draw: (g, s) => this.drawBoot(g, j, iso, palette, s, nearSide, sz, true) });
     return calls;
   }
 
-  private drawBoot(g: Graphics, j: Record<string, V>, iso: V, p: any, s: number, side: "L" | "R", sz = 1): void {
+  private drawBoot(
+    g: Graphics,
+    j: Record<string, V>,
+    iso: V,
+    p: any,
+    s: number,
+    side: "L" | "R",
+    sz = 1,
+    isNear = false
+  ): void {
     const ankle = j[`ankle${side}`];
     const knee = j[`knee${side}`];
-    const color = p.body;
-    const dk = p.bodyDk;
-    const accent = p.accent;
+
+    // Near boot uses base color, far boot darkened 10%
+    const color = isNear ? p.body : darken(p.body, 0.1);
+    const dk = isNear ? p.bodyDk : darken(p.bodyDk, 0.1);
+    const accent = isNear ? p.accent : darken(p.accent, 0.1);
 
     // Boot shaft (extends up the calf)
     const shaftTopY = ankle.y - 5 * sz;

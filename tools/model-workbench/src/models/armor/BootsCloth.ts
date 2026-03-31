@@ -19,17 +19,27 @@ export class BootsCloth implements Model {
     const calls: DrawCall[] = [];
 
     const sz = ctx.slotParams.size;
-    for (const side of [farSide, nearSide]) {
-      const d = side === farSide ? DEPTH_FAR_LIMB + 0 : DEPTH_FAR_LIMB + 2;
-      calls.push({ depth: d, draw: (g, s) => this.drawBoot(g, j, iso, palette, s, side, sz) });
-    }
+    // Far boot darkened, near boot base color
+    calls.push({ depth: DEPTH_FAR_LIMB + 0, draw: (g, s) => this.drawBoot(g, j, iso, palette, s, farSide, sz, false) });
+    calls.push({ depth: DEPTH_FAR_LIMB + 2, draw: (g, s) => this.drawBoot(g, j, iso, palette, s, nearSide, sz, true) });
     return calls;
   }
 
-  private drawBoot(g: Graphics, j: Record<string, V>, iso: V, p: any, s: number, side: "L" | "R", sz = 1): void {
+  private drawBoot(
+    g: Graphics,
+    j: Record<string, V>,
+    iso: V,
+    p: any,
+    s: number,
+    side: "L" | "R",
+    sz = 1,
+    isNear = false
+  ): void {
     const ankle = j[`ankle${side}`];
-    const color = p.body;
-    const dk = p.bodyDk;
+
+    // Near wrap uses base color, far wrap darkened 10%
+    const color = isNear ? p.body : darken(p.body, 0.1);
+    const dk = isNear ? p.bodyDk : darken(p.bodyDk, 0.1);
 
     const footLen = 4.2 * sz;
     const fwdX = iso.x * footLen;

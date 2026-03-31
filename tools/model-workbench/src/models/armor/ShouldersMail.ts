@@ -1,6 +1,7 @@
 import type { Graphics } from "pixi.js";
 import type { Model, RenderContext, DrawCall, AttachmentPoint, V } from "../types";
 import { DEPTH_FAR_LIMB, DEPTH_BODY } from "../types";
+import { darken } from "../palette";
 
 /**
  * Mail shoulders — chain mail mantlets draped over shoulders.
@@ -19,23 +20,74 @@ export class ShouldersMail implements Model {
     const sz = ctx.slotParams.size;
     calls.push({
       depth: facingCamera ? DEPTH_FAR_LIMB + 8 : DEPTH_BODY + 3,
-      draw: (g, s) => this.drawShoulder(g, j, palette, s, farSide, sz),
+      draw: (g, s) => this.drawShoulder(g, j, palette, s, farSide, sz, false, facingCamera),
     });
     calls.push({
       depth: facingCamera ? DEPTH_BODY + 3 : DEPTH_FAR_LIMB + 8,
-      draw: (g, s) => this.drawShoulder(g, j, palette, s, nearSide, sz),
+      draw: (g, s) => this.drawShoulder(g, j, palette, s, nearSide, sz, true, facingCamera),
     });
 
     return calls;
   }
 
-  private drawShoulder(g: Graphics, j: Record<string, V>, p: any, s: number, side: "L" | "R", sz = 1): void {
+  private drawShoulder(
+    g: Graphics,
+    j: Record<string, V>,
+    p: any,
+    s: number,
+    side: "L" | "R",
+    sz = 1,
+    isNear = false,
+    facingCamera = true
+  ): void {
     const shoulder = j[`shoulder${side}`];
-    const elbow = j[`elbow${side}`];
     const sign = side === "L" ? -1 : 1;
 
     const cx = shoulder.x + sign * 1;
     const cy = shoulder.y;
+
+    // Near side slightly brighter, far side darkened
+    const fillColor = isNear ? p.body : darken(p.body, 0.1);
+
+    if (!facingCamera) {
+      // Back view: slightly wider drape, darker, single ring row instead of 2
+      const w = 7 * sz;
+      const h = 5.5 * sz;
+
+      g.moveTo((cx - w * sign * 0.3) * s, (cy - h * 0.6) * s);
+      g.quadraticCurveTo(
+        (cx + sign * w) * s, (cy - h * 0.3) * s,
+        (cx + sign * w * 0.85) * s, (cy + h * 0.5) * s
+      );
+      g.quadraticCurveTo(
+        (cx + sign * w * 0.5) * s, (cy + h * 0.8) * s,
+        (cx - sign * 0.5) * s, (cy + h * 0.4) * s
+      );
+      g.quadraticCurveTo(
+        (cx - sign * 2) * s, cy * s,
+        (cx - w * sign * 0.3) * s, (cy - h * 0.6) * s
+      );
+      g.closePath();
+      g.fill(darken(fillColor, 0.1));
+
+      // Single ring row for back view
+      for (let col = 0; col < 3; col++) {
+        const rx = cx + sign * (col * 1.8 + 0.5);
+        const ry = cy;
+        g.circle(rx * s, ry * s, 0.5 * s);
+        g.stroke({ width: s * 0.2, color: p.bodyLt, alpha: 0.25 });
+      }
+
+      // Leather edge band at bottom
+      g.moveTo((cx + sign * w * 0.85) * s, (cy + h * 0.5) * s);
+      g.quadraticCurveTo(
+        (cx + sign * w * 0.5) * s, (cy + h * 0.8) * s,
+        (cx - sign * 0.5) * s, (cy + h * 0.4) * s
+      );
+      g.stroke({ width: s * 1, color: p.accent, alpha: 0.4 });
+      return;
+    }
+
     const w = 6.5 * sz;
     const h = 5.5 * sz;
 
@@ -50,11 +102,11 @@ export class ShouldersMail implements Model {
       (cx - sign * 0.5) * s, (cy + h * 0.4) * s
     );
     g.quadraticCurveTo(
-      (cx - sign * 2) * s, (cy) * s,
+      (cx - sign * 2) * s, cy * s,
       (cx - w * sign * 0.3) * s, (cy - h * 0.6) * s
     );
     g.closePath();
-    g.fill(p.body);
+    g.fill(fillColor);
 
     // Outline
     g.moveTo((cx - w * sign * 0.3) * s, (cy - h * 0.6) * s);
@@ -67,7 +119,7 @@ export class ShouldersMail implements Model {
       (cx - sign * 0.5) * s, (cy + h * 0.4) * s
     );
     g.quadraticCurveTo(
-      (cx - sign * 2) * s, (cy) * s,
+      (cx - sign * 2) * s, cy * s,
       (cx - w * sign * 0.3) * s, (cy - h * 0.6) * s
     );
     g.closePath();
