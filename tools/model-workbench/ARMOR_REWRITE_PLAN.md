@@ -83,17 +83,16 @@ export interface FitmentCorners {
 - [x] All 9 humanoid NPC bodies same fix
 - [x] All TypeScript compiling clean
 
-### Phase 2: Torso Armor (next 2–3 loops)
-Redraw all 9 torso pieces using corner-based quad geometry:
-- [ ] ArmorPlate (breastplate + pauldrons)
-- [ ] ArmorMail (chain shirt)
-- [ ] ArmorLeather (leather vest)
-- [ ] ArmorCloth (cloth tunic)
-- [ ] RobeCloth (full robe)
-- [ ] ArmorDragon
-- [ ] ArmorElven
-- [ ] ArmorOgreskin
-- [ ] ArmorSkeleton
+### Phase 2: Torso Armor
+- [x] ArmorPlate — corner quad, pauldrons, gorget, facing-aware ✓
+- [x] ArmorMail — corner quad, ring rows, mail skirt ✓
+- [x] ArmorLeather — corner stitching, belt/buckle, shoulder straps ✓
+- [x] ArmorCloth — hem extension, sash, corner collar ✓
+- [x] RobeCloth — animated skirt, V-neck chest panel, sash knot ✓
+- [ ] ArmorDragon — NEXT: scale pattern over corner quad, dragon crest
+- [ ] ArmorElven — leaf/vine motifs over corner quad
+- [ ] ArmorOgreskin — rough hide, bone toggles
+- [ ] ArmorSkeleton — rib pattern, skull emblem
 
 ### Phase 3: Shoulders (next loop)
 4 shoulder pieces — fix depth to BODY+3 (near) / FAR_LIMB+8 (far), draw wider pauldrons:

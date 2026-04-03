@@ -1,12 +1,12 @@
 import type { Graphics } from "pixi.js";
-import type { Model, RenderContext, DrawCall, AttachmentPoint } from "../types";
+import type { Model, RenderContext, DrawCall, AttachmentPoint, FitmentCorners } from "../types";
 import { DEPTH_BODY } from "../types";
 import { darken, lighten } from "../palette";
+import { drawCornerQuad, quadPoint } from "../draw-helpers";
 
 /**
- * Chain Mail — horizontal ring pattern, mail skirt.
- * Mail is symmetric front/back; slightly darker overall from the back.
- * IN FRONT OF: torso at DEPTH_BODY + 3.
+ * Chain Mail — horizontal ring-pattern torso + mail skirt.
+ * DEPTH: DEPTH_BODY + 3 (= 93). Uses fitment corners to stretch to any body.
  */
 export class ArmorMail implements Model {
   readonly id = "armor-mail";
@@ -15,44 +15,66 @@ export class ArmorMail implements Model {
   readonly slot = "torso" as const;
 
   getDrawCalls(ctx: RenderContext): DrawCall[] {
-    const { skeleton, palette, facingCamera } = ctx;
+    const { skeleton, palette, facingCamera, fitmentCorners } = ctx;
+    const j  = skeleton.joints;
     const sz = ctx.slotParams.size;
-    const { waistL, waistR, hipL, hipR, chestL, chestR } = skeleton.joints;
+
+    const fc: FitmentCorners = fitmentCorners ?? {
+      tl: { x: j.shoulderL.x, y: j.neckBase.y },
+      tr: { x: j.shoulderR.x, y: j.neckBase.y },
+      bl: { x: j.hipL.x,      y: j.hipL.y },
+      br: { x: j.hipR.x,      y: j.hipR.y },
+    };
 
     return [{
       depth: DEPTH_BODY + 3,
       draw: (g: Graphics, s: number) => {
-        // Chain pattern rows
-        for (let i = 0; i < 5; i++) {
-          const ry = chestL.y + 1 * sz + i * 2.5 * sz;
-          const t  = i / 5;
-          const lx = chestL.x + (waistL.x - chestL.x) * t + 1.5 * sz;
-          const rx = chestR.x + (waistR.x - chestR.x) * t - 1.5 * sz;
-          g.moveTo(lx * s, ry * s); g.lineTo(rx * s, ry * s);
-        }
-        const rowAlpha = facingCamera ? 0.35 : 0.22; // slightly less visible from back
-        g.stroke({ width: s * 0.4, color: palette.bodyLt, alpha: rowAlpha });
+        // Inset corners slightly
+        const c: FitmentCorners = {
+          tl: { x: fc.tl.x + 1 * sz, y: fc.tl.y + 0.5 * sz },
+          tr: { x: fc.tr.x - 1 * sz, y: fc.tr.y + 0.5 * sz },
+          bl: { x: fc.bl.x,          y: fc.bl.y },
+          br: { x: fc.br.x,          y: fc.br.y },
+        };
 
-        // Mail skirt
-        g.moveTo(waistL.x * s, waistL.y * s);
-        g.lineTo((hipL.x - 1.5 * sz) * s, (hipL.y + 3 * sz) * s);
-        g.lineTo((hipR.x + 1.5 * sz) * s, (hipR.y + 3 * sz) * s);
-        g.lineTo(waistR.x * s, waistR.y * s);
+        // Mail is symmetric front/back — base fill same both sides
+        const fillColor = facingCamera ? palette.body : darken(palette.body, 0.08);
+        drawCornerQuad(g, c, 0, fillColor, palette.outline, 0.4, s);
+
+        // Horizontal ring rows (5 rows across the torso)
+        for (let i = 0; i < 6; i++) {
+          const t   = 0.05 + i * 0.16;
+          const rowL = quadPoint(c, 0.04, t);
+          const rowR = quadPoint(c, 0.96, t);
+          g.moveTo(rowL.x * s, rowL.y * s); g.lineTo(rowR.x * s, rowR.y * s);
+        }
+        g.stroke({ width: s * 0.4, color: palette.bodyLt, alpha: facingCamera ? 0.32 : 0.2 });
+
+        // Mail skirt (extends below hip level)
+        const skirtTL = quadPoint(c, 0.0, 1.0);
+        const skirtTR = quadPoint(c, 1.0, 1.0);
+        const hemL = { x: skirtTL.x - 1.5 * sz, y: skirtTL.y + 3 * sz };
+        const hemR = { x: skirtTR.x + 1.5 * sz, y: skirtTR.y + 3 * sz };
+
+        g.moveTo(skirtTL.x * s, skirtTL.y * s);
+        g.lineTo(hemL.x * s, hemL.y * s);
+        g.lineTo(hemR.x * s, hemR.y * s);
+        g.lineTo(skirtTR.x * s, skirtTR.y * s);
         g.closePath();
-        // Back view: skirt is slightly darker (we're seeing the back of the links)
         g.fill(facingCamera ? palette.body : darken(palette.body, 0.08));
-        g.moveTo(waistL.x * s, waistL.y * s);
-        g.lineTo((hipL.x - 1.5 * sz) * s, (hipL.y + 3 * sz) * s);
-        g.lineTo((hipR.x + 1.5 * sz) * s, (hipR.y + 3 * sz) * s);
-        g.lineTo(waistR.x * s, waistR.y * s);
-        g.closePath(); g.stroke({ width: s * 0.5, color: palette.outline, alpha: 0.4 });
+        g.moveTo(skirtTL.x * s, skirtTL.y * s);
+        g.lineTo(hemL.x * s, hemL.y * s);
+        g.lineTo(hemR.x * s, hemR.y * s);
+        g.lineTo(skirtTR.x * s, skirtTR.y * s);
+        g.closePath();
+        g.stroke({ width: s * 0.5, color: palette.outline, alpha: 0.4 });
 
         // Hem rivets
-        const hemY = hipL.y + 3 * sz;
-        for (let i = 0; i < 6; i++) {
-          const t  = i / 5;
-          const hx = hipL.x - 1.5 * sz + (hipR.x + 1.5 * sz - (hipL.x - 1.5 * sz)) * t;
-          g.circle(hx * s, (hemY + (i % 2) * sz) * s, 0.6 * sz * s);
+        for (let i = 0; i < 7; i++) {
+          const t  = i / 6;
+          const hx = hemL.x + (hemR.x - hemL.x) * t;
+          const hy = hemL.y + (hemR.y - hemL.y) * t + (i % 2) * sz;
+          g.circle(hx * s, hy * s, 0.6 * sz * s);
         }
         g.fill(palette.bodyDk);
       },

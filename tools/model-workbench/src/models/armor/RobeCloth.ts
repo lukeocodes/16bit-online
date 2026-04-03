@@ -1,163 +1,118 @@
 import type { Graphics } from "pixi.js";
-import type { Model, RenderContext, DrawCall, AttachmentPoint } from "../types";
+import type { Model, RenderContext, DrawCall, AttachmentPoint, FitmentCorners } from "../types";
 import { DEPTH_BODY } from "../types";
+import { darken } from "../palette";
+import { quadPoint } from "../draw-helpers";
 
 /**
- * Cloth Robe — full-length garment.
- * Sits above the body layer. Hem stops at ankle so feet peek out.
- * Skirt swings with the walk cycle using skeleton.walkPhase.
- * When facing away the hem is slightly narrower (back of robe),
- * and a spine fold replaces the chest panel detail.
+ * Cloth Robe — full-length flowing robe, sash, animated hem sway.
+ * DEPTH: DEPTH_BODY + 4 (= 94) — slightly above standard torso armor so
+ *        robe drapes over chest panel.
  */
 export class RobeCloth implements Model {
   readonly id = "robe-cloth";
-  readonly name = "Cloth Robe (Full)";
+  readonly name = "Cloth Robe";
   readonly category = "armor" as const;
   readonly slot = "torso" as const;
 
   getDrawCalls(ctx: RenderContext): DrawCall[] {
-    const { skeleton, palette, facingCamera } = ctx;
-    const { neckBase, shoulderL, shoulderR, chestL, chestR, waistL, waistR, hipL, hipR, ankleL, ankleR } = skeleton.joints;
-    const wf = skeleton.wf;
-    const sz = ctx.slotParams.size;
+    const { skeleton, palette, facingCamera, fitmentCorners } = ctx;
+    const j         = skeleton.joints;
+    const sz        = ctx.slotParams.size;
+    const walkPhase = skeleton.walkPhase;
+    const sway      = walkPhase !== 0 ? Math.sin(walkPhase * 0.8) : 0;
 
-    // Hem stops just below ankles so feet peek out
-    const hemY = ((ankleL.y + ankleR.y) / 2) + 1;
-    const hemCx = (hipL.x + hipR.x) / 2;
-    const hipHalfW = (Math.abs(hipR.x - hipL.x) / 2 + 3) * sz;
-    // Back view hem is slightly narrower — you're seeing the robe from behind
-    const hemHalfW = facingCamera
-      ? (hipHalfW + 4 * sz)
-      : (hipHalfW + 2.5 * sz);
-
-    // Skirt swings with walk cycle
-    const swing = Math.sin(skeleton.walkPhase * Math.PI * 2) * 0.6 * sz;
+    const fc: FitmentCorners = fitmentCorners ?? {
+      tl: { x: j.shoulderL.x, y: j.neckBase.y },
+      tr: { x: j.shoulderR.x, y: j.neckBase.y },
+      bl: { x: j.hipL.x,      y: j.hipL.y },
+      br: { x: j.hipR.x,      y: j.hipR.y },
+    };
 
     return [
       {
-        // Skirt — above body/legs so the robe covers them
+        // Robe skirt — below hips, animated sway
         depth: DEPTH_BODY + 4,
         draw: (g: Graphics, s: number) => {
-          // Main skirt silhouette — top matches hip joints so it joins the torso panel
-          g.moveTo(hipL.x * s, hipL.y * s);
+          const hemY   = j.ankleL.y + 3 * sz;
+          const hemW   = Math.abs(fc.tr.x - fc.tl.x) + 5 * sz;
+          const hemCX  = (fc.bl.x + fc.br.x) / 2;
+
+          g.moveTo(fc.bl.x * s, fc.bl.y * s);
           g.quadraticCurveTo(
-            (hemCx - hemHalfW - 1 + swing * 0.3) * s, ((hipL.y + hemY) / 2) * s,
-            (hemCx - hemHalfW + swing) * s, hemY * s
+            (hemCX - hemW / 2 - sz + sway) * s, (fc.bl.y + (hemY - fc.bl.y) * 0.5) * s,
+            (hemCX - hemW * 0.3 + sway * 1.5) * s, hemY * s,
           );
-          g.lineTo((hemCx + hemHalfW + swing) * s, hemY * s);
+          // Tattered hem
+          for (let i = 0; i < 5; i++) {
+            const t  = i / 4;
+            const px = (hemCX - hemW * 0.3) + (hemW * 0.6) * t + sway * (1 - t);
+            const py = hemY + Math.sin(t * 7 + (walkPhase || 0)) * 1.5;
+            g.lineTo(px * s, py * s);
+          }
           g.quadraticCurveTo(
-            (hemCx + hemHalfW + 1 + swing * 0.3) * s, ((hipR.y + hemY) / 2) * s,
-            hipR.x * s, hipR.y * s
+            (hemCX + hemW / 2 + sz + sway) * s, (fc.br.y + (hemY - fc.br.y) * 0.5) * s,
+            fc.br.x * s, fc.br.y * s,
           );
           g.closePath();
-          g.fill(palette.body);
+          g.fill(facingCamera ? palette.body : darken(palette.body, 0.07));
 
-          // Hem edge
-          g.moveTo((hemCx - hemHalfW + swing) * s, hemY * s);
-          g.lineTo((hemCx + hemHalfW + swing) * s, hemY * s);
-          g.stroke({ width: s * 1.0, color: palette.accent, alpha: 0.65 });
-
-          // Drape fold lines — follow the swing
-          for (const t of [0.25, 0.5, 0.75]) {
-            const topX = hipL.x + (hipR.x - hipL.x) * t;
-            const botX = hemCx - hemHalfW + hemHalfW * 2 * t + swing;
-            g.moveTo(topX * s, hipL.y * s);
-            g.quadraticCurveTo(
-              ((topX + botX) / 2 + (t - 0.5) * 1.5) * s,
-              ((hipL.y + hemY) / 2) * s,
-              botX * s, hemY * s
-            );
-            g.stroke({ width: s * 0.4, color: palette.bodyDk, alpha: 0.2 });
-          }
+          // Center fold line
+          g.moveTo((hemCX + sway * 0.3) * s, (fc.bl.y + 1) * s);
+          g.lineTo((hemCX + sway * 0.5) * s, (hemY - 2) * s);
+          g.stroke({ width: s * 0.5, color: palette.bodyDk, alpha: 0.25 });
         },
       },
       {
-        // Chest panel + collar + sash — above body
+        // Chest panel + sash
         depth: DEPTH_BODY + 5,
         draw: (g: Graphics, s: number) => {
-          // Chest/back panel: from shoulders down to hips
-          g.moveTo((shoulderL.x - 0.5 * sz) * s, shoulderL.y * s);
-          g.quadraticCurveTo(
-            neckBase.x * s, (neckBase.y + 0.5) * s,
-            (shoulderR.x + 0.5 * sz) * s, shoulderR.y * s
-          );
-          g.lineTo(hipR.x * s, hipR.y * s);
-          g.lineTo(hipL.x * s, hipL.y * s);
-          g.closePath();
-          g.fill(palette.body);
+          const topL = quadPoint(fc, 0.08, 0.04);
+          const topR = quadPoint(fc, 0.92, 0.04);
+          const midL = quadPoint(fc, 0.06, 0.55);
+          const midR = quadPoint(fc, 0.94, 0.55);
 
-          const cx = neckBase.x;
-
+          // Front V or back straight neckline
           if (facingCamera) {
-            // Front: vertical centre seam
-            g.moveTo(cx * s, (neckBase.y + 1) * s);
-            g.lineTo(cx * s, ((neckBase.y + hipL.y) / 2) * s);
-            g.stroke({ width: s * 0.6, color: palette.bodyDk, alpha: 0.25 });
+            // Chest panel
+            g.moveTo(topL.x * s, topL.y * s);
+            g.lineTo(midL.x * s, midL.y * s);
+            g.lineTo(midR.x * s, midR.y * s);
+            g.lineTo(topR.x * s, topR.y * s);
+            g.closePath();
+            g.fill({ color: palette.bodyLt, alpha: 0.08 });
 
-            // Collar (front view)
-            g.ellipse(
-              neckBase.x * s,
-              (neckBase.y + 1) * s,
-              3.5 * wf * sz * s,
-              2.5 * sz * s
-            );
-            g.fill(palette.accent);
-            g.ellipse(
-              neckBase.x * s,
-              (neckBase.y + 1) * s,
-              3.5 * wf * sz * s,
-              2.5 * sz * s
-            );
-            g.stroke({ width: s * 0.5, color: palette.accentDk, alpha: 0.5 });
-
-            // Sash at waist
-            g.moveTo(waistL.x * s, waistL.y * s);
-            g.lineTo(waistR.x * s, waistR.y * s);
-            g.stroke({ width: s * 2.0, color: palette.accent, alpha: 0.8 });
-
-            // Belt knot
-            const kx = (waistL.x + waistR.x) / 2;
-            g.circle(kx * s, waistL.y * s, 1.5 * sz * s);
-            g.fill(palette.accentDk);
+            // V-neckline
+            const vPt = quadPoint(fc, 0.5, 0.12);
+            g.moveTo(topL.x * s, topL.y * s);
+            g.lineTo(vPt.x * s, vPt.y * s);
+            g.lineTo(topR.x * s, topR.y * s);
+            g.stroke({ width: s * 0.7, color: palette.accent, alpha: 0.5 });
           } else {
-            // Back view: spine fold line (prominent center back pleat)
-            g.moveTo(cx * s, (neckBase.y + 1) * s);
-            g.lineTo(cx * s, (hipL.y - 1) * s);
-            g.stroke({ width: s * 0.8, color: palette.bodyDk, alpha: 0.35 });
+            // Back yoke seam
+            g.moveTo(topL.x * s, topL.y * s); g.lineTo(topR.x * s, topR.y * s);
+            g.stroke({ width: s * 0.6, color: palette.bodyDk, alpha: 0.28 });
+          }
 
-            // Back collar — slightly smaller, no front facing detail
-            g.ellipse(
-              neckBase.x * s,
-              (neckBase.y + 1) * s,
-              3 * wf * sz * s,
-              2 * sz * s
-            );
+          // Sash knot (front only)
+          if (facingCamera) {
+            const sash = quadPoint(fc, 0.5, 0.6);
+            g.circle(sash.x * s, sash.y * s, 1.8 * sz * s);
             g.fill(palette.accent);
-            g.ellipse(
-              neckBase.x * s,
-              (neckBase.y + 1) * s,
-              3 * wf * sz * s,
-              2 * sz * s
-            );
+            g.circle(sash.x * s, sash.y * s, 1.8 * sz * s);
             g.stroke({ width: s * 0.4, color: palette.accentDk, alpha: 0.4 });
-
-            // Back yoke seam line (horizontal across shoulder blades)
-            const yokeY = shoulderL.y + 3;
-            g.moveTo((shoulderL.x + 1) * s, yokeY * s);
-            g.lineTo((shoulderR.x - 1) * s, yokeY * s);
-            g.stroke({ width: s * 0.5, color: palette.bodyDk, alpha: 0.2 });
-
-            // Sash visible from back too, but no knot
-            g.moveTo(waistL.x * s, waistL.y * s);
-            g.lineTo(waistR.x * s, waistR.y * s);
-            g.stroke({ width: s * 2.0, color: palette.accent, alpha: 0.6 });
+            // Sash ribbon left
+            g.moveTo(sash.x * s, (sash.y + 1.8 * sz) * s);
+            g.lineTo((sash.x - 2 * sz) * s, (sash.y + 4 * sz) * s);
+            g.stroke({ width: s * 1.4, color: palette.accent, alpha: 0.5 });
+            g.moveTo(sash.x * s, (sash.y + 1.8 * sz) * s);
+            g.lineTo((sash.x + 2 * sz) * s, (sash.y + 4 * sz) * s);
+            g.stroke({ width: s * 1.4, color: darken(palette.accent, 0.06), alpha: 0.5 });
           }
         },
       },
     ];
   }
 
-  getAttachmentPoints(): Record<string, AttachmentPoint> {
-    return {};
-  }
+  getAttachmentPoints(): Record<string, AttachmentPoint> { return {}; }
 }

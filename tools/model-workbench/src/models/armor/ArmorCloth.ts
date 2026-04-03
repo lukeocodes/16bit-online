@@ -1,11 +1,12 @@
 import type { Graphics } from "pixi.js";
-import type { Model, RenderContext, DrawCall, AttachmentPoint } from "../types";
+import type { Model, RenderContext, DrawCall, AttachmentPoint, FitmentCorners } from "../types";
 import { DEPTH_BODY, DEPTH_COLLAR } from "../types";
 import { darken } from "../palette";
+import { quadPoint } from "../draw-helpers";
 
 /**
- * Cloth Armor — hem, sash, collar.
- * FACING AWARE: collar shows front when facing camera; fabric fold from back.
+ * Cloth Armor — flowing hem, sash at waist, collar.
+ * DEPTH: DEPTH_BODY + 3 (= 93).
  */
 export class ArmorCloth implements Model {
   readonly id = "armor-cloth";
@@ -14,48 +15,60 @@ export class ArmorCloth implements Model {
   readonly slot = "torso" as const;
 
   getDrawCalls(ctx: RenderContext): DrawCall[] {
-    const { skeleton, palette, facingCamera } = ctx;
+    const { skeleton, palette, facingCamera, fitmentCorners } = ctx;
+    const j  = skeleton.joints;
     const sz = ctx.slotParams.size;
-    const { waistL, waistR, hipL, hipR, neckBase } = skeleton.joints;
     const wf = skeleton.wf;
+
+    const fc: FitmentCorners = fitmentCorners ?? {
+      tl: { x: j.shoulderL.x, y: j.neckBase.y },
+      tr: { x: j.shoulderR.x, y: j.neckBase.y },
+      bl: { x: j.hipL.x,      y: j.hipL.y },
+      br: { x: j.hipR.x,      y: j.hipR.y },
+    };
 
     return [
       {
         depth: DEPTH_BODY + 3,
         draw: (g: Graphics, s: number) => {
-          const hemW = Math.abs(hipR.x - hipL.x) + 5 * sz;
-          const hemCx = (hipL.x + hipR.x) / 2;
+          const hemExt = 6 * sz; // hem extends below hips
+          const hemWExt = 3 * sz; // hem wider than hips
 
-          // Robe hem (same shape front/back — cloth is symmetric)
-          g.moveTo(hipL.x * s, hipL.y * s);
-          g.quadraticCurveTo((hemCx - hemW / 2 - sz) * s, (hipL.y + 5 * sz) * s, (hemCx - hemW * 0.3) * s, (hipL.y + 6 * sz) * s);
-          g.lineTo((hemCx + hemW * 0.3) * s, (hipR.y + 6 * sz) * s);
-          g.quadraticCurveTo((hemCx + hemW / 2 + sz) * s, (hipR.y + 5 * sz) * s, hipR.x * s, hipR.y * s);
+          const blExt = { x: fc.bl.x - hemWExt, y: fc.bl.y + hemExt };
+          const brExt = { x: fc.br.x + hemWExt, y: fc.br.y + hemExt };
+
+          // Flowing hem
+          g.moveTo(fc.bl.x * s, fc.bl.y * s);
+          g.quadraticCurveTo(blExt.x * s, (blExt.y - hemExt * 0.4) * s, blExt.x * s, blExt.y * s);
+          g.lineTo(brExt.x * s, brExt.y * s);
+          g.quadraticCurveTo(brExt.x * s, (brExt.y - hemExt * 0.4) * s, fc.br.x * s, fc.br.y * s);
           g.closePath();
           g.fill(facingCamera ? palette.body : darken(palette.body, 0.07));
-          g.moveTo((hemCx - hemW * 0.3) * s, (hipL.y + 6 * sz) * s);
-          g.lineTo((hemCx + hemW * 0.3) * s, (hipR.y + 6 * sz) * s);
+
+          // Hem trim
+          g.moveTo(blExt.x * s, blExt.y * s); g.lineTo(brExt.x * s, brExt.y * s);
           g.stroke({ width: s * 0.8, color: palette.accent, alpha: 0.6 });
 
-          // Sash (visible both sides)
-          g.moveTo(waistL.x * s, waistL.y * s); g.lineTo(waistR.x * s, waistR.y * s);
+          // Sash (at 65% from top)
+          const sashL = quadPoint(fc, 0.0, 0.65);
+          const sashR = quadPoint(fc, 1.0, 0.65);
+          g.moveTo(sashL.x * s, sashL.y * s); g.lineTo(sashR.x * s, sashR.y * s);
           g.stroke({ width: s * 1.5, color: palette.accent, alpha: facingCamera ? 0.7 : 0.55 });
         },
       },
       {
         depth: DEPTH_COLLAR,
         draw: (g: Graphics, s: number) => {
+          const nB = j.neckBase;
           if (facingCamera) {
-            // Collar front
-            g.ellipse(neckBase.x * s, (neckBase.y + 1 * sz) * s, 3.5 * wf * sz * s, 2.5 * sz * s);
+            g.ellipse(nB.x * s, (nB.y + 1 * sz) * s, 3.5 * wf * sz * s, 2.5 * sz * s);
             g.fill(palette.accent);
-            g.ellipse(neckBase.x * s, (neckBase.y + 1 * sz) * s, 3.5 * wf * sz * s, 2.5 * sz * s);
+            g.ellipse(nB.x * s, (nB.y + 1 * sz) * s, 3.5 * wf * sz * s, 2.5 * sz * s);
             g.stroke({ width: s * 0.5, color: palette.accentDk, alpha: 0.5 });
           } else {
-            // Back neckline fold — slightly smaller, seen from behind
-            g.ellipse(neckBase.x * s, (neckBase.y + 1 * sz) * s, 3.8 * wf * sz * s, 2.2 * sz * s);
+            g.ellipse(nB.x * s, (nB.y + 1 * sz) * s, 3.8 * wf * sz * s, 2.2 * sz * s);
             g.fill(darken(palette.accent, 0.08));
-            g.ellipse(neckBase.x * s, (neckBase.y + 1 * sz) * s, 3.8 * wf * sz * s, 2.2 * sz * s);
+            g.ellipse(nB.x * s, (nB.y + 1 * sz) * s, 3.8 * wf * sz * s, 2.2 * sz * s);
             g.stroke({ width: s * 0.4, color: palette.accentDk, alpha: 0.4 });
           }
         },
