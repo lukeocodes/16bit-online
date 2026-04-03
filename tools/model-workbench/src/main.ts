@@ -23,6 +23,7 @@ import "./models/armor/index";
 import "./models/headgear/index";
 import "./models/hair/index";
 import "./models/structures/index";
+import "./models/decorations/index";
 
 // ─── Constants ──────────────────────────────────────────────────────
 

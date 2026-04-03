@@ -119,21 +119,28 @@ Fix depth to FAR_LIMB+9/NEAR_LIMB+6:
 - [x] GauntletsLeather — same ✓
 - [x] GauntletsCloth — same ✓
 
-### Phase 6: Weapons + Offhand (next loop)
-Redraw all 12 weapons + 5 offhand items (sword, axe, etc.):
-- Uses armAngle correctly from the hand-swap fix already done
-- Improve blade/handle quality
+### Phase 6: Weapons + Offhand (COMPLETE ✓)
+All 12 weapons + 5 offhand items verified:
+- All weapons: `side = facingCamera ? nearSide : farSide`, depth `facingCamera ? NEAR_LIMB+3 : FAR_LIMB+3` ✓
+- All shields: `side = facingCamera ? farSide : nearSide`, depth `facingCamera ? FAR_LIMB+3 : NEAR_LIMB+3` ✓
+- Torch + Tome: `side = facingCamera ? farSide : nearSide`, depth `facingCamera ? FAR_LIMB+2 : NEAR_LIMB+2` ✓
 
-### Phase 7: Headgear + Hair
-Already mostly good — minor V2 fit adjustments.
+### Phase 7: Headgear + Hair (COMPLETE ✓)
+All headgear at DEPTH_HEAD+1, HoodCloth back drape `facingCamera ? FAR_LIMB-5 : BODY+6` ✓
+All hair at DEPTH_HEAD+1, back-flow hair `facingCamera ? FAR_LIMB-5 : BODY+6` ✓
 
-### Phase 8: World Decorations
-Once all wearable items are done:
-- Grass patches (various sizes, flat ground decoration)
-- Trees: small (1×1), medium (2×2 trunk), large (trunk-only fills multiple tiles)
-- Rocks: small scattered, medium boulders, massive (3×3+ requires walking around)
-- All use walkability flags — can walk BEHIND but not THROUGH
-- Multi-tile objects use piece system or new large-item support
+### Phase 8: World Decorations (COMPLETE ✓)
+New `decorations/` category registered in main.ts barrel:
+- GrassPatch (grass-patch-small) — 7 blade groups, DEPTH_E+2 ✓
+- GrassPatchLarge (grass-patch-large) — 10 blade groups with sway, DEPTH_E+2 ✓
+- TreeSmall (tree-small) — trunk DEPTH_S+2, canopy DEPTH_W+2 ✓
+- TreeMedium (tree-medium) — root flares, 4-layer canopy DEPTH_W+2/+3 ✓
+- TreeLarge (tree-large) — full-frame trunk, moss, DEPTH_W+2 ✓
+- RockSmall (rock-small) — 3 pebble ellipses, DEPTH_E+3 ✓
+- RockMedium (rock-medium) — organic polygon, directional shading, cracks, DEPTH_S+3 ✓
+- RockBoulder (rock-boulder) — 20pt polygon, lichen patches, DEPTH_W+3 ✓
+- MossyLog (mossy-log) — cylinder with wood grain + moss top, DEPTH_N+2 ✓
+- MushroomCluster (mushroom-cluster) — 3 mushrooms with spots, DEPTH_E+4 ✓
 
 ---
 
@@ -145,10 +152,11 @@ Mark each model with ✓ when redrawn + depth verified:
 ### Legs: [x] Plate [x] Mail [x] Leather [x] Cloth
 ### Boots: [x] Plate [x] Mail [x] Leather [x] Cloth
 ### Gauntlets: [x] Plate [x] Mail [x] Leather [x] Cloth
-### Weapons: [ ] Sword [ ] Axe [ ] Dagger [ ] Mace [ ] Flail [ ] Wand [ ] Staff [ ] Bow [ ] Crossbow [ ] Halberd [ ] Spear [ ] ThrowingKnife
-### Offhand: [ ] TowerShield [ ] KiteShield [ ] Buckler [ ] Torch [ ] Tome
-### Headgear: [ ] Plate [ ] Horned [ ] Crown [ ] Coif [ ] Leather [ ] Hood
-### Hair: [ ] Short [ ] Long [ ] Braided [ ] Ponytail [ ] Mohawk [ ] Bald
+### Weapons: [x] Sword [x] Axe [x] Dagger [x] Mace [x] Flail [x] Wand [x] Staff [x] Bow [x] Crossbow [x] Halberd [x] Spear [x] ThrowingKnife
+### Offhand: [x] TowerShield [x] KiteShield [x] Buckler [x] Torch [x] Tome
+### Headgear: [x] Plate [x] Horned [x] Crown [x] Coif [x] Leather [x] Hood
+### Hair: [x] Short [x] Long [x] Braided [x] Ponytail [x] Mohawk [x] Bald
+### Decorations: [x] GrassPatch [x] GrassPatchLarge [x] TreeSmall [x] TreeMedium [x] TreeLarge [x] RockSmall [x] RockMedium [x] RockBoulder [x] MossyLog [x] MushroomCluster
 
 ---
 
