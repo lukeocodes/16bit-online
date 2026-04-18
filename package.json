@@ -1,5 +1,5 @@
 {
-  "name": "isometric-mmo",
+  "name": "16bit-online",
   "private": true,
   "workspaces": [
     "packages/*"

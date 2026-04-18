@@ -1,127 +1,67 @@
-import { Router } from "./ui/Router";
-import { UIManager } from "./ui/UIManager";
-import { AuthManager } from "./auth/AuthManager";
-import { SessionState } from "./state/SessionState";
-import { Game } from "./engine/Game";
-import { checkWebRTCSupport } from "./net/WebRTCCheck";
-import type { LoadingScreen } from "./ui/screens/LoadingScreen";
+import { Engine, DisplayMode, Color } from "excalibur";
+import { NetworkManager } from "./net/NetworkManager.js";
+import { GameScene } from "./scenes/GameScene.js";
 
-let game: Game | null = null;
+const API = "";
 
-// Dev-only Playwright API
-if (import.meta.env.DEV) {
-  import("./dev/PlaywrightAPI").then(({ createPlaywrightAPI }) => {
-    (window as any).__game = createPlaywrightAPI(() => game);
-    (window as any).__gameInstance = () => game;
-    console.log("[Dev] Playwright API available at window.__game");
-  });
+function setLoading(pct: number, text: string) {
+  const bar = document.getElementById("loading-bar");
+  const label = document.getElementById("loading-text");
+  if (bar) bar.style.width = `${pct}%`;
+  if (label) label.textContent = text;
 }
 
-async function boot() {
-  const session = new SessionState();
-  const auth = new AuthManager(session);
-  const uiManager = new UIManager();
-  const router = new Router(uiManager, auth, session);
-
-  // Early WebRTC check — runs in background while user logs in
-  const webrtcCheck = checkWebRTCSupport();
-  webrtcCheck.then((supported) => {
-    if (!supported) {
-      router.showError(
-        "WebRTC is restricted in this browser. Use Chrome, Firefox, or Safari for the best experience."
-      );
-    }
+async function devLogin(): Promise<{ token: string; characterId: string }> {
+  setLoading(10, "Logging in...");
+  const res = await fetch(`${API}/api/auth/dev-login`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ username: "lukeocodes", password: "password" }),
   });
+  if (!res.ok) throw new Error("Dev login failed");
+  const data = await res.json();
+  const token: string = data.gameJwt;
 
-  const canvas = document.getElementById("render-canvas") as HTMLCanvasElement;
+  const chars: Array<{ id: string; name: string }> = data.characters ?? [];
+  if (chars.length === 0) throw new Error("No character found — seed the database first");
+  return { token, characterId: chars[0].id };
+}
 
-  router.setOnEnterGame(async (characterId: string, loading: LoadingScreen) => {
-    if (game) game.stop();
-    game = new Game(canvas);
+async function main() {
+  try {
+    const { token, characterId } = await devLogin();
 
-    game.setOnDisconnect((reason) => {
-      console.error("[Disconnect]", reason);
-      if (game) { game.stop(); game = null; }
-      session.clearSession();
-      router.navigateTo("login");
-      router.showError(`Disconnected from server: ${reason}. Please sign in again.`);
+    setLoading(30, "Connecting to server...");
+    const net = new NetworkManager();
+    await net.connect(token, characterId);
+
+    setLoading(80, "Loading world...");
+
+    const game = new Engine({
+      width: 480,
+      height: 320,
+      displayMode: DisplayMode.FitScreenAndFill,
+      backgroundColor: Color.fromHex("#1a1a2e"),
+      antialiasing: false,
+      pixelArt: true,
     });
 
-    const token = session.getToken();
-    if (!token) throw new Error("Not authenticated");
+    const scene = new GameScene(net, characterId);
+    game.addScene("game", scene);
 
-    // Set character name from session data
-    const chars = session.getCharacters();
-    const selectedChar = chars.find(c => c.id === characterId);
-    if (selectedChar) game.setCharacterName(selectedChar.name);
+    await game.start();
+    await game.goToScene("game");
+    (window as any).__game = game;
 
-    loading.setStatus("Connecting to server...", 10);
-    await game.connectToServer(token, characterId);
-    loading.setStatus("Loading entities...", 80);
+    setLoading(100, "Ready!");
+    const loadEl = document.getElementById("loading");
+    if (loadEl) loadEl.classList.add("hidden");
 
-    loading.setStatus("Entering world...", 95);
-    await game.start(characterId);
-
-    // Give the HUD reference after Router swaps to it
-    setTimeout(() => {
-      const hud = (router as any)._activeHud;
-      if (hud && game) {
-        game.setHUD(hud);
-        if (selectedChar) hud.setPlayerName(selectedChar.name);
-
-        hud.settingsMenu.setOnSwitchCharacter(() => {
-          if (game) { game.stop(); game = null; }
-          router.navigateTo("character-select");
-        });
-        hud.settingsMenu.setOnDisconnect(() => {
-          if (game) { game.stop(); game = null; }
-          session.clearSession();
-          router.navigateTo("login");
-        });
-      }
-
-      // Expose audio dev API for console testing
-      if (import.meta.env.DEV && game) {
-        (window as any).__audio = {
-          getState: () => game?.getAudioSystem().getMusicStateMachine()?.getState(),
-          getCurrentSide: () => game?.getAudioSystem().getCrossfadeManager()?.getCurrentSide(),
-          requestState: (s: string) => game?.getAudioSystem().getMusicStateMachine()?.requestState(s as any),
-          forceState: (s: string) => game?.getAudioSystem().getMusicStateMachine()?.forceState(s as any),
-          startTestTone: (side: string) => game?.getAudioSystem().getCrossfadeManager()?.startTestTone(side as any),
-          stopTestTone: (side: string) => game?.getAudioSystem().getCrossfadeManager()?.stopTestTone(side as any),
-          setIntensity: (v: number) => { if (game) game.getAudioSystem().intensity = v; },
-          getIntensity: () => game?.getAudioSystem().intensity,
-          getFadeValue: () => game?.getAudioSystem().getCrossfadeManager()?.getCrossFade().fade.value,
-          // MusicContentManager controls (Phase 12-04)
-          getActiveTrack: (side: "a" | "b") => game?.getAudioSystem().getMusicContentManager()?.getActiveTrackId(side),
-          setZone: (tag: string) => game?.getAudioSystem().getMusicContentManager()?.setZoneMetadata(tag),
-          setEnemyCount: (n: number) => game?.getAudioSystem().getMusicContentManager()?.updateEnemyCount(n),
-          setBossHP: (hp: number) => game?.getAudioSystem().getMusicContentManager()?.updateBossHP(hp),
-          setEnemyProximity: (d: number) => game?.getAudioSystem().getMusicContentManager()?.updateEnemyProximity(d),
-          listTracks: () => game?.getAudioSystem().getMusicContentManager()?.getTrackRegistry()?.getAllTrackIds(),
-        };
-        console.log("[Dev] Audio API available at window.__audio");
-      }
-    }, 50);
-  });
-
-  const params = new URLSearchParams(window.location.search);
-  const code = params.get("code");
-  if (code) {
-    await router.handleAuthCallback(code);
-    return;
-  }
-
-  if (session.isAuthenticated()) {
-    try {
-      await auth.refreshSession();
-      router.navigateTo(session.needsOnboarding() ? "onboarding" : "character-select");
-    } catch {
-      router.navigateTo("login");
-    }
-  } else {
-    router.navigateTo("login");
+  } catch (err) {
+    const label = document.getElementById("loading-text");
+    if (label) label.textContent = `Error: ${(err as Error).message}`;
+    console.error(err);
   }
 }
 
-boot().catch(console.error);
+main();
