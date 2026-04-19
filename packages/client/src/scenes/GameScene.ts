@@ -253,16 +253,17 @@ export class GameScene extends Scene {
     }
 
     for (const { tileCol, tileRow, wallTile: [sc, sr] } of placements) {
-      // World position: centre of this 128px tile
+      // World position: top-left corner of this 128px tile
+      // Excalibur Actor anchor defaults to centre (0.5, 0.5), so offset by half
       const wx = tileCol * WALL_FRAME_PX + WALL_FRAME_PX / 2;
       const wy = tileRow * WALL_FRAME_PX + WALL_FRAME_PX / 2;
 
-      // Ground layer wall actor (z-order: below player)
-      const wallActor = new Actor({ x: wx, y: wy, z: -1 });
+      // Ground layer: z=1 renders above the grass TileMap (z=0) but below player (z=0 default)
+      const wallActor = new Actor({ x: wx, y: wy, z: 1 });
       wallActor.graphics.use(wallSheet.getSprite(sc, sr));
       this.add(wallActor);
 
-      // Canopy layer actor (z-order: above player)
+      // Canopy layer: z=10 renders above player
       const canopyActor = new Actor({ x: wx, y: wy, z: 10 });
       canopyActor.graphics.use(canopySheet.getSprite(sc, sr));
       this.add(canopyActor);
