@@ -3,76 +3,60 @@
 // Sheet: summer forest tree wall 128x128.png
 //   768×512px, 6 cols × 4 rows, each tile 128×128px (= 8×8 grid of 16px subtiles)
 //
-// This is a corner-based autotile. Each 128×128 tile represents a specific
-// position in a forest edge. Compose them by checking which of the 4 cardinal
-// neighbours (N, E, S, W) are also forest.
+// The sheet is designed for surrounding a CLEARING with forest.
+// Each tile describes which sides have forest on them.
 //
-// The sheet has TWO layers:
-//   1. tree wall 128x128.png         — full tile (trunks + canopy + ground)
-//   2. tree wall (canopy only) 128x128.png — canopy only (render ABOVE player)
+// Reading directly from the sheet image (col, row):
 //
-// Usage:
-//   - Layer 0 (under player): full tree wall tile
-//   - Layer 1 (over player):  canopy-only tile at same position
-//   - Collision: block the tile entirely (or just the trunk area)
+//  Col:   0           1           2           3           4           5
+//  Row 0: CLEAR_TL    CLEAR_T     INNER_TR    CLEAR_TR    PATH_T      CLEAR_TR_v2
+//  Row 1: CLEAR_L     FILL        CLEAR_R     INNER_TL    INNER_BR    INNER_BL
+//  Row 2: CLEAR_BL    CLEAR_B     INNER_BR    CLEAR_BR    PATH_B      CLEAR_BR_v2
+//  Row 3: CONCAVE_TL  CONCAVE_TR  CONCAVE_BL  CONCAVE_BR  (unused)    (unused)
 //
-// ─── TILE INDEX LAYOUT (col, row) ──────────────────────────────────────────
-//
-// Reading the autotile setup image (red boxes = tile boundaries):
-//
-//  Col:  0          1          2          3          4          5
-//  Row 0: CORNER_TL  EDGE_T     INNER_TR   CORNER_TR  EDGE_T_ALT CORNER_TR_ALT
-//  Row 1: EDGE_L     FILL       EDGE_R     INNER_TL   INNER_BR   INNER_BL
-//  Row 2: CORNER_BL  EDGE_B     INNER_BR   CORNER_BR  EDGE_B_ALT CORNER_BR_ALT
-//  Row 3: CONCAVE_TL CONCAVE_TR CONCAVE_BL CONCAVE_BR (2 more variants)
-//
-// Simplified naming for game use:
-//   CORNER_TL = forest occupies N and W neighbours but NOT NW diagonal
-//   EDGE_T    = forest N, not S  (top straight edge)
-//   EDGE_L    = forest W, not E  (left straight edge)
-//   EDGE_R    = forest E, not W  (right straight edge)
-//   EDGE_B    = forest S, not N  (bottom straight edge)
-//   CORNER_TR = forest N and E, not inside
-//   CORNER_BR = forest S and E, not inside
-//   CORNER_BL = forest S and W, not inside
-//   INNER_*   = concave inner corner (forest on 3 sides, gap in one diagonal)
-//   FILL      = forest on all 4 sides (solid interior)
+// Naming convention — what forest neighbours does this tile expect?
+//   CLEAR_TL  = clearing top-left corner  → forest N and W, open S and E
+//   CLEAR_T   = clearing top edge         → forest N, open S
+//   CLEAR_TR  = clearing top-right corner → forest N and E, open S and W
+//   CLEAR_L   = clearing left edge        → forest W, open E
+//   CLEAR_R   = clearing right edge       → forest E, open W
+//   CLEAR_BL  = clearing bottom-left      → forest S and W, open N and E
+//   CLEAR_B   = clearing bottom edge      → forest S, open N
+//   CLEAR_BR  = clearing bottom-right     → forest S and E, open N and W
+//   FILL      = solid forest interior     → forest all sides
+//   INNER_TL  = concave inner corner TL   → forest N, E, S — open NW corner
+//   INNER_TR  = concave inner corner TR   → forest N, W, S — open NE corner
+//   INNER_BL  = concave inner corner BL   → forest N, E, S — open SW corner
+//   INNER_BR  = concave inner corner BR   → forest W, S, E — open SE corner
+//   CONCAVE_* = alternative concave corner tiles (row 3)
 
 export const WALL_COLS = 6;
 export const WALL_ROWS = 4;
-export const WALL_FRAME_PX = 128; // px per tile
-export const WALL_SUBTILE_PX = 16; // each tile = 8×8 of these
+export const WALL_FRAME_PX = 128;
+export const WALL_SUBTILE_PX = 16;
 
-// Tile positions as [col, row] in the 128×128 sheet
+// [col, row] into the 128×128 sheet
 export const WALL_TILE = {
-  CORNER_TL:   [0, 0] as [number, number], // top-left outer corner
-  EDGE_T:      [1, 0] as [number, number], // top straight edge
-  CORNER_TR:   [5, 0] as [number, number], // top-right outer corner
-  EDGE_L:      [0, 1] as [number, number], // left straight edge
-  FILL:        [1, 1] as [number, number], // solid interior (forest on all sides)
-  EDGE_R:      [2, 1] as [number, number], // right straight edge
-  INNER_TR:    [2, 0] as [number, number], // inner concave top-right
-  INNER_TL:    [3, 1] as [number, number], // inner concave top-left
-  INNER_BR:    [4, 1] as [number, number], // inner concave bottom-right (was 2,2)
-  INNER_BL:    [5, 1] as [number, number], // inner concave bottom-left
-  CORNER_BL:   [0, 2] as [number, number], // bottom-left outer corner
-  EDGE_B:      [1, 2] as [number, number], // bottom straight edge
-  CORNER_BR:   [5, 2] as [number, number], // bottom-right outer corner
-  CONCAVE_TL:  [0, 3] as [number, number], // concave corner variants
-  CONCAVE_TR:  [1, 3] as [number, number],
-  CONCAVE_BL:  [2, 3] as [number, number],
-  CONCAVE_BR:  [3, 3] as [number, number],
+  CLEAR_TL:   [0, 0] as [number, number], // forest N+W  → open clearing top-left corner
+  CLEAR_T:    [1, 0] as [number, number], // forest N    → open clearing top edge
+  INNER_TR:   [2, 0] as [number, number], // inner concave top-right
+  CLEAR_TR:   [3, 0] as [number, number], // forest N+E  → open clearing top-right corner
+  CLEAR_L:    [0, 1] as [number, number], // forest W    → open clearing left edge
+  FILL:       [1, 1] as [number, number], // forest all sides (interior)
+  CLEAR_R:    [2, 1] as [number, number], // forest E    → open clearing right edge
+  INNER_TL:   [3, 1] as [number, number], // inner concave top-left
+  INNER_BR:   [4, 1] as [number, number], // inner concave bottom-right
+  INNER_BL:   [5, 1] as [number, number], // inner concave bottom-left
+  CLEAR_BL:   [0, 2] as [number, number], // forest S+W  → open clearing bottom-left corner
+  CLEAR_B:    [1, 2] as [number, number], // forest S    → open clearing bottom edge
+  CLEAR_BR:   [3, 2] as [number, number], // forest S+E  → open clearing bottom-right corner
+  CONCAVE_TL: [0, 3] as [number, number], // alternative concave corners
+  CONCAVE_TR: [1, 3] as [number, number],
+  CONCAVE_BL: [2, 3] as [number, number],
+  CONCAVE_BR: [3, 3] as [number, number],
 } as const;
 
-// ─── NEIGHBOUR BITMASK ──────────────────────────────────────────────────────
-// Encode which of the 8 neighbours are forest:
-//   bit 0 = N, bit 1 = NE, bit 2 = E, bit 3 = SE
-//   bit 4 = S, bit 5 = SW, bit 6 = W, bit 7 = NW
-//
-// For the 4-cardinal neighbours that matter most:
-//   N=1, E=4, S=16, W=64
-// Diagonal NE=2, SE=8, SW=32, NW=128
-
+// 8-direction neighbour bitmask
 export const N  = 1 << 0;
 export const NE = 1 << 1;
 export const E  = 1 << 2;
@@ -82,9 +66,14 @@ export const SW = 1 << 5;
 export const W  = 1 << 6;
 export const NW = 1 << 7;
 
-// Given a bitmask of which neighbours are forest, return which wall tile to use.
-// Returns [col, row] into the 128×128 sheet, or null if this tile should be open ground.
-export function getWallTile(mask: number): [number, number] | null {
+/**
+ * Given a bitmask of which neighbours are also forest,
+ * return the [sheetCol, sheetRow] for the correct wall tile.
+ *
+ * The logic: which cardinal sides are open (not forest)?
+ * That determines the tile variant.
+ */
+export function getWallTile(mask: number): [number, number] {
   const n  = !!(mask & N);
   const e  = !!(mask & E);
   const s  = !!(mask & S);
@@ -94,51 +83,48 @@ export function getWallTile(mask: number): [number, number] | null {
   const sw = !!(mask & SW);
   const nw = !!(mask & NW);
 
+  // Open on all sides or isolated — shouldn't happen in a proper border, use fill
+  if (!n && !e && !s && !w) return WALL_TILE.FILL;
+
   // Solid interior — forest on all 4 cardinal sides
   if (n && e && s && w) return WALL_TILE.FILL;
 
-  // Straight edges — one open side
-  if ( n && !e && !s &&  w) return WALL_TILE.CORNER_TL;
-  if ( n && !e && !s && !w) return WALL_TILE.EDGE_T;
-  if ( n &&  e && !s && !w) return WALL_TILE.CORNER_TR;
-  if (!n && !e && !s &&  w) return WALL_TILE.EDGE_L;
-  if (!n &&  e && !s && !w) return WALL_TILE.EDGE_R;
-  if (!n && !e &&  s &&  w) return WALL_TILE.CORNER_BL;
-  if (!n && !e &&  s && !w) return WALL_TILE.EDGE_B;
-  if (!n &&  e &&  s && !w) return WALL_TILE.CORNER_BR;
+  // Straight edges — forest on exactly one cardinal side
+  if ( n && !e && !s && !w) return WALL_TILE.CLEAR_T;
+  if (!n &&  e && !s && !w) return WALL_TILE.CLEAR_R;
+  if (!n && !e &&  s && !w) return WALL_TILE.CLEAR_B;
+  if (!n && !e && !s &&  w) return WALL_TILE.CLEAR_L;
 
-  // Three cardinal neighbours (concave inner corners)
-  if ( n &&  e &&  s && !w) return nw ? WALL_TILE.INNER_TL : WALL_TILE.CONCAVE_TL;
-  if ( n &&  e && !s &&  w) return se ? WALL_TILE.INNER_TR : WALL_TILE.CONCAVE_TR;
-  if (!n &&  e &&  s &&  w) return ne ? WALL_TILE.INNER_BL : WALL_TILE.CONCAVE_BL;
-  if ( n && !e &&  s &&  w) return sw ? WALL_TILE.INNER_BR : WALL_TILE.CONCAVE_BR;
+  // Outer corners — forest on exactly two adjacent cardinal sides
+  if ( n && !e && !s &&  w) return WALL_TILE.CLEAR_TL;
+  if ( n &&  e && !s && !w) return WALL_TILE.CLEAR_TR;
+  if (!n &&  e &&  s && !w) return WALL_TILE.CLEAR_BR;
+  if (!n && !e &&  s &&  w) return WALL_TILE.CLEAR_BL;
 
-  // Isolated or degenerate — use fill as fallback
+  // Opposite edges — forest on two opposite sides (corridor)
+  if ( n && !e &&  s && !w) return WALL_TILE.FILL; // N+S corridor → fill
+  if (!n &&  e && !s &&  w) return WALL_TILE.FILL; // E+W corridor → fill
+
+  // Three cardinal sides — inner concave corners
+  // Forest N+E+S, open W → inner left wall, concave on NW/SW
+  if ( n &&  e &&  s && !w) return nw ? WALL_TILE.INNER_TL  : WALL_TILE.CONCAVE_TL;
+  // Forest N+W+S, open E → inner right wall, concave on NE/SE
+  if ( n && !e &&  s &&  w) return ne ? WALL_TILE.INNER_TR  : WALL_TILE.CONCAVE_TR;
+  // Forest N+E+W, open S → inner bottom wall, concave on NE/NW
+  if ( n &&  e && !s &&  w) return se ? WALL_TILE.INNER_BR  : WALL_TILE.CONCAVE_BR;
+  // Forest S+E+W, open N → inner top wall, concave on SE/SW
+  if (!n &&  e &&  s &&  w) return sw ? WALL_TILE.INNER_BL  : WALL_TILE.CONCAVE_BL;
+
   return WALL_TILE.FILL;
 }
 
-// ─── STARTER AREA BORDER ───────────────────────────────────────────────────
-// Given map dimensions and a border thickness, compute the forest tile
-// for each border position.
-//
-// Returns a 2D array [row][col] of [sheetCol, sheetRow] or null (open ground).
-// Each entry corresponds to one 128×128 tile slot.
-// At 16px per subtile, one wall tile covers 8×8 ground tiles.
-
 export interface WallPlacement {
-  /** position in 128×128 tile grid */
   tileCol: number;
   tileRow: number;
-  /** which sheet tile to use [sheetCol, sheetRow] */
   wallTile: [number, number];
-  /** true = impassable */
   solid: boolean;
 }
 
-/**
- * Given a grid of boolean values (true = forest), compute wall tile placements.
- * `isForest(col, row)` returns true if that cell should be forest.
- */
 export function computeWallPlacements(
   cols: number,
   rows: number,
@@ -162,10 +148,7 @@ export function computeWallPlacements(
       if (get(-1,  0)) mask |= W;
       if (get(-1, -1)) mask |= NW;
 
-      const wallTile = getWallTile(mask);
-      if (wallTile) {
-        results.push({ tileCol: c, tileRow: r, wallTile, solid: true });
-      }
+      results.push({ tileCol: c, tileRow: r, wallTile: getWallTile(mask), solid: true });
     }
   }
 

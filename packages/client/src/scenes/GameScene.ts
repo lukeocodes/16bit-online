@@ -14,7 +14,7 @@ import { TILE, tileToWorld } from "../tile.js";
 import { NetworkManager, Opcode } from "../net/NetworkManager.js";
 import { PlayerActor } from "../actors/PlayerActor.js";
 import { RemotePlayerActor } from "../actors/RemotePlayerActor.js";
-import { computeWallPlacements, WALL_FRAME_PX, WALL_COLS, WALL_ROWS } from "../sprites/tilewall.js";
+import { WALL_TILE, WALL_FRAME_PX, WALL_COLS, WALL_ROWS } from "../sprites/tilewall.js";
 
 const MAP_W = 40;
 const MAP_H = 30;
@@ -225,14 +225,32 @@ export class GameScene extends Scene {
     const wCols = Math.ceil(MAP_W / WALL_GT);
     const wRows = Math.ceil(MAP_H / WALL_GT);
 
-    // isForest in wall-tile coords
-    const isForest = (wc: number, wr: number): boolean => {
-      if (wc < 0 || wr < 0 || wc >= wCols || wr >= wRows) return true; // outside = forest
-      return wc < this.WALL_THICKNESS || wc >= wCols - this.WALL_THICKNESS
-          || wr < this.WALL_THICKNESS || wr >= wRows - this.WALL_THICKNESS;
-    };
+    // Directly assign the correct tile for each border position.
+    // With a 1-tile-thick border on a wCols×wRows grid, position determines
+    // the tile — no neighbour masking needed.
+    const T = this.WALL_THICKNESS;
+    const placements = [];
+    for (let wr = 0; wr < wRows; wr++) {
+      for (let wc = 0; wc < wCols; wc++) {
+        const isTop    = wr < T;
+        const isBottom = wr >= wRows - T;
+        const isLeft   = wc < T;
+        const isRight  = wc >= wCols - T;
+        if (!isTop && !isBottom && !isLeft && !isRight) continue; // interior
 
-    const placements = computeWallPlacements(wCols, wRows, isForest);
+        let wallTile: [number, number];
+        if      (isTop    && isLeft)  wallTile = WALL_TILE.CLEAR_TL;
+        else if (isTop    && isRight) wallTile = WALL_TILE.CLEAR_TR;
+        else if (isBottom && isLeft)  wallTile = WALL_TILE.CLEAR_BL;
+        else if (isBottom && isRight) wallTile = WALL_TILE.CLEAR_BR;
+        else if (isTop)               wallTile = WALL_TILE.CLEAR_T;
+        else if (isBottom)            wallTile = WALL_TILE.CLEAR_B;
+        else if (isLeft)              wallTile = WALL_TILE.CLEAR_L;
+        else                          wallTile = WALL_TILE.CLEAR_R;
+
+        placements.push({ tileCol: wc, tileRow: wr, wallTile, solid: true });
+      }
+    }
 
     for (const { tileCol, tileRow, wallTile: [sc, sr] } of placements) {
       // World position: centre of this 128px tile
