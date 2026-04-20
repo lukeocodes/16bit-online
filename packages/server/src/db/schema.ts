@@ -1,4 +1,4 @@
-import { pgTable, uuid, varchar, boolean, timestamp, integer, real, jsonb, primaryKey, customType, text } from "drizzle-orm/pg-core";
+import { pgTable, uuid, varchar, boolean, timestamp, integer, real, jsonb, primaryKey, customType, text, uniqueIndex } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 
 export const accounts = pgTable("accounts", {
@@ -103,6 +103,58 @@ export const placedObjects = pgTable("placed_objects", {
   placedBy: uuid("placed_by"),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });
+
+// World-builder maps — user-authored maps created via the builder client.
+// numericId >= 1000, used in characters.map_id like any other zone.
+// `zoneId` is the string handle ("user:<uuid>") used by the zone registry.
+export const userMaps = pgTable("user_maps", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  numericId: integer("numeric_id").notNull().unique(),
+  zoneId: varchar("zone_id", { length: 64 }).notNull().unique(),
+  name: varchar("name", { length: 100 }).notNull(),
+  width: integer("width").notNull(),
+  height: integer("height").notNull(),
+  createdBy: uuid("created_by").references(() => accounts.id),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+// Per-cell collision markers ("blocks"). Decoupled from visual tile
+// placements so a 5×7 tree sprite can have a 1-cell-wide trunk footprint,
+// a platform can be walk-through, a door cell can toggle, etc.
+// One block per cell enforced by the unique index.
+export const userMapBlocks = pgTable("user_map_blocks", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  mapId: uuid("map_id").notNull().references(() => userMaps.id, { onDelete: "cascade" }),
+  x: integer("x").notNull(),
+  y: integer("y").notNull(),
+  placedBy: uuid("placed_by").references(() => accounts.id),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+}, (t) => ({
+  mapPos: uniqueIndex("user_map_blocks_pos_uniq").on(t.mapId, t.x, t.y),
+}));
+
+// Individual tile placements on a user_map. (layer, x, y) is unique per map so
+// placing a tile on an already-placed cell overwrites via upsert.
+export const userMapTiles = pgTable("user_map_tiles", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  mapId: uuid("map_id").notNull().references(() => userMaps.id, { onDelete: "cascade" }),
+  layer: varchar("layer", { length: 32 }).notNull(),
+  x: integer("x").notNull(),
+  y: integer("y").notNull(),
+  /** TSX filename (relative to /maps/), e.g. "summer forest.tsx" */
+  tileset: varchar("tileset", { length: 128 }).notNull(),
+  /** Local tile id inside the TSX. */
+  tileId: integer("tile_id").notNull(),
+  /** 0, 90, 180, 270. We encode as Tiled flip flags at freeze time. */
+  rotation: integer("rotation").default(0).notNull(),
+  flipH: boolean("flip_h").default(false).notNull(),
+  flipV: boolean("flip_v").default(false).notNull(),
+  placedBy: uuid("placed_by").references(() => accounts.id),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+}, (t) => ({
+  mapLayerPos: uniqueIndex("user_map_tiles_layerpos_uniq").on(t.mapId, t.layer, t.x, t.y),
+}));
 
 // Character inventory — items owned by a character
 export const characterInventory = pgTable("character_inventory", {

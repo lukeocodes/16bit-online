@@ -38,6 +38,21 @@ export const Opcode = {
   ZONE_CHANGE: 91,
   SAVED_MODELS_SYNC: 101,
   WORLD_READY: 100,
+  // --- World builder (client -> server, server -> client) ---
+  BUILDER_NEW_MAP: 200,        // C->S: { name, width, height }
+  BUILDER_PLACE_TILE: 201,     // C->S: { layer, x, y, tileset, tileId, rotation, flipH, flipV }
+  BUILDER_REMOVE_TILE: 202,    // C->S: { layer, x, y }
+  BUILDER_MAP_SNAPSHOT: 203,   // S->C: { mapId, width, height, tiles: [...] }
+  BUILDER_TILE_PLACED: 204,    // S->C: placement (broadcast to same-zone builders)
+  BUILDER_TILE_REMOVED: 205,   // S->C: removal  (broadcast to same-zone builders)
+  BUILDER_LIST_MAPS: 206,      // C->S: request map list
+  BUILDER_MAPS_LIST: 207,      // S->C: { maps: [{ id, numericId, name, width, height }] }
+  BUILDER_GOTO_MAP: 208,       // C->S: { numericId }  teleport builder to another user map / heaven
+  BUILDER_ERROR: 209,          // S->C: { reason }
+  BUILDER_PLACE_BLOCK: 210,    // C->S: { x, y }    place a 1-cell collision block
+  BUILDER_REMOVE_BLOCK: 211,   // C->S: { x, y }    remove a collision block
+  BUILDER_BLOCK_PLACED: 212,   // S->C broadcast: block added
+  BUILDER_BLOCK_REMOVED: 213,  // S->C broadcast: block removed
   PING: 253,
   PONG: 254,
 } as const;

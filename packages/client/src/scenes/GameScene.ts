@@ -7,6 +7,9 @@ import {
   Vector,
   clamp,
   Loader,
+  Entity,
+  Actor,
+  TileMap,
 } from "excalibur";
 import { TiledResource } from "@excaliburjs/plugin-tiled";
 import { TILE, tileToWorld } from "../tile.js";
@@ -14,10 +17,29 @@ import { NetworkManager, Opcode } from "../net/NetworkManager.js";
 import { PlayerActor } from "../actors/PlayerActor.js";
 import { RemotePlayerActor } from "../actors/RemotePlayerActor.js";
 
+const FALLBACK_TMX = "starter-area.tmx";
+
+// Slot (1-9) → zone id. Mirrors server/src/game/zone-registry.ts TEST_ZONES.
+const TEST_ZONE_IDS: Record<number, string> = {
+  1: "test-1-summer-forest",
+  2: "test-2-summer-waterfall",
+  3: "test-3-spring-forest",
+  4: "test-4-autumn-forest",
+  5: "test-5-winter-forest",
+  6: "test-6-thatch-home",
+  7: "test-7-timber-home",
+  8: "test-8-half-timber-home",
+  9: "test-9-stonework-home",
+};
+
+
+
 export class GameScene extends Scene {
   private net: NetworkManager;
   private characterId: string;
+  private engineRef!: Engine;
   private player!: PlayerActor;
+  private playerSpriteImg!: ImageSource;
   private remotePlayers = new Map<string, RemotePlayerActor>();
 
   private lastSendTime = 0;
@@ -29,8 +51,19 @@ export class GameScene extends Scene {
   private readonly ZOOM_DEFAULT = 3;
   private readonly ZOOM_STEP    = 0.5;
 
-  // TiledResource — loads TMX, tilesets, renders layers, wires collision
-  private tiledMap!: TiledResource;
+  /** TiledResource for the current zone. */
+  private tiledMap: TiledResource | null = null;
+
+  /**
+   * Cache of loaded TiledResource instances keyed by URL.
+   * We never unload/dispose them — plugin-tiled v0.32 has no disposal API and
+   * loading a second copy leaks GPU textures. Instead we load-once, cache, and
+   * re-`addToScene()` on revisit.
+   */
+  private mapCache = new Map<string, TiledResource>();
+
+  /** In-flight zone change flag — prevents input while we swap maps. */
+  private loading = false;
 
   constructor(net: NetworkManager, characterId: string) {
     super();
@@ -39,39 +72,115 @@ export class GameScene extends Scene {
   }
 
   override async onInitialize(engine: Engine): Promise<void> {
+    this.engineRef = engine;
     this.net.setOnEvent((msg) => this.handleEvent(msg));
     this.net.setOnPosition((buf) => this.handlePositionUpdate(buf));
 
-    // Load TMX via plugin — handles tileset loading, layer rendering, collision
-    this.tiledMap = new TiledResource("/maps/starter-area.tmx", {
-      useTilemapCameraStrategy: true,
-    });
+    // Preload the player sprite once — reused across zone changes.
+    this.playerSpriteImg = new ImageSource("/assets/sprites/player.png");
+    await this.playerSpriteImg.load();
 
-    const loader = new Loader([this.tiledMap]);
-    // Skip Excalibur's "Play game" gate so automated testing + cold-load works
-    loader.suppressPlayButton = true;
-    await engine.load(loader);
+    const tmx = this.net.zone.mapFile || FALLBACK_TMX;
+    await this.loadMap(engine, tmx, this.net.spawn.x, this.net.spawn.z);
 
-    // Add map layers to scene (ground, wall solid layer, canopy above player)
-    this.tiledMap.addToScene(this);
+    this.wireInputEvents(engine);
+  }
 
-    // Spawn player at the server-given position
-    // (server spawns at tile 20,15 by default; use that if no spawn object found)
-    const spawnX = tileToWorld(this.net.spawn.x || 20);
-    const spawnY = tileToWorld(this.net.spawn.z || 15);
+  override onActivate(_ctx: SceneActivationContext): void {}
 
-    const spriteImg = new ImageSource("/assets/sprites/player.png");
-    await spriteImg.load();
+  // ---------------------------------------------------------------------------
+  // Map loading / unloading
+  // ---------------------------------------------------------------------------
 
-    this.player = new PlayerActor(spriteImg, spawnX, spawnY, this.characterId);
-    this.add(this.player);
+  /** Load a TMX file, add it to the scene, position the player. */
+  private async loadMap(
+    engine: Engine,
+    mapFile: string,
+    spawnTileX: number,
+    spawnTileZ: number,
+  ): Promise<void> {
+    this.loading = true;
+    try {
+      const url = `/maps/${mapFile.split("/").map(encodeURIComponent).join("/")}`;
 
-    // Camera
-    this.camera.zoom = this.ZOOM_DEFAULT;
-    this.camera.pos  = new Vector(spawnX, spawnY);
-    this.camera.strategy.lockToActor(this.player);
+      // Detach the previous map's entities from the scene. Don't destroy the
+      // TiledResource itself — keep it cached for instant re-entry without a
+      // texture-leaking reload.
+      if (this.tiledMap && this.tiledMap !== this.mapCache.get(url)) {
+        this.detachMap(this.tiledMap);
+      } else if (this.tiledMap) {
+        this.detachMap(this.tiledMap);
+      }
 
-    // Zoom interception — scoped to canvas only
+      // Drop remote players — server will re-announce them for the new zone.
+      for (const remote of this.remotePlayers.values()) remote.kill();
+      this.remotePlayers.clear();
+
+      // Load or reuse the resource for this URL.
+      let tiledMap = this.mapCache.get(url);
+      if (!tiledMap) {
+        tiledMap = new TiledResource(url, { useTilemapCameraStrategy: true });
+        const loader = new Loader([tiledMap]);
+        loader.suppressPlayButton = true;
+        await engine.load(loader);
+        this.mapCache.set(url, tiledMap);
+      }
+
+      tiledMap.addToScene(this);
+      this.tiledMap = tiledMap;
+
+      const spawnX = tileToWorld(spawnTileX);
+      const spawnY = tileToWorld(spawnTileZ);
+
+      if (!this.player) {
+        this.player = new PlayerActor(this.playerSpriteImg, spawnX, spawnY, this.characterId);
+        this.add(this.player);
+      } else {
+        this.player.pos = new Vector(spawnX, spawnY);
+      }
+
+      // Player is an actor we added, not part of the map — if the map re-added
+      // actors from a cached ObjectLayer, make sure the player is still in the
+      // scene (the detach removed all map entities, not the player).
+      if (!this.isPlayerInScene()) {
+        this.add(this.player);
+      }
+
+      this.camera.zoom = this.camera.zoom || this.ZOOM_DEFAULT;
+      this.camera.pos  = new Vector(spawnX, spawnY);
+      this.camera.strategy.lockToActor(this.player);
+    } finally {
+      this.loading = false;
+    }
+  }
+
+  /** Remove the map's entities from the scene WITHOUT destroying resources. */
+  private detachMap(tiled: TiledResource): void {
+    for (const layer of tiled.layers) {
+      const anyLayer = layer as unknown as {
+        tilemap?:    TileMap;
+        entities?:   Entity[];
+        imageActor?: Actor | null;
+      };
+      if (anyLayer.tilemap)    this.remove(anyLayer.tilemap);
+      if (anyLayer.imageActor) this.remove(anyLayer.imageActor);
+      if (Array.isArray(anyLayer.entities)) {
+        for (const e of anyLayer.entities) this.remove(e);
+      }
+    }
+  }
+
+  private isPlayerInScene(): boolean {
+    if (!this.player) return false;
+    return (this.actors as unknown as Entity[]).includes(this.player)
+        || (this.entities as unknown as Entity[]).includes(this.player);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Input
+  // ---------------------------------------------------------------------------
+
+  private wireInputEvents(engine: Engine): void {
     const canvas = engine.canvas;
 
     canvas.addEventListener("wheel", (e: WheelEvent) => {
@@ -82,17 +191,37 @@ export class GameScene extends Scene {
       }
     }, { passive: false });
 
-    canvas.addEventListener("keydown", (e: KeyboardEvent) => {
+    // Zoom controls + test-zone teleport. Attached to window directly so they
+    // fire regardless of canvas/body focus state.
+    window.addEventListener("keydown", (e: KeyboardEvent) => {
+      // Zoom
       if (e.ctrlKey || e.metaKey) {
         if (e.key === "=" || e.key === "+") {
           e.preventDefault();
           this.camera.zoom = clamp(this.camera.zoom + this.ZOOM_STEP, this.ZOOM_MIN, this.ZOOM_MAX);
-        } else if (e.key === "-") {
+          return;
+        }
+        if (e.key === "-") {
           e.preventDefault();
           this.camera.zoom = clamp(this.camera.zoom - this.ZOOM_STEP, this.ZOOM_MIN, this.ZOOM_MAX);
-        } else if (e.key === "0") {
+          return;
+        }
+        if (e.key === "0") {
           e.preventDefault();
           this.camera.zoom = this.ZOOM_DEFAULT;
+          return;
+        }
+      }
+
+      // Teleport 1-9 (bypass Excalibur's keyboard API to rule it out as the
+      // culprit).
+      if (!e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey && /^Digit[1-9]$/.test(e.code)) {
+        const slot = Number(e.code.slice(-1));
+        const zoneId = TEST_ZONE_IDS[slot];
+        if (zoneId && !this.loading) {
+          e.preventDefault();
+          console.log(`[GameScene] teleport key ${slot} → ${zoneId}`);
+          this.net.sendEvent(Opcode.ZONE_CHANGE_REQUEST, { targetZoneId: zoneId });
         }
       }
     });
@@ -109,10 +238,14 @@ export class GameScene extends Scene {
     }, { passive: false });
   }
 
-  override onActivate(_ctx: SceneActivationContext): void {}
+  // ---------------------------------------------------------------------------
+  // Per-frame update
+  // ---------------------------------------------------------------------------
 
   override onPreUpdate(engine: Engine, _delta: number): void {
+    if (this.loading || !this.player) return;
     const kb = engine.input.keyboard;
+
     const up    = kb.isHeld(Keys.ArrowUp)    || kb.isHeld(Keys.W);
     const down  = kb.isHeld(Keys.ArrowDown)  || kb.isHeld(Keys.S);
     const left  = kb.isHeld(Keys.ArrowLeft)  || kb.isHeld(Keys.A);
@@ -126,7 +259,6 @@ export class GameScene extends Scene {
 
     if (this.heldDir) {
       const { dx, dy } = this.heldDir;
-      // Check tile passability via the Tiled map's solid layer
       const destX = this.player.pos.x + dx;
       const destY = this.player.pos.y + dy;
       if (this.isPassable(destX, destY)) {
@@ -142,11 +274,18 @@ export class GameScene extends Scene {
   }
 
   private isPassable(worldX: number, worldY: number): boolean {
-    // Ask the Tiled plugin's solid wall layer if this point is blocked
+    if (!this.tiledMap) return true;
+    // Ask the Tiled plugin's solid wall layer if this point is blocked.
+    // Test zones don't have a "wall" layer (by design — they're walk-anywhere
+    // preview rooms). In that case getTileByPoint returns null and we allow it.
     const tile = this.tiledMap.getTileByPoint("wall", new Vector(worldX, worldY));
-    if (!tile) return true; // outside map = let the map edges stop us
+    if (!tile) return true;
     return tile.exTile.solid === false || !tile.exTile.solid;
   }
+
+  // ---------------------------------------------------------------------------
+  // Network events
+  // ---------------------------------------------------------------------------
 
   private handleEvent(raw: string): void {
     try {
@@ -159,12 +298,32 @@ export class GameScene extends Scene {
         case Opcode.ENTITY_DESPAWN:
           this.despawnRemote(msg.entityId);
           break;
+        case Opcode.ZONE_CHANGE:
+          this.onZoneChange(msg);
+          break;
       }
     } catch { /* ignore */ }
   }
 
   private handlePositionUpdate(_buf: ArrayBuffer): void {
     // Full state sync wired later
+  }
+
+  private async onZoneChange(msg: {
+    zoneId?: string; zoneName?: string; mapFile?: string;
+    spawnX?: number; spawnZ?: number;
+  }): Promise<void> {
+    if (!msg.mapFile) { console.warn("[GameScene] ZONE_CHANGE missing mapFile"); return; }
+    console.log(`[GameScene] zone change → ${msg.zoneName ?? msg.zoneId} (${msg.mapFile})`);
+    this.net.zone.zoneId   = msg.zoneId   ?? "";
+    this.net.zone.zoneName = msg.zoneName ?? "";
+    this.net.zone.mapFile  = msg.mapFile;
+    await this.loadMap(
+      this.engineRef,
+      msg.mapFile,
+      msg.spawnX ?? 0,
+      msg.spawnZ ?? 0,
+    );
   }
 
   private spawnRemote(msg: { entityId: string; x: number; z: number }): void {

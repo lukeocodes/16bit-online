@@ -12,6 +12,15 @@ export interface SpawnPosition {
   z: number;
 }
 
+/** Populated from the server's WORLD_READY + ZONE_CHANGE messages. */
+export interface ZoneInfo {
+  zoneId:   string;
+  zoneName: string;
+  /** URL-decoded path relative to /maps/, e.g. "test-zones/summer-forest/map.tmx" */
+  mapFile:  string;
+  musicTag: string;
+}
+
 export const Opcode = {
   POSITION_UPDATE: 1,
   ENTITY_SPAWN: 2,
@@ -27,7 +36,24 @@ export const Opcode = {
   LEVEL_UP: 81,
   PLAYER_RESPAWN: 82,
   CHUNK_DATA: 11,
+  ZONE_CHANGE_REQUEST: 90,
+  ZONE_CHANGE:         91,
   WORLD_READY: 100,
+  // --- World builder ---
+  BUILDER_NEW_MAP:      200,
+  BUILDER_PLACE_TILE:   201,
+  BUILDER_REMOVE_TILE:  202,
+  BUILDER_MAP_SNAPSHOT: 203,
+  BUILDER_TILE_PLACED:  204,
+  BUILDER_TILE_REMOVED: 205,
+  BUILDER_LIST_MAPS:    206,
+  BUILDER_MAPS_LIST:    207,
+  BUILDER_GOTO_MAP:     208,
+  BUILDER_ERROR:        209,
+  BUILDER_PLACE_BLOCK:  210,
+  BUILDER_REMOVE_BLOCK: 211,
+  BUILDER_BLOCK_PLACED: 212,
+  BUILDER_BLOCK_REMOVED:213,
   PING: 253,
   PONG: 254,
 } as const;
@@ -39,6 +65,7 @@ export class NetworkManager {
   public connected = false;
 
   public spawn: SpawnPosition = { x: 0, y: 0, z: 0 };
+  public zone:  ZoneInfo = { zoneId: "", zoneName: "", mapFile: "", musicTag: "" };
 
   private onPosition: BinaryHandler | null = null;
   private onEvent: TextHandler | null = null;
@@ -46,9 +73,28 @@ export class NetworkManager {
   private onDisconnect: ((reason: string) => void) | null = null;
   private worldReadyResolve: (() => void) | null = null;
 
+  /** Events buffered while no `onEvent` handler is registered. Flushed on setOnEvent(). */
+  private queuedEvents: string[] = [];
+  private queuedBinaryEvents: ArrayBuffer[] = [];
+
   setOnPosition(h: BinaryHandler) { this.onPosition = h; }
-  setOnEvent(h: TextHandler) { this.onEvent = h; }
-  setOnBinaryEvent(h: BinaryHandler) { this.onBinaryEvent = h; }
+  setOnEvent(h: TextHandler) {
+    this.onEvent = h;
+    // Flush anything that arrived before the scene attached.
+    if (this.queuedEvents.length > 0) {
+      const q = this.queuedEvents;
+      this.queuedEvents = [];
+      for (const msg of q) h(msg);
+    }
+  }
+  setOnBinaryEvent(h: BinaryHandler) {
+    this.onBinaryEvent = h;
+    if (this.queuedBinaryEvents.length > 0) {
+      const q = this.queuedBinaryEvents;
+      this.queuedBinaryEvents = [];
+      for (const msg of q) h(msg);
+    }
+  }
   setOnDisconnect(h: (reason: string) => void) { this.onDisconnect = h; }
 
   async connect(token: string, characterId: string): Promise<void> {
@@ -94,6 +140,7 @@ export class NetworkManager {
               // Binary combat / state messages
               if ([50, 51, 52, 53, 70, 32, 80, 81, 82].includes(op)) {
                 if (this.onBinaryEvent) this.onBinaryEvent(raw);
+                else this.queuedBinaryEvents.push(raw);
                 return;
               }
             }
@@ -105,11 +152,18 @@ export class NetworkManager {
                 if (msg.spawnX != null) {
                   this.spawn = { x: msg.spawnX, y: msg.spawnY ?? 0, z: msg.spawnZ };
                 }
+                this.zone = {
+                  zoneId:   msg.zoneId   ?? "",
+                  zoneName: msg.zoneName ?? "",
+                  mapFile:  msg.mapFile  ?? "",
+                  musicTag: msg.musicTag ?? "",
+                };
                 if (this.worldReadyResolve) this.worldReadyResolve();
                 return;
               }
             } catch { /* not JSON */ }
             if (this.onEvent) this.onEvent(str);
+            else this.queuedEvents.push(str);
           };
           ch.onopen = () => { relOpen = true; check(); };
         }

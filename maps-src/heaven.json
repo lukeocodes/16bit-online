@@ -1,0 +1,24 @@
+{
+  "size": { "w": 32, "h": 32 },
+  "tilewidth": 16,
+  "tileheight": 16,
+
+  "tilesets": {
+    "ground": "summer-forest-wang-tiles.tsx"
+  },
+
+  "ground": {
+    "wangset": "wang terrains (won't work with non-wang terrains)",
+    "regions": [
+      { "x": 0, "y": 0, "w": 32, "h": 32, "fill": "light grass" }
+    ]
+  },
+
+  "objects": {
+    "spawns": [
+      { "type": "player-spawn", "name": "player-spawn", "tile": { "x": 16, "y": 16 } },
+      { "type": "camera", "name": "camera", "tile": { "x": 16, "y": 16 },
+        "properties": { "camera": true, "zoom": 3.0 } }
+    ]
+  }
+}

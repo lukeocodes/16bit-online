@@ -28,6 +28,13 @@ build/
 # Claude Code
 .claude/
 
+# Raw Mana Seed asset packs (444MB of zips + extracted art — imported into
+# packages/client/public/assets/ by tools/import-* scripts, not tracked in git).
+/assets/
+
+# Legacy client, superseded by packages/client/
+/packages/client-old/
+
 # OS
 .DS_Store
 Thumbs.db

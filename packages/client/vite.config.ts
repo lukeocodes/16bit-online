@@ -1,4 +1,5 @@
 import { defineConfig } from "vite";
+import { resolve } from "node:path";
 
 // Tiled .tsx tilesets collide with TypeScript React .tsx — tell Vite to treat
 // them as external static assets, not TypeScript modules.
@@ -27,5 +28,12 @@ export default defineConfig({
   build: {
     assetsInlineLimit: 0, // Excalibur cannot handle inlined XML in prod
     sourcemap: true,
+    // Two HTML entries: the default game client and the world builder.
+    rollupOptions: {
+      input: {
+        main:    resolve(__dirname, "index.html"),
+        builder: resolve(__dirname, "builder.html"),
+      },
+    },
   },
 });

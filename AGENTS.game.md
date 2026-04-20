@@ -6,9 +6,76 @@ Read this file at the start of each conversation. Update after significant work.
 
 Top-down Pokemon-style RPG. Excalibur v0.30 + plugin-tiled. Server auth with Fastify + Drizzle. WebRTC for gameplay traffic. Mana Seed art (Seliel the Shaper).
 
-**Map system:** Data-driven via `tools/paint-map/`. Scene specs in `maps-src/*.json` → painter emits TMX (for client rendering) + JSON (for server collision/spawn logic).
+**Map system:** Two ways to author maps:
+1. **Data-driven painter** (`tools/paint-map/`): Scene specs in `maps-src/*.json` → painter emits TMX (for client rendering) + JSON (for server collision/spawn logic).
+2. **In-game world builder** (`packages/client/builder.html`): Walk around, open an HTML tile picker, click to place / pickup / rotate / erase tiles live. Stored in DB (`user_maps` + `user_map_tiles`) and can be frozen to TMX + JSON via `bun tools/freeze-map.ts <numericId | zoneId | all>`.
 
 **Current playable map:** `starter-area` (48×32, human-meadows zone). Grass base, dark-grass patches, cobblestone path, dirt clearing, small water pond, forest border.
+
+## World builder (2026-04-19)
+
+Separate Vite entry at `/builder.html`. Uses the same WebRTC connection as the game but signals the server via `{builder: true}` on the `/api/rtc/offer` body so the session is flagged `isBuilder`. Builder sessions land in the "heaven" zone (numericId 500, `heaven.tmx` — an empty grass map) by default and cannot be entered by regular game clients.
+
+### Commands (in-game)
+- `B` — toggle tile picker (HTML modal with search + categories + animated previews). Picking a tile auto-closes the modal.
+- `E` — toggle erase mode. In erase mode, clicks delete the topmost tile at that cell across all layers.
+- `R` — rotate the currently-selected tile in place (or rotate brush if nothing is selected).
+- `Delete` / `Backspace` — remove the currently-selected tile.
+- `/` — open command bar. Commands: `/newmap W H [name]`, `/goto <id|heaven>`, `/maps`, `/layer <ground|decor|walls|canopy>`, `/help`
+- `Esc` — clear selection > clear brush > close picker (in that priority order).
+- **Click on an empty cell with a brush** → place the brush tile.
+- **Click on a placed tile (no brush)** → select it in place (cyan highlight). Then `R` rotates that tile, `Delete` removes it, and clicking another cell MOVES the selected tile there (preserving rotation).
+- **Click on a placed tile (with brush)** → overwrite with the brush.
+- **Shift-click on a placed tile** → lift it into the brush (pickup-and-move workflow, destroys the original).
+
+### Protocol (opcodes 200–210, all JSON on reliable channel)
+- 200 `BUILDER_NEW_MAP` C→S `{ name, width, height }` — creates map, teleports creator
+- 201 `BUILDER_PLACE_TILE` C→S `{ layer, x, y, tileset, tileId, rotation, flipH, flipV }`
+- 202 `BUILDER_REMOVE_TILE` C→S `{ layer, x, y }`
+- 203 `BUILDER_MAP_SNAPSHOT` S→C full overlay tile list (sent on join + zone change)
+- 204 `BUILDER_TILE_PLACED` S→C broadcast to other builders in same zone
+- 205 `BUILDER_TILE_REMOVED` S→C broadcast
+- 206 `BUILDER_LIST_MAPS` C→S
+- 207 `BUILDER_MAPS_LIST` S→C
+- 208 `BUILDER_GOTO_MAP` C→S `{ numericId }` — teleport to heaven or a user map
+- 209 `BUILDER_ERROR` S→C `{ reason }`
+
+### Zone numeric IDs
+- 1-99: hand-authored zones (human-meadows etc.)
+- 100-199: Mana Seed test zones (keys 1-9)
+- **500: heaven** (world-builder hub, in-memory overlay only, NOT persisted)
+- **1000+: user-built maps** (persisted in `user_maps` + `user_map_tiles`)
+
+### Files
+- Server: `packages/server/src/game/user-maps.ts` (in-memory + DB layer), `packages/server/src/routes/rtc.ts` (`handleBuilderOp`, `broadcastBuilderEvent`, `sendBuilderSnapshot`)
+- Client: `packages/client/src/builder/{main,BuilderScene,TileOverlay,TilePicker,TilesetIndex,BuilderHud}.ts`, `packages/client/builder.html`
+- DB: `packages/server/src/db/schema.ts` (`userMaps`, `userMapTiles`)
+- Freeze CLI: `tools/freeze-map.ts` — dumps DB map → `packages/client/public/maps/user-maps/<id>-<slug>.{tmx,json}`
+
+### Rendering
+- Heaven `.tmx` serves as the visual backdrop for ALL user maps (they reuse it until frozen). User-placed tiles render as one Excalibur Actor per cell on top (`TileOverlay`). Animated tiles use `Animation`, static use `Sprite`. Rotation via `actor.rotation`. Z layers: ground=10, decor=20, player=50, walls=60, canopy=200.
+
+### Known limits (v1)
+- `heaven` tile placements are in-memory only (not persisted across server restarts) — heaven IS the sandbox.
+- Each user map reuses `heaven.tmx` as the backdrop, so a 20×14 user map shows heaven's 32×32 grass beyond its bounds. Visible "out of bounds" area will be dark. Freeze produces a correctly-sized TMX for that map.
+- Tile picker modal shows `<AN>` badge for animated tiles. Animations play in the picker, brush preview, and on-map placement.
+- No multi-tile brush, no fill bucket, no wang autotile. These are v2 features.
+
+**Debug teleport keys (1-9):** Press 1-9 to teleport to a Mana Seed sample map for art preview. Server-validated ZONE_CHANGE_REQUEST with `{ targetZoneId }`. See `tools/import-test-zones.ts` + `packages/server/src/game/zone-registry.ts` for the zone table.
+
+| Key | Zone | Notes |
+|-----|------|-------|
+| 1 | Summer Forest sample | 32×32 |
+| 2 | Summer Waterfall demo | 22×13 |
+| 3 | Spring Forest sample | 32×32 |
+| 4 | Autumn Forest sample | 32×32 |
+| 5 | Winter Forest sample | 32×32 |
+| 6 | Thatch Roof Home | 15×14 |
+| 7 | Timber Roof Home | 15×14 |
+| 8 | Half-Timber Home | 15×14 |
+| 9 | Stonework Home | 15×14 |
+
+Test zones are walk-anywhere (no collision layer). They have no NPCs / items / exits. Use them purely to inspect art at different seasons + interior tilesets.
 
 ## Paint-map workflow (do not hand-edit TMX)
 
@@ -33,6 +100,14 @@ Preview without running the game:
 /Applications/Tiled.app/Contents/MacOS/tmxrasterizer --scale 2 --no-smoothing \
   packages/client/public/maps/starter-area.tmx /tmp/preview.png
 ```
+
+### Importing test zones from Mana Seed sample maps
+
+```bash
+bun tools/import-test-zones.ts
+```
+
+Reads `assets/20.xxx/sample map/*.tmx`, copies TMX + referenced TSX files + image PNGs into `packages/client/public/maps/test-zones/<slug>/` as a self-contained bundle. Also emits a minimal `map.json` (all-walkable, centre spawn) for server-side bounds. Run this if you edit the zone list in `zone-registry.ts` or update the source samples.
 
 ### Painter architecture
 - `tsx.ts` — TSX parser (extracts tileset metadata + wangsets; zero-dep regex)

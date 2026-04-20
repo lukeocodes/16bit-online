@@ -10,6 +10,7 @@ import { loadTiledMap, loadZoneMap, getZoneMapItems } from "./world/tiled-map.js
 import { getAllZones } from "./game/zone-registry.js";
 import { loadMapItems, loadDbItems } from "./game/world-items.js";
 import { loadSavedModelsFromDB } from "./game/model-registry.js";
+import { loadAllUserMaps } from "./game/user-maps.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -18,12 +19,20 @@ async function main() {
 
   await connectRedis();
 
+  // Register heaven + all user-built maps as zones before loading map files.
+  // loadAllUserMaps seeds the heaven row in DB if missing and registers every
+  // user map (including heaven) with the zone registry.
+  await loadAllUserMaps();
+
   // Load Tiled maps for all registered zones
   const mapsDir = resolve(__dirname, "../../client/public/maps");
   const defaultMapPath = resolve(mapsDir, "starter-area.json");
   loadTiledMap(defaultMapPath); // Legacy default (backward compatible)
   for (const zone of getAllZones()) {
     try {
+      // User-built maps don't have a map file on disk — their tile data is
+      // streamed via BUILDER_MAP_SNAPSHOT. Skip the loader for them.
+      if (zone.id.startsWith("user:")) continue;
       loadZoneMap(zone.id, resolve(mapsDir, zone.mapFile));
       loadMapItems(zone.id, getZoneMapItems(zone.id));
       await loadDbItems(zone.id);

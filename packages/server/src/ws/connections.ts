@@ -7,6 +7,8 @@ export interface PlayerConnection {
   accountId: string;
   characterId: string;
   entityId: string;
+  /** True when the client connected via the world-builder entry point. */
+  isBuilder: boolean;
 }
 
 class ConnectionManager {

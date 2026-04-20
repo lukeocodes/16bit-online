@@ -4,6 +4,9 @@
   "workspaces": [
     "packages/*"
   ],
+  "dependencies": {
+    "postgres": "^3.4.0"
+  },
   "devDependencies": {
     "@types/node": "^25.5.0"
   }

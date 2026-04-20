@@ -89,6 +89,14 @@ export class PlayerActor extends Actor {
     else if (dy < 0) this.setDir("up");
   }
 
+  /** Snap the player to an absolute world position (bypasses movement). */
+  teleport(worldX: number, worldY: number): void {
+    this.pos = new Vector(worldX, worldY);
+    this.targetPos = new Vector(worldX, worldY);
+    this.isMoving = false;
+    this.setIdle();
+  }
+
   private setDir(dir: Direction): void {
     this.currentDir = dir;
     switch (dir) {

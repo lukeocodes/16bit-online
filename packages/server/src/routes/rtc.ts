@@ -8,17 +8,31 @@ import { registerEntity, unregisterEntity, engageTarget, disengage, getCombatSta
 import { getNpcTemplate } from "../game/npcs.js";
 import { getAllSpawnPoints } from "../game/spawn-points.js";
 import { isInSafeZone } from "../game/zones.js";
-import { getZone } from "../game/zone-registry.js";
+import { getZone, getZoneByNumericId, getClientMapFile } from "../game/zone-registry.js";
 import { isWalkable } from "../world/terrain.js";
 import { startLingering, cancelLingering, isLingering } from "../game/linger.js";
 import { Opcode, packEntitySpawn, packEntityDespawn, packReliable, packSpawnPoint, packChunkData, packBinaryAbilityCooldown, packBinaryDamage, packBinaryState, packBinaryDeath, packBinaryRespawn } from "../game/protocol.js";
+import {
+  HEAVEN_NUMERIC_ID,
+  isBuilderZone,
+  getBuilderMapByNumericId,
+  createUserMap,
+  placeTile,
+  removeTile,
+  placeBlock,
+  removeBlock,
+  listUserMaps,
+  getTilesFor,
+  getBlocksFor,
+  type UserTile,
+} from "../game/user-maps.js";
 import { getAllSavedModels } from "../game/model-registry.js";
 import { getZoneItems, pickupItem } from "../game/world-items.js";
 import { giveItem } from "../game/inventory.js";
 import { getServerNoisePerm, getCachedWorldMapGzip, getWorldMap } from "../world/queries.js";
 import { getOrGenerateChunkHeights } from "../world/chunk-cache.js";
 import { generateTileHeight, CONTINENTAL_SCALE } from "../world/terrain-noise.js";
-import { isInTiledMap } from "../world/tiled-map.js";
+import { isInTiledMap, getZoneMapData } from "../world/tiled-map.js";
 import { initPlayerProgress, removePlayerProgress, handleKill, getPlayerProgress } from "../game/world.js";
 import { createDungeonInstance, getDungeonMapData, getPlayerDungeon, cleanupPlayerDungeon } from "../game/dungeon.js";
 import { loadInventory, saveInventory, sendInventory, equipItem, unequipItem, useItem, getEquippedBonuses } from "../game/inventory.js";
@@ -29,12 +43,13 @@ import { eq } from "drizzle-orm";
 
 export async function rtcRoutes(app: FastifyInstance) {
   // Phase 1: Server creates offer with DataChannels
-  app.post<{ Body: { characterId: string } }>(
+  app.post<{ Body: { characterId: string; builder?: boolean } }>(
     "/offer",
     { preHandler: [requireAuth] },
     async (request, reply) => {
       const account = (request as any).account;
-      const { characterId } = request.body;
+      const { characterId, builder } = request.body;
+      const isBuilder = !!builder;
 
       if (!characterId) {
         return reply.status(400).send({ detail: "Missing characterId" });
@@ -70,6 +85,19 @@ export async function rtcRoutes(app: FastifyInstance) {
         startY = charRow.posY;
         startZ = charRow.posZ;
         startMapId = charRow.mapId;
+      }
+
+      // Builder client always lands in heaven (or the last user-built map they
+      // were in). Regular players never land in heaven.
+      if (isBuilder) {
+        if (!isBuilderZone(startMapId)) {
+          startMapId = HEAVEN_NUMERIC_ID;
+          startX = 16; startY = 0; startZ = 16;  // heaven spawn (16,16 centre)
+        }
+      } else if (isBuilderZone(startMapId)) {
+        // Non-builder account saved in a builder zone → bounce them back to default.
+        startMapId = 1;
+        startX = config.world.spawnX; startY = 0; startZ = config.world.spawnZ;
       }
 
       let entity: ServerEntity;
@@ -142,6 +170,7 @@ export async function rtcRoutes(app: FastifyInstance) {
         accountId: account.id,
         characterId: entityId,
         entityId,
+        isBuilder,
       };
 
       // Track position channel state
@@ -415,38 +444,122 @@ export async function rtcRoutes(app: FastifyInstance) {
               }));
             }
           }
-        } else if (parsed.op === Opcode.ZONE_CHANGE_REQUEST && parsed.exitId) {
-          // Zone transition: validate exit, move entity, notify client
-          const currentZone = getZone(entity.mapId === 1 ? "human-meadows" : `zone-${entity.mapId}`);
-          if (!currentZone) return;
-          const exit = currentZone.exits[parsed.exitId];
-          if (!exit) {
-            console.log(`[WebRTC] Invalid zone exit: ${parsed.exitId}`);
+        } else if (parsed.op === Opcode.ZONE_CHANGE_REQUEST) {
+          // Two forms:
+          //   { op:90, targetZoneId: "test-1-summer-forest" }  → direct teleport (debug)
+          //   { op:90, exitId: "north-gate" }                  → use current zone's exit map
+          let targetZone = undefined as ReturnType<typeof getZone>;
+          let spawnX = 0;
+          let spawnZ = 0;
+
+          if (typeof parsed.targetZoneId === "string") {
+            targetZone = getZone(parsed.targetZoneId);
+            if (!targetZone) { console.log(`[WebRTC] Unknown zone: ${parsed.targetZoneId}`); return; }
+            if (isBuilderZone(targetZone.numericId)) {
+              // Builder zones have no Tiled server spec; spawn at map centre.
+              const m = getBuilderMapByNumericId(targetZone.numericId);
+              spawnX = m ? Math.floor(m.width / 2) : 0;
+              spawnZ = m ? Math.floor(m.height / 2) : 0;
+            } else {
+              // For debug teleport, spawn at the JSON's player-spawn object (parsed at load time).
+              const spec = getZoneMapData(targetZone.id);
+              spawnX = spec?.playerSpawn.x ?? 0;
+              spawnZ = spec?.playerSpawn.z ?? 0;
+            }
+          } else if (typeof parsed.exitId === "string") {
+            const currentZone = getZoneByNumericId(entity.mapId);
+            if (!currentZone) return;
+            const exit = currentZone.exits[parsed.exitId];
+            if (!exit) { console.log(`[WebRTC] Invalid zone exit: ${parsed.exitId}`); return; }
+            targetZone = getZone(exit.targetZone);
+            if (!targetZone) { console.log(`[WebRTC] Target zone not found: ${exit.targetZone}`); return; }
+            spawnX = exit.spawnX;
+            spawnZ = exit.spawnZ;
+          } else {
             return;
           }
-          const targetZone = getZone(exit.targetZone);
-          if (!targetZone) {
-            console.log(`[WebRTC] Target zone not found: ${exit.targetZone}`);
-            return;
+
+          // Despawn old-zone observers' view of this entity
+          for (const other of entityStore.iterAll()) {
+            if (other.entityId === entityId) continue;
+            if (other.mapId !== entity.mapId) continue;
+            const otherConn = connectionManager.get(other.entityId);
+            if (otherConn?.reliableChannel?.readyState === "open") {
+              otherConn.reliableChannel.send(packEntityDespawn(entityId));
+            }
           }
-          // Move entity to new zone
-          entity.x = exit.spawnX;
-          entity.z = exit.spawnZ;
+
+          // Move entity
+          entity.mapId = targetZone.numericId;
+          entity.x = spawnX;
           entity.y = 0;
-          // TODO: update entity.mapId when multi-zone is fully wired
-          console.log(`[WebRTC] Zone change: ${entityId} -> ${targetZone.name} at (${exit.spawnX}, ${exit.spawnZ})`);
-          // Notify client to load new map
+          entity.z = spawnZ;
+          console.log(`[WebRTC] Zone change: ${entityId} -> ${targetZone.name} (mapId=${targetZone.numericId}) at (${spawnX}, ${spawnZ})`);
+
+          // Send new zone to requester + resend entities in new zone
           if (reliableChannel.readyState === "open") {
-            reliableChannel.send(JSON.stringify({
-              op: Opcode.ZONE_CHANGE,
-              zoneId: targetZone.id,
-              zoneName: targetZone.name,
-              mapFile: targetZone.mapFile,
-              spawnX: exit.spawnX,
-              spawnZ: exit.spawnZ,
+            // Tell client to load the new map
+            reliableChannel.send(packReliable(Opcode.ZONE_CHANGE, {
+              zoneId:     targetZone.id,
+              zoneName:   targetZone.name,
+              mapFile:    getClientMapFile(targetZone),
+              spawnX, spawnZ,
               levelRange: targetZone.levelRange,
-              musicTag: targetZone.musicTag,
+              musicTag:   targetZone.musicTag,
             }));
+
+            // Builder session: stream the new zone's tile overlay too.
+            if (conn.isBuilder && isBuilderZone(targetZone.numericId)) {
+              sendBuilderSnapshot(reliableChannel, targetZone.numericId);
+            }
+
+            // Spawn new-zone entities on the requester's client
+            for (const other of entityStore.iterAll()) {
+              if (other.entityId === entityId) continue;
+              if (other.mapId !== targetZone.numericId) continue;
+              const combat = getCombatState(other.entityId);
+              const npc    = getNpcTemplate(other.entityId);
+              reliableChannel.send(Buffer.from(packEntitySpawn(
+                other.entityId, other.name, other.x, other.y, other.z,
+                other.entityType, combat?.hp ?? 50, combat?.maxHp ?? 50,
+                npc?.bodyColor ?? "#4466aa", npc?.skinColor ?? "#e8c4a0",
+                npc?.weaponType ?? "melee",
+              )));
+            }
+          }
+
+          // Spawn this entity on new-zone observers' clients
+          for (const other of entityStore.iterAll()) {
+            if (other.entityId === entityId) continue;
+            if (other.mapId !== targetZone.numericId) continue;
+            const otherConn = connectionManager.get(other.entityId);
+            if (otherConn?.reliableChannel?.readyState === "open") {
+              const combat = getCombatState(entityId);
+              otherConn.reliableChannel.send(Buffer.from(packEntitySpawn(
+                entity.entityId, entity.name, entity.x, entity.y, entity.z,
+                entity.entityType, combat?.hp ?? 50, combat?.maxHp ?? 50,
+                "#4466aa", "#e8c4a0", "melee",
+              )));
+            }
+          }
+        } else if (parsed.op >= 200 && parsed.op <= 213) {
+          // --- World builder opcodes ---
+          // All builder mutations require an is-builder session. Silently
+          // reject from regular clients to keep the attack surface small.
+          if (!conn.isBuilder) {
+            if (reliableChannel.readyState === "open") {
+              reliableChannel.send(packReliable(Opcode.BUILDER_ERROR, { reason: "not-a-builder" }));
+            }
+            return;
+          }
+
+          try {
+            await handleBuilderOp(conn, entity, parsed, reliableChannel);
+          } catch (err) {
+            console.error(`[Builder] op=${parsed.op} failed:`, err);
+            if (reliableChannel.readyState === "open") {
+              reliableChannel.send(packReliable(Opcode.BUILDER_ERROR, { reason: (err as Error).message }));
+            }
           }
         } else if (parsed.op === Opcode.CHUNK_REQUEST && parsed.cx !== undefined && parsed.cz !== undefined) {
           const world = getWorldMap();
@@ -495,7 +608,7 @@ export async function rtcRoutes(app: FastifyInstance) {
             )));
           }
           // Send world items for this zone
-          const zoneId = selfMapId === 1 ? "human-meadows" : `zone-${selfMapId}`;
+          const zoneId = getZoneByNumericId(selfMapId)?.id ?? `zone-${selfMapId}`;
           const worldItems = getZoneItems(zoneId);
           if (worldItems.length > 0) {
             reliableChannel.send(Buffer.from(packReliable(Opcode.WORLD_ITEMS_SYNC, { items: worldItems })));
@@ -507,9 +620,20 @@ export async function rtcRoutes(app: FastifyInstance) {
             reliableChannel.send(Buffer.from(packReliable(Opcode.SAVED_MODELS_SYNC, { models: savedModels })));
           }
 
+          const selfZone = getZoneByNumericId(selfMapId);
           reliableChannel.send(Buffer.from(packReliable(Opcode.WORLD_READY, {
             spawnX: entity.x, spawnY: entity.y, spawnZ: entity.z,
+            zoneId:   selfZone?.id   ?? `zone-${selfMapId}`,
+            zoneName: selfZone?.name ?? "",
+            mapFile:  selfZone ? getClientMapFile(selfZone) : "",
+            musicTag: selfZone?.musicTag ?? "town",
           })));
+
+          // Builder bootstrap: if this is a builder session, send a snapshot of
+          // the current builder zone's tile overlay.
+          if (conn.isBuilder && isBuilderZone(selfMapId)) {
+            sendBuilderSnapshot(reliableChannel, selfMapId);
+          }
 
           // Send inventory after world is ready
           sendInventory(entityId);
@@ -625,4 +749,167 @@ export async function rtcRoutes(app: FastifyInstance) {
       return { ok: true };
     }
   );
+}
+
+// ---------------------------------------------------------------------------
+// World-builder helpers
+// ---------------------------------------------------------------------------
+
+/** Send the full tile + block overlay for a builder zone as one snapshot. */
+function sendBuilderSnapshot(channel: any, mapNumericId: number): void {
+  const map = getBuilderMapByNumericId(mapNumericId);
+  if (!map) return;
+  if (channel.readyState !== "open") return;
+  channel.send(packReliable(Opcode.BUILDER_MAP_SNAPSHOT, {
+    mapId:     map.id,
+    zoneId:    map.zoneId,
+    numericId: map.numericId,
+    name:      map.name,
+    width:     map.width,
+    height:    map.height,
+    tiles:     getTilesFor(map),
+    blocks:    getBlocksFor(map),
+  }));
+}
+
+/** Broadcast a builder event to every builder currently in the same zone. */
+function broadcastBuilderEvent(mapNumericId: number, payload: string, exclude?: string): void {
+  const buf = Buffer.from(payload);
+  for (const other of connectionManager.iterAll()) {
+    if (!other.isBuilder) continue;
+    if (other.entityId === exclude) continue;
+    const ent = entityStore.get(other.entityId);
+    if (!ent || ent.mapId !== mapNumericId) continue;
+    if (other.reliableChannel?.readyState === "open") {
+      other.reliableChannel.send(buf);
+    }
+  }
+}
+
+/** Dispatch a single builder opcode from a pre-validated builder connection. */
+async function handleBuilderOp(
+  conn: any,
+  entity: ServerEntity,
+  parsed: any,
+  channel: any,
+): Promise<void> {
+  switch (parsed.op) {
+    case Opcode.BUILDER_LIST_MAPS: {
+      const maps = listUserMaps().map((m) => ({
+        id: m.id, zoneId: m.zoneId, numericId: m.numericId,
+        name: m.name, width: m.width, height: m.height,
+      }));
+      if (channel.readyState === "open") {
+        channel.send(packReliable(Opcode.BUILDER_MAPS_LIST, { maps }));
+      }
+      return;
+    }
+
+    case Opcode.BUILDER_NEW_MAP: {
+      const w = Math.max(8, Math.min(256, Math.floor(parsed.width ?? 32)));
+      const h = Math.max(8, Math.min(256, Math.floor(parsed.height ?? 32)));
+      const name = String(parsed.name ?? "Untitled").slice(0, 100);
+      const m = await createUserMap({
+        name, width: w, height: h, createdBy: conn.accountId ?? null,
+      });
+      // Teleport the creator to the new map's centre.
+      const spawnX = Math.floor(m.width / 2);
+      const spawnZ = Math.floor(m.height / 2);
+      entity.mapId = m.numericId;
+      entity.x = spawnX; entity.y = 0; entity.z = spawnZ;
+      if (channel.readyState === "open") {
+        channel.send(packReliable(Opcode.ZONE_CHANGE, {
+          zoneId:     m.zoneId,
+          zoneName:   m.name,
+          mapFile:    "heaven.tmx",  // Client falls back to heaven as the empty canvas
+          spawnX, spawnZ,
+          levelRange: [1, 99],
+          musicTag:   "peaceful",
+        }));
+        sendBuilderSnapshot(channel, m.numericId);
+      }
+      return;
+    }
+
+    case Opcode.BUILDER_GOTO_MAP: {
+      const targetId = Number(parsed.numericId);
+      const target = getBuilderMapByNumericId(targetId);
+      if (!target) throw new Error(`unknown-map:${targetId}`);
+      const spawnX = Math.floor(target.width / 2);
+      const spawnZ = Math.floor(target.height / 2);
+      entity.mapId = target.numericId;
+      entity.x = spawnX; entity.y = 0; entity.z = spawnZ;
+      if (channel.readyState === "open") {
+        channel.send(packReliable(Opcode.ZONE_CHANGE, {
+          zoneId:     target.zoneId,
+          zoneName:   target.name,
+          mapFile:    "heaven.tmx",
+          spawnX, spawnZ,
+          levelRange: [1, 99],
+          musicTag:   "peaceful",
+        }));
+        sendBuilderSnapshot(channel, target.numericId);
+      }
+      return;
+    }
+
+    case Opcode.BUILDER_PLACE_TILE: {
+      const map = getBuilderMapByNumericId(entity.mapId);
+      if (!map) throw new Error("not-in-builder-zone");
+      const tile: UserTile = {
+        layer:    parsed.layer ?? "ground",
+        x:        parsed.x,
+        y:        parsed.y,
+        tileset:  parsed.tileset,
+        tileId:   parsed.tileId,
+        rotation: parsed.rotation ?? 0,
+        flipH:    !!parsed.flipH,
+        flipV:    !!parsed.flipV,
+      };
+      const stored = await placeTile(map, tile, conn.accountId ?? null);
+      const broadcast = packReliable(Opcode.BUILDER_TILE_PLACED, stored);
+      broadcastBuilderEvent(map.numericId, broadcast);
+      return;
+    }
+
+    case Opcode.BUILDER_REMOVE_TILE: {
+      const map = getBuilderMapByNumericId(entity.mapId);
+      if (!map) throw new Error("not-in-builder-zone");
+      const layer = String(parsed.layer ?? "ground");
+      const x = Math.floor(parsed.x);
+      const y = Math.floor(parsed.y);
+      const removed = await removeTile(map, layer, x, y);
+      if (removed) {
+        const broadcast = packReliable(Opcode.BUILDER_TILE_REMOVED, { layer, x, y });
+        broadcastBuilderEvent(map.numericId, broadcast);
+      }
+      return;
+    }
+
+    case Opcode.BUILDER_PLACE_BLOCK: {
+      const map = getBuilderMapByNumericId(entity.mapId);
+      if (!map) throw new Error("not-in-builder-zone");
+      const block = await placeBlock(
+        map, Number(parsed.x), Number(parsed.y), conn.accountId ?? null,
+      );
+      const broadcast = packReliable(Opcode.BUILDER_BLOCK_PLACED, block);
+      broadcastBuilderEvent(map.numericId, broadcast);
+      return;
+    }
+
+    case Opcode.BUILDER_REMOVE_BLOCK: {
+      const map = getBuilderMapByNumericId(entity.mapId);
+      if (!map) throw new Error("not-in-builder-zone");
+      const x = Math.floor(parsed.x), y = Math.floor(parsed.y);
+      const removed = await removeBlock(map, x, y);
+      if (removed) {
+        const broadcast = packReliable(Opcode.BUILDER_BLOCK_REMOVED, { x, y });
+        broadcastBuilderEvent(map.numericId, broadcast);
+      }
+      return;
+    }
+
+    default:
+      throw new Error(`unhandled-builder-op:${parsed.op}`);
+  }
 }
