@@ -98,11 +98,36 @@ export class TilePicker {
   private dmSheetCanvas = document.getElementById("dm-sheet-canvas") as HTMLCanvasElement;
   private dmSheetZoom   = 2;  // pixel multiplier; 1×, 2×, 4× buttons
 
+  // Bulk-edit panel refs (shown when 2+ tiles are selected).
+  private bulkPane   = document.getElementById("picker-detail-bulk") as HTMLDivElement;
+  private bulkCount  = document.getElementById("bulk-count")!;
+  private bulkCat    = document.getElementById("bulk-cat")    as HTMLSelectElement;
+  private bulkLayer  = document.getElementById("bulk-layer")  as HTMLSelectElement;
+  private bulkBlocks = document.getElementById("bulk-blocks") as HTMLSelectElement;
+  private bulkHide   = document.getElementById("bulk-hide")   as HTMLSelectElement;
+  private bulkTags   = document.getElementById("bulk-tags")   as HTMLInputElement;
+  private bulkApplyBtn  = document.getElementById("bulk-apply")  as HTMLButtonElement;
+  private bulkDeleteBtn = document.getElementById("bulk-delete") as HTMLButtonElement;
+  private bulkClearBtn  = document.getElementById("bulk-clear")  as HTMLButtonElement;
+  private bulkStatus    = document.getElementById("bulk-status")!;
+
   private activeCategory: CategoryId | null = null;
   private onPick: TilePickHandler | null = null;
   private tiles: TileTile[] = [];
-  private selectedEntry: TileEntry | null = null;
-  private selectedKey: string | null = null;  // `${tileset}:${tileId}`
+  /** Flat list of every TileEntry currently rendered in the grid (after
+   *  category filter + search filter + 800-tile cap), in DOM order. Used
+   *  by shift-range selection + select-all-visible, and by
+   *  `syncSelectionClasses` to toggle `.tile.selected` on every cell (not
+   *  just animated ones like `this.tiles`). */
+  private gridEntries: TileEntry[] = [];
+  /** Set of selected tile keys (`${tileset}:${tileId}`). Multi-select via
+   *  shift/cmd; single-select click resets it to exactly one. When empty,
+   *  the detail pane shows the "click a tile" placeholder; when size == 1
+   *  the per-tile metadata editor renders; when size >= 2 the bulk-edit
+   *  panel renders. */
+  private selectedKeys = new Set<string>();
+  /** Anchor for shift-click range select. */
+  private lastSelectedKey: string | null = null;
   private size: SizeKey = DEFAULT_SIZE;
   /** Detail-canvas live preview (own animation state). */
   private dAnim: { meta: TilesetMeta; entry: TileEntry; ctx: CanvasRenderingContext2D; frameIdx: number; nextAt: number } | null = null;
@@ -115,7 +140,34 @@ export class TilePicker {
     this.search.addEventListener("input", () => this.renderGrid());
     document.addEventListener("keydown", (e) => {
       if (!this.isOpen()) return;
-      if (e.key === "Escape") this.close();
+      // Don't hijack keys while the user is typing in an input / select /
+      // textarea inside the picker (search box, name field, bulk tags, …).
+      const target = e.target as HTMLElement | null;
+      const tag = target?.tagName;
+      const inEditable = tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT";
+
+      if (e.key === "Escape") {
+        // Escape with a multi-selection clears it first; a second Escape
+        // closes the picker. Gives users a way to bail out of a bulk edit
+        // without losing the picker state.
+        if (this.selectedKeys.size > 0 && !inEditable) {
+          this.clearSelection();
+          e.preventDefault();
+        } else {
+          this.close();
+        }
+        return;
+      }
+      if (!inEditable && (e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "a") {
+        e.preventDefault();
+        this.selectAllVisible();
+        return;
+      }
+      if (!inEditable && (e.key === "Delete" || e.key === "Backspace") && this.selectedKeys.size > 0) {
+        e.preventDefault();
+        this.deleteSelected();
+        return;
+      }
     });
     // Restore persisted size; wire up size toggle buttons.
     const stored = (localStorage.getItem(SIZE_LS_KEY) as SizeKey | null);
@@ -158,6 +210,20 @@ export class TilePicker {
       opt.textContent = def.name;
       this.dmCat.appendChild(opt);
     }
+
+    // Bulk dropdown gets a leading "(no change)" placeholder so fields
+    // the user doesn't touch aren't written to each tile's override.
+    this.bulkCat.innerHTML = "";
+    const noChange = document.createElement("option");
+    noChange.value = "";
+    noChange.textContent = "(no change)";
+    this.bulkCat.appendChild(noChange);
+    for (const def of listCategoriesByOrder()) {
+      const opt = document.createElement("option");
+      opt.value = def.id;
+      opt.textContent = def.name;
+      this.bulkCat.appendChild(opt);
+    }
   }
 
   private wireDetailForm(): void {
@@ -173,6 +239,11 @@ export class TilePicker {
     this.dmDelete.addEventListener("click", () => this.deleteSelected());
     this.dmExport.addEventListener("click", () => this.exportOverrides());
 
+    // Bulk-edit panel actions.
+    this.bulkApplyBtn.addEventListener("click",  () => this.bulkApply());
+    this.bulkDeleteBtn.addEventListener("click", () => this.bulkDelete());
+    this.bulkClearBtn.addEventListener("click",  () => this.clearSelection());
+
     // Sheet-view zoom buttons. Each carries data-zoom="1|2|4"; re-render the
     // sheet after toggling the active class on the bar.
     const zoomBar = document.querySelector("#picker-detail .dsheet-zoom");
@@ -182,9 +253,10 @@ export class TilePicker {
         this.dmSheetZoom = z;
         zoomBar.querySelectorAll("button").forEach((b) => b.classList.remove("active"));
         btn.classList.add("active");
-        if (this.selectedEntry) {
-          const m = this.index.getTileset(this.selectedEntry.tileset);
-          if (m) this.renderSheetView(m, this.selectedEntry);
+        const first = this.firstSelected();
+        if (first && this.selectedKeys.size === 1) {
+          const m = this.index.getTileset(first.tileset);
+          if (m) this.renderSheetView(m, first);
         }
       });
     });
@@ -193,6 +265,7 @@ export class TilePicker {
   private showDetailEmpty(): void {
     this.dEmpty.style.display = "block";
     this.dContent.hidden = true;
+    this.bulkPane.hidden = true;
     this.stopDetailAnim();
     this.dPane.classList.remove("dirty");
   }
@@ -203,6 +276,7 @@ export class TilePicker {
     if (!meta) return;
     this.dEmpty.style.display = "none";
     this.dContent.hidden = false;
+    this.bulkPane.hidden = true;
     this.dPane.classList.remove("dirty");
 
     // Preview canvas — use native tile size; CSS scales it up (max 256px).
@@ -308,58 +382,51 @@ export class TilePicker {
     this.dAnim = null;
   }
 
-  /** Compute a minimal TileOverride from the current form state, omitting
-   *  any field that matches the resolved entry's effective value. The entry
-   *  passed in must be the *currently-resolved* TileEntry (post-override),
-   *  so we compare against what's already in effect. */
+  /** Compute a minimal TileOverride from the current form state for the
+   *  single-selected tile, omitting any field that matches the resolved
+   *  entry's effective value. */
   private collectFormOverride(): { ov: TileOverride; isEmpty: boolean } {
-    if (!this.selectedEntry) return { ov: {}, isEmpty: true };
-    const e = this.selectedEntry;
-    const meta = this.index.getTileset(e.tileset);
+    const first = this.firstSelected();
+    if (!first || this.selectedKeys.size !== 1) return { ov: {}, isEmpty: true };
+    const meta = this.index.getTileset(first.tileset);
     if (!meta) return { ov: {}, isEmpty: true };
 
     const ov: TileOverride = {};
     const trimmedName = this.dmName.value.trim();
     if (trimmedName) ov.name = trimmedName;
-    if (this.dmCat.value && this.dmCat.value !== e.category) ov.category = this.dmCat.value as CategoryId;
-    if (this.dmLayer.value && this.dmLayer.value !== e.defaultLayer) ov.defaultLayer = this.dmLayer.value as LayerId;
+    if (this.dmCat.value && this.dmCat.value !== first.category) ov.category = this.dmCat.value as CategoryId;
+    if (this.dmLayer.value && this.dmLayer.value !== first.defaultLayer) ov.defaultLayer = this.dmLayer.value as LayerId;
     const tags = this.dmTags.value.split(",").map((s) => s.trim()).filter(Boolean);
     const tilesetTags = (meta.def.tags ?? []).join(",");
     if (tags.length && tags.join(",") !== tilesetTags) ov.tags = tags;
-    if (this.dmBlocks.checked !== e.blocks) ov.blocks = this.dmBlocks.checked;
-    if (this.dmHide.checked   !== e.hidden) ov.hide   = this.dmHide.checked;
+    if (this.dmBlocks.checked !== first.blocks) ov.blocks = this.dmBlocks.checked;
+    if (this.dmHide.checked   !== first.hidden) ov.hide   = this.dmHide.checked;
 
     return { ov, isEmpty: Object.keys(ov).length === 0 };
   }
 
   private async saveSelected(): Promise<void> {
-    if (!this.selectedEntry) return;
-    const e = this.selectedEntry;
+    const e = this.firstSelected();
+    if (!e || this.selectedKeys.size !== 1) return;
     const { ov, isEmpty } = this.collectFormOverride();
     try {
-      if (isEmpty) {
-        await clearOverride(e.tileset, e.tileId);
-      } else {
-        await setOverride(e.tileset, e.tileId, ov);
-      }
+      if (isEmpty) await clearOverride(e.tileset, e.tileId);
+      else         await setOverride(e.tileset, e.tileId, ov);
     } catch (err) {
       this.flashStatus(`Save failed: ${(err as Error).message}`);
       return;
     }
     this.index.refreshEntries(e.tileset);
     const updated = this.index.find(e.tileset, e.tileId);
-    if (updated) {
-      this.selectedEntry = updated;
-      this.renderDetail(updated);
-    }
     this.renderCategories();
     this.renderGrid();
+    if (updated) this.renderDetail(updated);
     this.flashStatus(isEmpty ? "Override cleared" : "Saved");
   }
 
   private async revertSelected(): Promise<void> {
-    if (!this.selectedEntry) return;
-    const e = this.selectedEntry;
+    const e = this.firstSelected();
+    if (!e || this.selectedKeys.size !== 1) return;
     try {
       await clearOverride(e.tileset, e.tileId);
     } catch (err) {
@@ -368,41 +435,155 @@ export class TilePicker {
     }
     this.index.refreshEntries(e.tileset);
     const updated = this.index.find(e.tileset, e.tileId);
-    if (updated) {
-      this.selectedEntry = updated;
-      this.renderDetail(updated);
-    }
     this.renderCategories();
     this.renderGrid();
+    if (updated) this.renderDetail(updated);
     this.flashStatus("Reverted to source");
   }
 
-  /** Delete = set `hide: true` via override, refresh, clear selection.
-   *  Persists to the DB; visible to every other builder on next reload. */
+  /** Delete — route to single or bulk flow based on selection size. */
   private async deleteSelected(): Promise<void> {
-    if (!this.selectedEntry) return;
-    const e = this.selectedEntry;
-    const existing = getOverride(e.tileset, e.tileId) ?? {};
-    try {
-      await setOverride(e.tileset, e.tileId, { ...existing, hide: true });
-    } catch (err) {
-      this.flashStatus(`Delete failed: ${(err as Error).message}`);
+    if (this.selectedKeys.size === 0) return;
+    if (this.selectedKeys.size === 1) {
+      const e = this.firstSelected()!;
+      const existing = getOverride(e.tileset, e.tileId) ?? {};
+      try {
+        await setOverride(e.tileset, e.tileId, { ...existing, hide: true });
+      } catch (err) {
+        this.flashStatus(`Delete failed: ${(err as Error).message}`);
+        return;
+      }
+      this.index.refreshEntries(e.tileset);
+      this.selectedKeys.clear();
+      this.lastSelectedKey = null;
+      this.renderCategories();
+      this.renderGrid();
+      this.showDetailEmpty();
+      this.flashStatus(`Deleted ${e.label}`);
       return;
     }
-    this.index.refreshEntries(e.tileset);
-    // Drop selection — the tile is gone from the grid now.
-    this.selectedEntry = null;
-    this.selectedKey = null;
-    this.renderCategories();
-    this.renderGrid();
-    this.showDetailEmpty();
-    this.flashStatus(`Deleted ${e.label}`);
+    await this.bulkDelete();
   }
 
   private placeSelected(): void {
-    if (!this.selectedEntry) return;
-    this.onPick?.(this.selectedEntry);
+    const first = this.firstSelected();
+    if (!first) return;
+    this.onPick?.(first);
     this.close();
+  }
+
+  // ---------------------------------------------------------------------------
+  // Bulk edit (2+ tiles selected)
+  // ---------------------------------------------------------------------------
+
+  private renderBulkDetail(entries: TileEntry[]): void {
+    this.dEmpty.style.display = "none";
+    this.dContent.hidden = true;
+    this.bulkPane.hidden = false;
+    this.stopDetailAnim();
+    this.bulkCount.textContent =
+      `${entries.length} tile${entries.length === 1 ? "" : "s"} selected`;
+    // Reset form to "(no change)" each time the selection changes so we
+    // don't accidentally carry over the previous bulk edit's values.
+    this.bulkCat.value    = "";
+    this.bulkLayer.value  = "";
+    this.bulkBlocks.value = "";
+    this.bulkHide.value   = "";
+    this.bulkTags.value   = "";
+    this.bulkStatus.textContent = "";
+  }
+
+  /** For each selected tile, merge the non-"(no change)" bulk fields into
+   *  its existing override and POST. Sequential rather than parallel so we
+   *  don't hammer the server with hundreds of simultaneous requests; the
+   *  existing endpoint is cheap enough that this is near-instant for <200
+   *  tiles. Errors flash but don't abort the batch — partial success is
+   *  better than none. */
+  private async bulkApply(): Promise<void> {
+    const entries = this.selectedEntries();
+    if (entries.length === 0) return;
+
+    const cat    = this.bulkCat.value    || null;
+    const layer  = this.bulkLayer.value  || null;
+    const blocks = this.bulkBlocks.value === "" ? null : this.bulkBlocks.value === "true";
+    const hide   = this.bulkHide.value   === "" ? null : this.bulkHide.value   === "true";
+    const tagsRaw = this.bulkTags.value.trim();
+    const tags = tagsRaw
+      ? tagsRaw.split(",").map((s) => s.trim()).filter(Boolean)
+      : null;
+
+    if (cat === null && layer === null && blocks === null && hide === null && tags === null) {
+      this.bulkStatus.textContent = "Nothing to apply — leave a field as (no change) to skip it";
+      return;
+    }
+
+    this.bulkStatus.textContent = `Applying to ${entries.length}…`;
+    let ok = 0, failed = 0;
+    const tilesetsTouched = new Set<string>();
+    for (const e of entries) {
+      const existing = getOverride(e.tileset, e.tileId) ?? {};
+      const merged: TileOverride = { ...existing };
+      if (cat   !== null) merged.category     = cat as CategoryId;
+      if (layer !== null) merged.defaultLayer = layer as LayerId;
+      if (blocks!== null) merged.blocks       = blocks;
+      if (hide  !== null) merged.hide         = hide;
+      if (tags  !== null) merged.tags         = tags;
+      try {
+        await setOverride(e.tileset, e.tileId, merged);
+        tilesetsTouched.add(e.tileset);
+        ok++;
+      } catch (err) {
+        console.warn(`bulkApply ${e.tileset}:${e.tileId} failed:`, err);
+        failed++;
+      }
+    }
+
+    for (const ts of tilesetsTouched) this.index.refreshEntries(ts);
+    this.renderCategories();
+    this.renderGrid();
+    // Re-render bulk pane with the remaining selection (entries may have
+    // moved categories or been hidden; the set of keys stays the same).
+    const still = this.selectedEntries();
+    if (still.length >= 2)      this.renderBulkDetail(still);
+    else if (still.length === 1) this.renderDetail(still[0]);
+    else                         this.showDetailEmpty();
+
+    this.bulkStatus.textContent = failed === 0
+      ? `Applied to ${ok} tile${ok === 1 ? "" : "s"}`
+      : `Applied to ${ok}; ${failed} failed (see console)`;
+  }
+
+  /** Set `hide: true` on every selected tile — the bulk equivalent of
+   *  clicking Delete in the single-tile pane. */
+  private async bulkDelete(): Promise<void> {
+    const entries = this.selectedEntries();
+    if (entries.length === 0) return;
+
+    this.bulkStatus.textContent = `Deleting ${entries.length}…`;
+    let ok = 0, failed = 0;
+    const tilesetsTouched = new Set<string>();
+    for (const e of entries) {
+      const existing = getOverride(e.tileset, e.tileId) ?? {};
+      try {
+        await setOverride(e.tileset, e.tileId, { ...existing, hide: true });
+        tilesetsTouched.add(e.tileset);
+        ok++;
+      } catch (err) {
+        console.warn(`bulkDelete ${e.tileset}:${e.tileId} failed:`, err);
+        failed++;
+      }
+    }
+
+    for (const ts of tilesetsTouched) this.index.refreshEntries(ts);
+    // Drop selection — the tiles are gone from the grid now.
+    this.selectedKeys.clear();
+    this.lastSelectedKey = null;
+    this.renderCategories();
+    this.renderGrid();
+    this.showDetailEmpty();
+    this.flashStatus(failed === 0
+      ? `Deleted ${ok} tile${ok === 1 ? "" : "s"}`
+      : `Deleted ${ok}; ${failed} failed (see console)`);
   }
 
   private exportOverrides(): void {
@@ -423,12 +604,108 @@ export class TilePicker {
 
   isOpen(): boolean { return this.root.classList.contains("open"); }
 
-  setSelected(tileset: string | null, tileId: number | null): void {
-    this.selectedKey = (tileset && tileId != null) ? `${tileset}:${tileId}` : null;
-    for (const t of this.tiles) {
-      const isSel = this.selectedKey === `${t.entry.tileset}:${t.entry.tileId}`;
-      t.canvas.parentElement?.classList.toggle("selected", isSel);
+  private entryKey(e: TileEntry): string {
+    return `${e.tileset}:${e.tileId}`;
+  }
+
+  /** Resolve every selected key back to a TileEntry (dropping any that
+   *  no longer exist — e.g. after a bulk delete). Order follows the grid's
+   *  filtered view so "first selected" is predictable. */
+  private selectedEntries(): TileEntry[] {
+    const out: TileEntry[] = [];
+    for (const e of this.index.allEntries()) {
+      if (this.selectedKeys.has(this.entryKey(e))) out.push(e);
     }
+    return out;
+  }
+
+  private firstSelected(): TileEntry | null {
+    return this.selectedEntries()[0] ?? null;
+  }
+
+  /** Visually sync the `.selected` class on every grid cell with the
+   *  current `selectedKeys` set. Iterates the grid's DOM children (not
+   *  `this.tiles`, which only tracks animated cells). Cheap — one
+   *  classList toggle per visible cell, capped at 800 by renderGrid. */
+  private syncSelectionClasses(): void {
+    const cells = this.grid.children;
+    for (let i = 0; i < cells.length && i < this.gridEntries.length; i++) {
+      const isSel = this.selectedKeys.has(this.entryKey(this.gridEntries[i]));
+      (cells[i] as HTMLElement).classList.toggle("selected", isSel);
+    }
+  }
+
+  /** Public helper kept for external callers (setSelected → picker brush).
+   *  Clears the multi-selection and sets a single tile as the selection. */
+  setSelected(tileset: string | null, tileId: number | null): void {
+    this.selectedKeys.clear();
+    if (tileset && tileId != null) {
+      const k = `${tileset}:${tileId}`;
+      this.selectedKeys.add(k);
+      this.lastSelectedKey = k;
+    } else {
+      this.lastSelectedKey = null;
+    }
+    this.syncSelectionClasses();
+  }
+
+  /** Select every tile currently visible in the grid (respects active
+   *  category + search filter). Used by Cmd/Ctrl+A. */
+  private selectAllVisible(): void {
+    for (const e of this.gridEntries) this.selectedKeys.add(this.entryKey(e));
+    if (this.gridEntries.length > 0) {
+      this.lastSelectedKey = this.entryKey(this.gridEntries[this.gridEntries.length - 1]);
+    }
+    this.syncSelectionClasses();
+    this.refreshDetail();
+  }
+
+  private clearSelection(): void {
+    this.selectedKeys.clear();
+    this.lastSelectedKey = null;
+    this.syncSelectionClasses();
+    this.refreshDetail();
+  }
+
+  /** Select/deselect/range based on modifier keys. Mirrors Finder/Explorer
+   *  conventions:
+   *    plain click  → replace selection with just this tile
+   *    meta/ctrl    → toggle this tile in/out of the set
+   *    shift        → select range from anchor to this (inclusive) using
+   *                   the grid's current filtered order. If there's no
+   *                   anchor yet, falls back to plain click. */
+  private handleCellClick(entry: TileEntry, ev: MouseEvent): void {
+    const k = this.entryKey(entry);
+    if (ev.shiftKey && this.lastSelectedKey) {
+      const order = this.gridEntries.map((e) => this.entryKey(e));
+      const a = order.indexOf(this.lastSelectedKey);
+      const b = order.indexOf(k);
+      if (a >= 0 && b >= 0) {
+        const [lo, hi] = a < b ? [a, b] : [b, a];
+        for (let i = lo; i <= hi; i++) this.selectedKeys.add(order[i]);
+      } else {
+        // Anchor no longer in the filtered view — just add this tile.
+        this.selectedKeys.add(k);
+      }
+    } else if (ev.metaKey || ev.ctrlKey) {
+      if (this.selectedKeys.has(k)) this.selectedKeys.delete(k);
+      else                           this.selectedKeys.add(k);
+      this.lastSelectedKey = k;
+    } else {
+      this.selectedKeys.clear();
+      this.selectedKeys.add(k);
+      this.lastSelectedKey = k;
+    }
+    this.syncSelectionClasses();
+    this.refreshDetail();
+  }
+
+  /** Pick the right detail panel (empty/single/bulk) based on selection size. */
+  private refreshDetail(): void {
+    const entries = this.selectedEntries();
+    if (entries.length === 0)       this.showDetailEmpty();
+    else if (entries.length === 1)  this.renderDetail(entries[0]);
+    else                             this.renderBulkDetail(entries);
   }
 
   open(): void {
@@ -436,8 +713,7 @@ export class TilePicker {
     // Re-render cats + grid each open so new tilesets (if lazy-loaded) appear.
     this.renderCategories();
     this.renderGrid();
-    if (this.selectedEntry) this.renderDetail(this.selectedEntry);
-    else                    this.showDetailEmpty();
+    this.refreshDetail();
     this.startAnimations();
     this.search.focus();
   }
@@ -500,10 +776,12 @@ export class TilePicker {
   private renderGrid(): void {
     this.stopAnimations();
     this.tiles.length = 0;
+    this.gridEntries.length = 0;
     this.grid.innerHTML = "";
 
     const query = this.search.value;
     const entries = this.index.filter(this.activeCategory, query).slice(0, 800);  // cap for perf
+    this.gridEntries = entries;
 
     if (entries.length === 0) {
       const empty = document.createElement("div");
@@ -522,7 +800,7 @@ export class TilePicker {
       const cell = document.createElement("div");
       cell.className = "tile";
       cell.title = entry.label;
-      if (this.selectedKey === `${entry.tileset}:${entry.tileId}`) {
+      if (this.selectedKeys.has(`${entry.tileset}:${entry.tileId}`)) {
         cell.classList.add("selected");
       }
 
@@ -559,16 +837,16 @@ export class TilePicker {
         cell.appendChild(badge);
       }
 
-      // Single click   → SELECT (highlight + populate right pane)
-      // Double click   → PLACE  (set as brush + close picker)
-      cell.addEventListener("click", () => {
-        this.setSelected(entry.tileset, entry.tileId);
-        this.selectedEntry = entry;
-        this.renderDetail(entry);
+      // Click modifiers:
+      //   plain        → replace selection, show single detail
+      //   meta/ctrl    → toggle this tile in/out of multi-selection
+      //   shift        → range select from last anchor to here
+      // Double click   → PLACE (set as brush + close picker)
+      cell.addEventListener("click", (ev) => {
+        this.handleCellClick(entry, ev);
       });
       cell.addEventListener("dblclick", () => {
         this.setSelected(entry.tileset, entry.tileId);
-        this.selectedEntry = entry;
         this.onPick?.(entry);
         this.close();
       });

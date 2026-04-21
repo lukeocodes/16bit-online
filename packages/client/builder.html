@@ -229,6 +229,50 @@
       #picker-detail #dm-status { font-size: 11px; }
       #picker-detail.dirty .dform { box-shadow: inset 0 0 0 1px rgba(255,200,0,0.2); border-radius: 4px; }
 
+      /* Bulk-edit panel — shows when 2+ tiles are selected. Slightly
+         different visual (tinted header) so users know they're in bulk
+         mode and not accidentally overwriting one tile with another's
+         settings. */
+      #picker-detail-bulk {
+        display: flex; flex-direction: column; gap: 10px;
+        background: rgba(90, 170, 255, 0.04);
+        border: 1px solid rgba(90, 170, 255, 0.25);
+        border-radius: 4px;
+        padding: 12px;
+      }
+      #picker-detail-bulk .bulk-header {
+        display: flex; justify-content: space-between; align-items: center;
+        color: #aee; font-size: 13px;
+      }
+      #picker-detail-bulk .bulk-header strong { color: #cde; font-weight: 500; }
+      #picker-detail-bulk .bulk-clear-btn {
+        background: #2a2a2a; color: #aaa; border: 1px solid #444;
+        border-radius: 3px; padding: 3px 8px; font-size: 11px; cursor: pointer;
+      }
+      #picker-detail-bulk .bulk-clear-btn:hover { background: #333; color: #ddd; }
+      #picker-detail-bulk select,
+      #picker-detail-bulk input[type="text"] {
+        background: #1a1a1a; color: #eee; border: 1px solid #444;
+        border-radius: 3px; padding: 5px 7px; font-size: 12px; font-family: inherit;
+      }
+      #picker-detail-bulk select:focus,
+      #picker-detail-bulk input[type="text"]:focus { outline: none; border-color: #5af; }
+      #picker-detail-bulk label { color: #aab; font-size: 11px; letter-spacing: 0.4px; }
+      #picker-detail-bulk .dactions button {
+        background: #2a2a2a; color: #ddd; border: 1px solid #444; border-radius: 3px;
+        padding: 6px 10px; font-size: 12px; cursor: pointer; font-family: inherit;
+      }
+      #picker-detail-bulk .dactions button:hover { background: #333; border-color: #5af; }
+      #picker-detail-bulk .dactions button.primary {
+        background: rgba(42,170,102,0.2); border-color: #2a6; color: #afd;
+      }
+      #picker-detail-bulk .dactions button.primary:hover { background: rgba(42,170,102,0.35); }
+      #picker-detail-bulk .dactions button.danger {
+        background: rgba(228,68,68,0.15); border-color: #7a3333; color: #fbb;
+      }
+      #picker-detail-bulk .dactions button.danger:hover { background: rgba(228,68,68,0.3); border-color: #e44; color: #fff; }
+      #picker-detail-bulk #bulk-status { font-size: 11px; }
+
       /* Source-spritesheet viewer — lets a reviewer see the selected tile
          in the context of the full sheet it came from. Canvas-rendered so
          we can overlay the highlight + preserve pixel-accurate positioning
@@ -327,7 +371,61 @@
         <div id="picker-cats"></div>
         <div id="picker-grid"></div>
         <div id="picker-detail" class="empty">
-          <div id="picker-detail-empty">Click a tile to inspect &amp; edit. Double-click (or hit Place) to use it as the brush.</div>
+          <div id="picker-detail-empty">Click a tile to inspect &amp; edit. Shift-click or ⌘-click to multi-select. Double-click to place.</div>
+
+          <!-- Bulk-edit panel: shows when 2+ tiles are selected. Dropdowns
+               default to "(no change)"; only fields the user changes get
+               written to each tile's override. -->
+          <div id="picker-detail-bulk" hidden>
+            <div class="bulk-header">
+              <strong id="bulk-count">0 tiles selected</strong>
+              <button id="bulk-clear" class="bulk-clear-btn" title="Clear multi-selection">Clear</button>
+            </div>
+            <div class="dform">
+              <div class="row">
+                <label for="bulk-cat">Category</label>
+                <select id="bulk-cat"><option value="">(no change)</option></select>
+              </div>
+              <div class="row">
+                <label for="bulk-layer">Layer</label>
+                <select id="bulk-layer">
+                  <option value="">(no change)</option>
+                  <option value="ground">Ground</option>
+                  <option value="decor">Decor</option>
+                  <option value="walls">Walls</option>
+                  <option value="canopy">Canopy</option>
+                </select>
+              </div>
+              <div class="row">
+                <label for="bulk-blocks">Blocks movement</label>
+                <select id="bulk-blocks">
+                  <option value="">(no change)</option>
+                  <option value="true">Yes</option>
+                  <option value="false">No</option>
+                </select>
+              </div>
+              <div class="row">
+                <label for="bulk-hide">Hide from picker</label>
+                <select id="bulk-hide">
+                  <option value="">(no change)</option>
+                  <option value="true">Yes</option>
+                  <option value="false">No</option>
+                </select>
+              </div>
+              <div class="row">
+                <label for="bulk-tags">Tags (add)</label>
+                <input id="bulk-tags" type="text" placeholder="comma,separated,tags" />
+              </div>
+            </div>
+            <div class="dactions">
+              <button id="bulk-apply"  class="primary" title="Apply every changed field to all selected tiles">Apply</button>
+              <button id="bulk-delete" class="danger"  title="Hide every selected tile from the picker">Delete all</button>
+            </div>
+            <div class="dactions secondary">
+              <span id="bulk-status" class="muted"></span>
+            </div>
+          </div>
+
           <div id="picker-detail-content" hidden>
             <div class="dpreview"><canvas id="picker-detail-canvas"></canvas></div>
             <div class="dmeta">
