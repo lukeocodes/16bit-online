@@ -2,6 +2,8 @@
 
 Historical record of the "move all data from code into the database" migration. The architectural rule now lives in `docs/data-policy.md`; this file is the receipt.
 
+> **Update (later the same day):** The migrated gameplay data (10 NPC templates, 17 items, 27 loot entries, 5 quests + objectives + rewards, 10 zones) was **wiped** from the DB and its seed scripts deleted. It was placeholder data from earlier hardcoded registries — gameplay hasn't started yet and re-seeding stale placeholders would just muddy the water. The DB schemas + runtime cache loaders stay in place for when real gameplay is designed; future seed scripts or an admin UI will populate them then. See `AGENTS.game.md` for current state.
+
 ## Phase 1 — Builder metadata ✅
 
 | # | Old code/storage | DB table | Rows | Status |

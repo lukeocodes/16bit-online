@@ -6,12 +6,14 @@ Read this file at the start of each conversation. Update after significant work.
 
 Top-down Pokemon-style RPG. Excalibur.js v0.30 + `@excaliburjs/plugin-tiled`. Server auth via Fastify + Drizzle. WebRTC for gameplay traffic. Mana Seed art (Seliel the Shaper).
 
-**Map system:** two ways to author maps:
+**Focus right now:** the world builder. Gameplay hasn't started — no NPCs, items, quests, or static zones yet. The in-game sandbox is **heaven** (zone numericId 500, in-memory, no persistence). User maps built from heaven can be persisted + frozen to TMX.
 
-1. **Data-driven painter** (`tools/paint-map/`) — scene specs in `maps-src/*.json` → painter emits TMX (for client rendering) + JSON (for server collision/spawn logic). See [paint-map workflow](docs/paint-map.md).
-2. **In-game world builder** (`packages/client/builder.html`) — walk around, open the tile picker, click to place / pickup / rotate / erase tiles live. Stored in the DB (`user_maps` + `user_map_tiles`) and can be frozen to TMX + JSON via `bun tools/freeze-map.ts <numericId | zoneId | all>`. See [world builder](docs/world-builder.md).
+**Gameplay data = empty on purpose.** All seven gameplay-data tables (`zones`, `npc_templates`, `item_templates`, `loot_entries`, `quests`, `quest_objectives`, `quest_rewards`) have **0 rows**. The runtime code (`game/npc-templates.ts`, `game/items.ts`, `game/quests.ts`, `game/zone-registry.ts`) is wired in and ready, but it's loading 0 rows at boot and nothing spawns. The old hardcoded placeholder data + its seed scripts have been wiped — when gameplay is designed, new seed scripts / admin UI will populate these tables for real. See [`docs/history/db-migration-2026-04.md`](docs/history/db-migration-2026-04.md) for the migration history.
 
-**Current playable map:** `starter-area` (48×32, human-meadows zone). Grass base, dark-grass patches, cobblestone path, dirt clearing, small water pond, forest border.
+**Map system — two ways to author maps:**
+
+1. **In-game world builder** (`packages/client/builder.html`) — the current focus. Walk around heaven, open the tile picker, click to place / pickup / rotate / erase tiles live. Stored in the DB (`user_maps` + `user_map_tiles`) and can be frozen to TMX + JSON via `bun tools/freeze-map.ts <numericId | zoneId | all>`. See [world builder](docs/world-builder.md).
+2. **Data-driven painter** (`tools/paint-map/`) — legacy path. Scene specs in `maps-src/*.json` → painter emits TMX + server JSON. Kept for the test-zones import but no current `maps-src/*.json` is in active use. See [paint-map workflow](docs/paint-map.md).
 
 ## Known issues
 
@@ -19,9 +21,21 @@ Top-down Pokemon-style RPG. Excalibur.js v0.30 + `@excaliburjs/plugin-tiled`. Se
 2. **No NPC spawn points in new map** — the painter only emits the player spawn. Server JSON schema supports NPC spawns but the painter doesn't yet.
 3. **Mana Seed tree-wall tiles have transparent lower halves** — visually correct per the art but means the "canvas" below the bottom tree row shows grass. Collision layer covers the full 128×128 footprint regardless.
 
-## Blockers to "fully playable"
+## What we're NOT doing yet
 
-In rough order:
+Gameplay systems exist as code but have **zero data**:
+
+- **No NPCs.** `npc_templates` = 0 rows. `spawn-points` system wired up but nothing to spawn.
+- **No items, loot, inventory.** `item_templates` = 0 rows, `loot_entries` = 0 rows.
+- **No quests.** `quests` / `quest_objectives` / `quest_rewards` = 0 rows. Quest code + per-player progress tracking exist but nobody can accept anything.
+- **No static zones.** `zones` table = 0 rows. Only heaven (numericId 500, via `user_maps`) + user-built maps exist.
+- **No gameplay scene.** `packages/client/src/scenes/GameScene.ts` exists and loads TMX, but the actual "you are playing the game" UX hasn't been built. Focus is the builder.
+
+When gameplay is designed: add new seed scripts (`tools/seed-<topic>.ts` pattern) OR author via an admin UI that writes to the DB directly. The runtime caches (`NPC_TEMPLATES`, `ITEMS`, `QUESTS`, `zones` map) re-populate on boot.
+
+## Blockers to "fully playable" (kept as roadmap)
+
+In rough order, for when gameplay lands:
 
 1. Port binary position-update decoder (`handlePositionUpdate` currently stub).
 2. Wire TMX `player-spawn` object via `entityClassNameFactories` (remove hardcoded 20,15).
@@ -30,6 +44,7 @@ In rough order:
 5. Port `RemotePlayerActor` from `client-old` (sprite, nameplate, interpolation).
 6. Port combat visuals (damage numbers, HP bars, attack swings).
 7. UI: HP bar, inventory, chat, dialog — all missing from the new client.
+8. Seed initial NPC / item / quest data once designed.
 
 ## Supplemental docs
 
