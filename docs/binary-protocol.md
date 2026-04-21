@@ -1,8 +1,6 @@
-# Performance Agent Guide
+# Binary wire protocol
 
-## The Rule: Binary for high-frequency, JSON for rare/complex
-
-The reliable DataChannel carries two classes of messages. Pick the right one:
+All gameplay data flows over WebRTC DataChannels. The reliable channel carries two classes of messages:
 
 | Message type | Use binary if... | Use JSON if... |
 |---|---|---|
@@ -14,9 +12,9 @@ The reliable DataChannel carries two classes of messages. Pick the right one:
 
 **Default to binary for anything sent more than once per second or during combat.**
 
-## Binary message format (reliable channel)
+## Format
 
-All binary reliable messages start with a 1-byte opcode, then fixed-width fields (LE byte order). No length prefix needed — byteLength check gates the handler.
+All binary reliable messages start with a 1-byte opcode, then fixed-width fields (little-endian byte order). No length prefix needed — byteLength check gates the handler.
 
 ```
 [op: u8] [fields...]
@@ -24,37 +22,38 @@ All binary reliable messages start with a 1-byte opcode, then fixed-width fields
 
 Entity references are transmitted as u32 hashes via `hashEntityId(str)`. The client maintains `numericIdMap: Map<u32, string>` populated on entity spawn.
 
-### Existing binary messages
+## Existing binary messages
 
 | Opcode | Name | Size | Fields after op |
 |---|---|---|---|
+| 32 | ABILITY_COOLDOWN | 6 B | abilityIdx:u8, remaining:f32 |
 | 50 | DAMAGE_EVENT | 12 B | attackerHash:u32, targetHash:u32, damage:u16, weaponType:u8 |
 | 51 | ENTITY_DEATH | 5 B | entityHash:u32 |
 | 52 | ENTITY_STATE | 9 B | entityHash:u32, hp:u16, maxHp:u16 |
-| 53 | COMBAT_STATE | 11 B | entityHash:u32, flags:u8 (bit0=inCombat,bit1=autoAttacking), targetHash:u32, hasTarget:u8 |
+| 53 | COMBAT_STATE | 11 B | entityHash:u32, flags:u8 (bit0=inCombat, bit1=autoAttacking), targetHash:u32, hasTarget:u8 |
 | 70 | ENEMY_NEARBY | 7+4N B | entityHash:u32, nearby:u8, count:u8, npcHash:u32×N |
-| 32 | ABILITY_COOLDOWN | 6 B | abilityIdx:u8, remaining:f32 |
 | 80 | XP_GAIN | 14 B | entityHash:u32, xpGained:u16, totalXp:u32, xpToNext:u16, level:u8 |
 | 81 | LEVEL_UP | 8 B | level:u8, hpBonus:u16, manaBonus:u16, staminaBonus:u16 |
 | 82 | PLAYER_RESPAWN | 21 B | entityHash:u32, x:f32, y:f32, z:f32, hp:u16, maxHp:u16 |
 
-### Still JSON (intentional)
+## Still JSON (intentional)
 
-- ENTITY_SPAWN — variable string fields
-- ENTITY_DESPAWN — rare
-- CHAT_MESSAGE / SYSTEM_MESSAGE — rare
-- ZONE_CHANGE — rare, carries zone name/file strings
-- DUNGEON_MAP — rare, carries room layout object
-- LOOT_DROP / INVENTORY_SYNC — rare, carries item array
-- QUEST_UPDATE — rare, carries quest array
-- WORLD_READY — once per connection
+- `ENTITY_SPAWN` — variable string fields
+- `ENTITY_DESPAWN` — rare
+- `CHAT_MESSAGE` / `SYSTEM_MESSAGE` — rare
+- `ZONE_CHANGE` — rare, carries zone name / file strings
+- `DUNGEON_MAP` — rare, carries room layout object
+- `LOOT_DROP` / `INVENTORY_SYNC` — rare, carries item array
+- `QUEST_UPDATE` — rare, carries quest array
+- `WORLD_READY` — once per connection
+- All `BUILDER_*` opcodes (200-209) — see `docs/world-builder.md`
 
 ## Adding a new binary message
 
 ### 1. Server — `packages/server/src/game/protocol.ts`
 
 ```typescript
-/** Binary MY_MSG: N bytes [op:u8][field:type...] */
+/** Binary MY_MSG: 7 bytes [op:u8][entityHash:u32][value:u16] */
 export function packBinaryMyMsg(entityId: string, value: number): Buffer {
   const buf = Buffer.alloc(7); // 1 + 4 + 2
   buf.writeUInt8(Opcode.MY_MSG, 0);
@@ -97,26 +96,11 @@ if (firstByte === 50 || firstByte === 51 || /* ... */ || firstByte === MY_OPCODE
 ```
 
 Also stub out any JSON fallback in `handleReliableMessage`:
+
 ```typescript
 case Opcode.MY_MSG: break; // handled in handleBinaryReliable
 ```
 
-## Other performance rules
+## Position broadcast (unreliable channel)
 
-### Position broadcast (unreliable channel)
-Batched binary: `[count:u16LE]` + N×20 bytes per entity. Never send positions over the reliable channel.
-
-### Delta broadcasting
-`broadcastState()` uses `lastBroadcastState` to skip sending unchanged HP. Do the same for any value that changes rarely — track last-sent, skip if equal.
-
-### Sleep optimization
-All entities with no player within 32 tiles are skipped in the game loop via the awake set. New NPC behavior must check `entity.isAwake()` before ticking.
-
-### Entity cleanup
-Always remove entries from `Map`/`Set` when entities despawn (`EntityManager.removeEntity` clears spatial grid cells). Memory leaks from unflushed maps will grow unbounded over a session.
-
-### Particle / animation in game loop
-Never use `requestAnimationFrame` or `setTimeout` for game-visible animations. Hook into `Loop.ts` so they advance with the game tick. RAF callbacks accumulate and are not cancelled on scene unload.
-
-### Decoration scroll-out
-Terrain decorations (trees, rocks, etc.) are destroyed when they scroll outside the camera viewport. Do not keep unbounded sprite lists for world decorations.
+Batched binary: `[count:u16LE]` + N × 20 bytes per entity. **Never send positions over the reliable channel** — positions can drop without retransmit; delivery is best-effort by design.
