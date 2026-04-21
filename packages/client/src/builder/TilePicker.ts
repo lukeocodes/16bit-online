@@ -7,9 +7,14 @@
  *   - "Place on map" button in the right pane = same as double click
  *
  * The right pane lets the author edit per-tile metadata at runtime
- * (category, name, tags, layer, blocks, hide). Edits persist in
- * localStorage as overrides via `registry/overrides.ts`. They can be
- * exported as JSON for the dev to bake back into the tilesets.ts source.
+ * (category, name, tags, layer, blocks, hide). Edits POST to
+ * `/api/builder/overrides` and persist in the `tile_overrides` table so
+ * they're visible to every other builder after the next registry refresh.
+ * See AGENTS.md "Data in the Database".
+ *
+ * The one piece of state that DOES live in localStorage is the picker zoom
+ * (S/M/L/XL) under key `builder.picker.size` — that's per-device UI
+ * preference, not shared metadata.
  *
  * Renders each tile into a small <canvas> so animated tiles can animate in
  * real time. Animated tiles are tagged with a little "AN" badge.
