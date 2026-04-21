@@ -355,5 +355,5 @@ Re-run this whenever new TSX is added. Replaces `__builder.dumpEmptyTiles()` + m
 - **No WebSocket** — all gameplay over WebRTC DataChannels; HTTP POST is only for signaling
 - **Data-driven maps** — edit `maps-src/*.json`, run the painter. Never hand-edit TMX.
 - **ECS pattern** — new features = new components + systems. Don't bloat `GameScene.ts`.
-- **Clean up** — destroy PixiJS display objects, clear Maps/Sets on entity removal
+- **Clean up** — call `actor.kill()` on Excalibur actors, clear Maps/Sets on entity removal
 - **Data in DB, not code** — see AGENTS.md "Data in the Database" and the DB-migration plan above. Only logic + PNGs outside the DB. Everything queryable is a table.

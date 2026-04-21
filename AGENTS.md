@@ -22,13 +22,13 @@ Keep API request size small. Context bloat causes failures. Follow these rules s
 ## Agent Guides
 - @AGENTS.md — General guidelines, Playwright testing, architecture rules, common issues
 - @AGENTS-SERVER.md — Server file map, adding NPCs/spawn points, protocol format
-- @AGENTS-CLIENT.md — Client file map, PixiJS rendering, ECS patterns, UI screens
+- @AGENTS-CLIENT.md — Client file map, Excalibur.js rendering, tile picker, UI screens
 - @AGENTS-TESTING.md — Playwright automated testing strategy, combat test loop, multi-tab testing
 - @AGENTS-PERFORMANCE.md — Binary protocol rules, message format reference, how to add new binary messages
 
 ## Project Structure
 Bun workspace monorepo with three packages:
-- `packages/client` — PixiJS v8 TypeScript client (Vite bundler)
+- `packages/client` — Excalibur.js v0.30 TypeScript client (Vite bundler)
 - `packages/server` — Fastify TypeScript server (runs with Node via tsx; werift needs Node's UDP stack)
 - `packages/shared` — Shared constants and protocol definitions (JSON)
 
@@ -52,7 +52,7 @@ cd packages/server && bunx drizzle-kit migrate   # Run migrations
 - **Auth**: OAuth2 PKCE with ATProto (bsky.social) + dev login, game JWT for sessions
 - **Networking**: WebRTC DataChannels via werift (unreliable for positions, reliable for events), HTTP POST for signaling
 - **Database**: PostgreSQL via Drizzle ORM + Redis via ioredis
-- **Client**: PixiJS v8 2D top-down rendering, ECS architecture, Tiled editor maps
+- **Client**: Excalibur.js v0.30 2D top-down rendering (`@excaliburjs/plugin-tiled` for TMX maps). Not PixiJS, not Babylon.js.
 - **Server**: Authoritative game loop (combat, NPCs, HP, state) at 20Hz
 - **Protocol**: Binary (24-byte) for position updates, JSON for reliable messages
 - **Coordinate system**: Top-down x,y (was isometric x,y,z)
@@ -107,9 +107,9 @@ Use `browser_tabs` to switch between tabs. Each tab is a separate player session
 - **Server-authoritative**: Never add game logic (combat, HP, spawning) to the client. Client only renders.
 - **No WebSocket**: All game data flows over WebRTC DataChannels. HTTP POST for signaling only.
 - **ECS pattern**: New features = new components + systems. Don't put logic in Game.ts.
-- **PixiJS rendering**: Client uses PixiJS v8 for 2D isometric. No Babylon.js.
+- **Excalibur.js rendering**: Client uses Excalibur.js v0.30 for 2D top-down rendering via `@excaliburjs/plugin-tiled`. Not PixiJS, not Babylon.js. Fade overlapping canopy/walls via `actor.graphics.opacity`; depth via `actor.z`.
 - **Tiled maps**: World is hand-crafted in Tiled editor format. Maps in `public/maps/`, tilesets in `public/tilesets/`.
-- **Memory**: Clean up Maps/Sets on entity removal. Destroy PixiJS display objects.
+- **Memory**: Clean up Maps/Sets on entity removal. Call `actor.kill()` on Excalibur actors when they're removed; destroy owned `ImageSource`/`SpriteSheet` if they're single-use.
 - **Sleep optimization**: All entities sleep when no player is within 32 tiles.
 
 ## Data in the Database, NOT in Code (CRITICAL — non-negotiable)
