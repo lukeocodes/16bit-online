@@ -79,7 +79,31 @@ async function main(): Promise<void> {
     game.addScene("builder", scene);
     await game.start();
     await game.goToScene("builder");
-    (window as any).__builder = { game, net, scene, tiles };
+    (window as any).__builder = {
+      game, net, scene, tiles,
+      /** Rescan every tileset for empty tiles, format as the committed
+       *  manifest JSON, and copy to clipboard. Paste into
+       *  `src/builder/registry/empty-tiles.json` after adding new sheets. */
+      dumpEmptyTiles: async () => {
+        const manifest = tiles.rescanEmptyTiles();
+        const keys = Object.keys(manifest).sort();
+        const lines = keys.map((k, i) => {
+          const suffix = i === keys.length - 1 ? "" : ",";
+          return `  ${JSON.stringify(k)}: ${JSON.stringify(manifest[k])}${suffix}`;
+        });
+        const json = `{\n${lines.join("\n")}\n}\n`;
+        const total = Object.values(manifest).reduce((n, a) => n + a.length, 0);
+        console.log(`[dumpEmptyTiles] ${keys.length} sheet(s), ${total} empty tile(s)`);
+        try {
+          await navigator.clipboard?.writeText(json);
+          console.log("[dumpEmptyTiles] Copied to clipboard — paste into src/builder/registry/empty-tiles.json");
+        } catch {
+          console.log("[dumpEmptyTiles] Clipboard failed; printing JSON below:");
+          console.log(json);
+        }
+        return json;
+      },
+    };
 
     setLoading(100, "Ready");
     document.getElementById("loading")?.classList.add("hidden");

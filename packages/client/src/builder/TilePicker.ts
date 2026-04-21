@@ -1,11 +1,23 @@
 /**
  * HTML floating modal for browsing / picking tiles.
  *
+ * UX:
+ *   - Single click  → SELECT (highlight + populate the right-side editor pane)
+ *   - Double click  → PLACE (set as current brush + close picker)
+ *   - "Place on map" button in the right pane = same as double click
+ *
+ * The right pane lets the author edit per-tile metadata at runtime
+ * (category, name, tags, layer, blocks, hide). Edits persist in
+ * localStorage as overrides via `registry/overrides.ts`. They can be
+ * exported as JSON for the dev to bake back into the tilesets.ts source.
+ *
  * Renders each tile into a small <canvas> so animated tiles can animate in
  * real time. Animated tiles are tagged with a little "AN" badge.
  */
 import { TilesetIndex, type TileEntry, type TilesetMeta } from "./TilesetIndex.js";
 import { listCategoriesByOrder, type CategoryDef, type CategoryId } from "./registry/categories.js";
+import type { LayerId } from "./registry/layers.js";
+import { getOverride, setOverride, clearOverride, exportJson, type TileOverride } from "./registry/overrides.js";
 
 export type TilePickHandler = (entry: TileEntry) => void;
 
@@ -19,17 +31,64 @@ interface TileTile {
   nextAt:   number;
 }
 
+type SizeKey = "s" | "m" | "l" | "xl";
+const SIZE_LS_KEY = "builder.picker.size";
+const DEFAULT_SIZE: SizeKey = "m";
+
+/** Pixel-per-source-pixel scale factor by size key. The picker grid uses
+ *  flex-wrap layout where each tile cell is sized to (sourceW × scale,
+ *  sourceH × scale), preserving relative scale between tiles instead of
+ *  stretching everything into the same fixed cell. So a 16×16 tile takes
+ *  a quarter of the area of a 32×32, and an 80×112 tree dominates a row.
+ *
+ *  M is the "true game scale" baseline (4× source — matches a 16-px tile
+ *  to a 64-px display, which is roughly what the in-world camera shows).
+ *  S = 0.5×M, L = 1.5×M, XL = 2×M. */
+const SCALE_BY_SIZE: Record<SizeKey, number> = { s: 2, m: 4, l: 6, xl: 8 };
+
+/** Maximum source-pixel dimension to render at full scale. Tiles larger than
+ *  this in either axis (e.g. 128×128 wall, 80×112 tree) shrink to fit so a
+ *  single tile doesn't blow the viewport at XL. Still preserves aspect. */
+const MAX_TILE_DISPLAY_PX = 360;
+
 export class TilePicker {
   private root     = document.getElementById("picker")!;
   private grid     = document.getElementById("picker-grid")!;
   private cats     = document.getElementById("picker-cats")!;
   private search   = document.getElementById("picker-search") as HTMLInputElement;
   private closeBtn = document.getElementById("picker-close")!;
+  private sizeBar  = document.getElementById("picker-size")!;
+
+  // Right-pane editor refs.
+  private dPane    = document.getElementById("picker-detail")!;
+  private dEmpty   = document.getElementById("picker-detail-empty")!;
+  private dContent = document.getElementById("picker-detail-content") as HTMLDivElement;
+  private dCanvas  = document.getElementById("picker-detail-canvas") as HTMLCanvasElement;
+  private dmTileset  = document.getElementById("dm-tileset")!;
+  private dmTileid   = document.getElementById("dm-tileid")!;
+  private dmPos      = document.getElementById("dm-pos")!;
+  private dmSrcfile  = document.getElementById("dm-srcfile")!;
+  private dmName     = document.getElementById("dm-name")     as HTMLInputElement;
+  private dmCat      = document.getElementById("dm-cat")      as HTMLSelectElement;
+  private dmLayer    = document.getElementById("dm-layer")    as HTMLSelectElement;
+  private dmTags     = document.getElementById("dm-tags")     as HTMLInputElement;
+  private dmBlocks   = document.getElementById("dm-blocks")   as HTMLInputElement;
+  private dmHide     = document.getElementById("dm-hide")     as HTMLInputElement;
+  private dmPlace    = document.getElementById("dm-place")    as HTMLButtonElement;
+  private dmSave     = document.getElementById("dm-save")     as HTMLButtonElement;
+  private dmRevert   = document.getElementById("dm-revert")   as HTMLButtonElement;
+  private dmDelete   = document.getElementById("dm-delete")   as HTMLButtonElement;
+  private dmExport   = document.getElementById("dm-export")   as HTMLButtonElement;
+  private dmStatus   = document.getElementById("dm-status")!;
 
   private activeCategory: CategoryId | null = null;
   private onPick: TilePickHandler | null = null;
   private tiles: TileTile[] = [];
+  private selectedEntry: TileEntry | null = null;
   private selectedKey: string | null = null;  // `${tileset}:${tileId}`
+  private size: SizeKey = DEFAULT_SIZE;
+  /** Detail-canvas live preview (own animation state). */
+  private dAnim: { meta: TilesetMeta; entry: TileEntry; ctx: CanvasRenderingContext2D; frameIdx: number; nextAt: number } | null = null;
 
   private animRafId: number | null = null;
   private animRunning = false;
@@ -41,6 +100,214 @@ export class TilePicker {
       if (!this.isOpen()) return;
       if (e.key === "Escape") this.close();
     });
+    // Restore persisted size; wire up size toggle buttons.
+    const stored = (localStorage.getItem(SIZE_LS_KEY) as SizeKey | null);
+    if (stored && ["s", "m", "l", "xl"].includes(stored)) this.size = stored;
+    this.applySize();
+    for (const btn of this.sizeBar.querySelectorAll<HTMLButtonElement>("button[data-size]")) {
+      btn.addEventListener("click", () => {
+        const k = btn.dataset.size as SizeKey;
+        if (k && k !== this.size) {
+          this.size = k;
+          localStorage.setItem(SIZE_LS_KEY, k);
+          this.applySize();
+        }
+      });
+    }
+
+    this.populateCategoryDropdown();
+    this.wireDetailForm();
+  }
+
+  private applySize(): void {
+    this.root.classList.remove("size-s", "size-m", "size-l", "size-xl");
+    this.root.classList.add(`size-${this.size}`);
+    for (const btn of this.sizeBar.querySelectorAll<HTMLButtonElement>("button[data-size]")) {
+      btn.classList.toggle("active", btn.dataset.size === this.size);
+    }
+    // Tiles must be re-laid-out at the new scale.
+    if (this.isOpen()) this.renderGrid();
+  }
+
+  // ---------------------------------------------------------------------------
+  // Right-pane editor
+  // ---------------------------------------------------------------------------
+
+  private populateCategoryDropdown(): void {
+    this.dmCat.innerHTML = "";
+    for (const def of listCategoriesByOrder()) {
+      const opt = document.createElement("option");
+      opt.value = def.id;
+      opt.textContent = def.name;
+      this.dmCat.appendChild(opt);
+    }
+  }
+
+  private wireDetailForm(): void {
+    const dirty = () => this.dPane.classList.add("dirty");
+    [this.dmName, this.dmCat, this.dmLayer, this.dmTags, this.dmBlocks, this.dmHide]
+      .forEach((el) => el.addEventListener("input",  dirty));
+    [this.dmCat, this.dmLayer, this.dmBlocks, this.dmHide]
+      .forEach((el) => el.addEventListener("change", dirty));
+
+    this.dmPlace.addEventListener("click",  () => this.placeSelected());
+    this.dmSave.addEventListener("click",   () => this.saveSelected());
+    this.dmRevert.addEventListener("click", () => this.revertSelected());
+    this.dmDelete.addEventListener("click", () => this.deleteSelected());
+    this.dmExport.addEventListener("click", () => this.exportOverrides());
+  }
+
+  private showDetailEmpty(): void {
+    this.dEmpty.style.display = "block";
+    this.dContent.hidden = true;
+    this.stopDetailAnim();
+    this.dPane.classList.remove("dirty");
+  }
+
+  /** Populate the right pane with the selected tile's metadata + preview. */
+  private renderDetail(entry: TileEntry): void {
+    const meta = this.index.getTileset(entry.tileset);
+    if (!meta) return;
+    this.dEmpty.style.display = "none";
+    this.dContent.hidden = false;
+    this.dPane.classList.remove("dirty");
+
+    // Preview canvas — use native tile size; CSS scales it up (max 256px).
+    this.dCanvas.width  = meta.tilewidth;
+    this.dCanvas.height = meta.tileheight;
+    const ctx = this.dCanvas.getContext("2d");
+    if (ctx) {
+      ctx.imageSmoothingEnabled = false;
+      drawTile(ctx, meta, entry, 0);
+      // Drive its own animation (independent of grid loop, so it keeps going
+      // even when the grid is offscreen / re-rendered).
+      this.startDetailAnim(meta, entry, ctx);
+    }
+
+    this.dmTileset.textContent = meta.name;
+    this.dmTileid.textContent  = String(entry.tileId);
+    this.dmPos.textContent     = `col ${entry.col}, row ${entry.row}  (${meta.tilewidth}×${meta.tileheight})`;
+    this.dmSrcfile.textContent = meta.file;
+
+    // Form values come from the override if present; otherwise from the
+    // resolved entry (which already includes sub-region effects).
+    const ov = getOverride(entry.tileset, entry.tileId) ?? {};
+    this.dmName.value   = ov.name ?? "";
+    this.dmCat.value    = ov.category ?? entry.category;
+    this.dmLayer.value  = ov.defaultLayer ?? entry.defaultLayer;
+    this.dmTags.value   = (ov.tags ?? meta.def.tags ?? []).join(", ");
+    this.dmBlocks.checked = ov.blocks  ?? entry.blocks;
+    this.dmHide.checked   = ov.hide    ?? entry.hidden;
+
+    this.dmStatus.textContent = "";
+  }
+
+  private startDetailAnim(meta: TilesetMeta, entry: TileEntry, ctx: CanvasRenderingContext2D): void {
+    this.stopDetailAnim();
+    if (!entry.animation || entry.animation.length <= 1) return;
+    this.dAnim = { meta, entry, ctx, frameIdx: 0, nextAt: performance.now() + entry.animation[0].duration };
+    // Kick the loop in case nothing else is animating.
+    if (!this.animRunning) this.startAnimations();
+  }
+
+  private stopDetailAnim(): void {
+    this.dAnim = null;
+  }
+
+  /** Compute a minimal TileOverride from the current form state, omitting
+   *  any field that matches the resolved entry's effective value. The entry
+   *  passed in must be the *currently-resolved* TileEntry (post-override),
+   *  so we compare against what's already in effect. */
+  private collectFormOverride(): { ov: TileOverride; isEmpty: boolean } {
+    if (!this.selectedEntry) return { ov: {}, isEmpty: true };
+    const e = this.selectedEntry;
+    const meta = this.index.getTileset(e.tileset);
+    if (!meta) return { ov: {}, isEmpty: true };
+
+    const ov: TileOverride = {};
+    const trimmedName = this.dmName.value.trim();
+    if (trimmedName) ov.name = trimmedName;
+    if (this.dmCat.value && this.dmCat.value !== e.category) ov.category = this.dmCat.value as CategoryId;
+    if (this.dmLayer.value && this.dmLayer.value !== e.defaultLayer) ov.defaultLayer = this.dmLayer.value as LayerId;
+    const tags = this.dmTags.value.split(",").map((s) => s.trim()).filter(Boolean);
+    const tilesetTags = (meta.def.tags ?? []).join(",");
+    if (tags.length && tags.join(",") !== tilesetTags) ov.tags = tags;
+    if (this.dmBlocks.checked !== e.blocks) ov.blocks = this.dmBlocks.checked;
+    if (this.dmHide.checked   !== e.hidden) ov.hide   = this.dmHide.checked;
+
+    return { ov, isEmpty: Object.keys(ov).length === 0 };
+  }
+
+  private saveSelected(): void {
+    if (!this.selectedEntry) return;
+    const e = this.selectedEntry;
+    const { ov, isEmpty } = this.collectFormOverride();
+    if (isEmpty) {
+      clearOverride(e.tileset, e.tileId);
+    } else {
+      setOverride(e.tileset, e.tileId, ov);
+    }
+    this.index.refreshEntries(e.tileset);
+    const updated = this.index.find(e.tileset, e.tileId);
+    if (updated) {
+      this.selectedEntry = updated;
+      this.renderDetail(updated);
+    }
+    this.renderCategories();
+    this.renderGrid();
+    this.flashStatus(isEmpty ? "Override cleared" : "Saved (browser only)");
+  }
+
+  private revertSelected(): void {
+    if (!this.selectedEntry) return;
+    const e = this.selectedEntry;
+    clearOverride(e.tileset, e.tileId);
+    this.index.refreshEntries(e.tileset);
+    const updated = this.index.find(e.tileset, e.tileId);
+    if (updated) {
+      this.selectedEntry = updated;
+      this.renderDetail(updated);
+    }
+    this.renderCategories();
+    this.renderGrid();
+    this.flashStatus("Reverted to source");
+  }
+
+  /** Delete = set `hide: true` via override, refresh, clear selection.
+   *  Persists in localStorage; use "Export overrides" to bake into source. */
+  private deleteSelected(): void {
+    if (!this.selectedEntry) return;
+    const e = this.selectedEntry;
+    const existing = getOverride(e.tileset, e.tileId) ?? {};
+    setOverride(e.tileset, e.tileId, { ...existing, hide: true });
+    this.index.refreshEntries(e.tileset);
+    // Drop selection — the tile is gone from the grid now.
+    this.selectedEntry = null;
+    this.selectedKey = null;
+    this.renderCategories();
+    this.renderGrid();
+    this.showDetailEmpty();
+    this.flashStatus(`Deleted ${e.label} (override; Export to bake)`);
+  }
+
+  private placeSelected(): void {
+    if (!this.selectedEntry) return;
+    this.onPick?.(this.selectedEntry);
+    this.close();
+  }
+
+  private exportOverrides(): void {
+    const json = exportJson();
+    navigator.clipboard?.writeText(json).then(
+      () => this.flashStatus("Overrides copied to clipboard"),
+      () => this.flashStatus("Clipboard write failed — see console"),
+    );
+    console.log("[overrides]\n" + json);
+  }
+
+  private flashStatus(msg: string): void {
+    this.dmStatus.textContent = msg;
+    setTimeout(() => { if (this.dmStatus.textContent === msg) this.dmStatus.textContent = ""; }, 2200);
   }
 
   setOnPick(h: TilePickHandler): void { this.onPick = h; }
@@ -60,6 +327,8 @@ export class TilePicker {
     // Re-render cats + grid each open so new tilesets (if lazy-loaded) appear.
     this.renderCategories();
     this.renderGrid();
+    if (this.selectedEntry) this.renderDetail(this.selectedEntry);
+    else                    this.showDetailEmpty();
     this.startAnimations();
     this.search.focus();
   }
@@ -67,6 +336,7 @@ export class TilePicker {
   close(): void {
     this.root.classList.remove("open");
     this.stopAnimations();
+    this.stopDetailAnim();
   }
 
   toggle(): void {
@@ -134,6 +404,8 @@ export class TilePicker {
       return;
     }
 
+    const scale = SCALE_BY_SIZE[this.size];
+
     for (const entry of entries) {
       const meta = this.index.getTileset(entry.tileset);
       if (!meta || !meta.image) continue;
@@ -145,8 +417,22 @@ export class TilePicker {
         cell.classList.add("selected");
       }
 
-      // Size the canvas to the tile's native pixel size — CSS upscales crisp
-      // via `image-rendering: pixelated` on the <canvas>.
+      // True-to-scale sizing: cell is sourceW * scale wide, sourceH * scale
+      // tall. A 16×16 tile occupies 64×64 at M scale; a 32×32 tile occupies
+      // 128×128 — visibly twice as big. Cap to MAX_TILE_DISPLAY_PX so giant
+      // tiles (128×128 walls, 80×112 trees) don't blow up the viewport.
+      let dispW = meta.tilewidth  * scale;
+      let dispH = meta.tileheight * scale;
+      if (dispW > MAX_TILE_DISPLAY_PX || dispH > MAX_TILE_DISPLAY_PX) {
+        const k = MAX_TILE_DISPLAY_PX / Math.max(dispW, dispH);
+        dispW = Math.round(dispW * k);
+        dispH = Math.round(dispH * k);
+      }
+      cell.style.width  = `${dispW}px`;
+      cell.style.height = `${dispH}px`;
+
+      // Canvas is the tile's native pixel size; CSS scales via
+      // image-rendering: pixelated for crisp upscaling.
       const cnv = document.createElement("canvas");
       cnv.width  = meta.tilewidth;
       cnv.height = meta.tileheight;
@@ -164,11 +450,17 @@ export class TilePicker {
         cell.appendChild(badge);
       }
 
+      // Single click   → SELECT (highlight + populate right pane)
+      // Double click   → PLACE  (set as brush + close picker)
       cell.addEventListener("click", () => {
         this.setSelected(entry.tileset, entry.tileId);
+        this.selectedEntry = entry;
+        this.renderDetail(entry);
+      });
+      cell.addEventListener("dblclick", () => {
+        this.setSelected(entry.tileset, entry.tileId);
+        this.selectedEntry = entry;
         this.onPick?.(entry);
-        // Dismiss the modal so the user can immediately click the world to
-        // place. To pick a different tile, press `B` to reopen.
         this.close();
       });
 
@@ -195,7 +487,7 @@ export class TilePicker {
 
   private startAnimations(): void {
     if (this.animRunning) return;
-    if (this.tiles.length === 0) return;
+    if (this.tiles.length === 0 && !this.dAnim) return;
     this.animRunning = true;
     const tick = () => {
       if (!this.animRunning) return;
@@ -206,6 +498,16 @@ export class TilePicker {
         t.frameIdx = (t.frameIdx + 1) % frames.length;
         t.nextAt = now + frames[t.frameIdx].duration;
         drawTile(t.ctx, t.meta, t.entry, t.frameIdx);
+      }
+      // Detail pane preview tick
+      if (this.dAnim) {
+        const d = this.dAnim;
+        const frames = d.entry.animation!;
+        if (now >= d.nextAt) {
+          d.frameIdx = (d.frameIdx + 1) % frames.length;
+          d.nextAt   = now + frames[d.frameIdx].duration;
+          drawTile(d.ctx, d.meta, d.entry, d.frameIdx);
+        }
       }
       this.animRafId = requestAnimationFrame(tick);
     };

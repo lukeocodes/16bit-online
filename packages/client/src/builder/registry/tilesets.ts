@@ -27,8 +27,15 @@ export type Season = "summer" | "autumn" | "spring" | "winter";
 
 /** A contiguous block of tile IDs inside a tileset that overrides the
  *  tileset's default category/flags. Tile IDs are the raw linear index
- *  (row * columns + col). Later regions win when overlapping. */
+ *  (row * columns + col). Later regions win when overlapping.
+ *
+ *  When `hide: true`, every tile in the range is filtered out of the
+ *  picker entirely — used for documentation/label tiles that ship as
+ *  part of an artist's tileset (Mana Seed home interior sheets bake
+ *  "Doorway" / "Walls" / "Door Goes Here" labels into the PNG itself). */
 export interface SubRegion {
+  /** Required UNLESS `hide` is true (hidden tiles still need a category
+   *  in case the picker ever surfaces them, but practically it's unused). */
   category:     CategoryId;
   /** Inclusive start tile id. */
   from:         number;
@@ -38,6 +45,8 @@ export interface SubRegion {
   defaultLayer?: LayerId;
   /** Short label shown alongside the tile in the picker. Optional. */
   label?:       string;
+  /** When true, every tile in this range is excluded from the picker. */
+  hide?:        boolean;
 }
 
 export interface TilesetDef {
@@ -52,6 +61,13 @@ export interface TilesetDef {
   subRegions?:   SubRegion[];
   /** True → still loaded for rendering, but not shown in the picker. */
   hidden?:       boolean;
+  /** Run an automatic label-tile detector after image load. Tiles where every
+   *  sampled pixel is the same opaque colour AND that colour matches one of
+   *  the known label palettes (white / light-grey / lavender / magenta) are
+   *  excluded from the picker. Used for the Mana Seed home interior sheets
+   *  which bake "Flooring" / "Doorway" / "Walls" / "Door Goes Here" / etc.
+   *  documentation overlays directly into the tileset PNG. */
+  autoHideLabels?: boolean;
   /** Free-form notes for authors. */
   notes?:        string;
 }

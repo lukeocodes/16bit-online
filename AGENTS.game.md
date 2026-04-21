@@ -92,6 +92,8 @@ Separate Vite entry at `/builder.html`. Uses the same WebRTC connection as the g
 - `packages/client/src/builder/registry/layers.ts` — 4 layers (ground / decor / walls / canopy). Layers no longer imply collision; use per-cell Blocks for that.
 - `packages/client/src/builder/registry/tilesets.ts` — the big one. Groups: SUMMER, AUTUMN, SPRING, WINTER, SUMMER_WATERFALL, BUILDINGS, BRIDGES, MISC, FURNITURE, LIGHTS, CROPS, SIGNS, EFFECTS, ROOFS. Each `TilesetDef` has `id`, `file`, `name`, `category`, `defaultLayer`, optional `tags[]`, `blocks`, `hidden`, `subRegions[]`, `notes`.
 - `packages/client/src/builder/registry/map-items.ts` — stubs for container/light/door/sign/npc-spawn (interactive entities, deferred).
+- `packages/client/src/builder/registry/empty-tiles.json` — committed manifest of fully-transparent tile IDs per TSX. ~5,300 tiles across 50 sheets are skipped entirely at load (no `TileEntry` allocation). Sheets not in the manifest fall back to a one-off runtime pixel scan. Regenerate with `__builder.dumpEmptyTiles()` in the browser console after importing new packs; paste the clipboard output into this file.
+- `packages/client/src/builder/registry/overrides.ts` — localStorage-backed per-tile metadata overrides. The picker detail pane's **Save**/**Delete**/**Revert** buttons update this; **Export overrides** dumps the full set as JSON for baking into `tilesets.ts` (typically as `SubRegion` entries). Precedence: `TilesetDef` → `SubRegion` → override.
 
 ### Asset layout
 ```
