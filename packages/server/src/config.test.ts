@@ -35,8 +35,8 @@ describe("config", () => {
   });
 
   describe("defaults", () => {
-    it("oauth issuer defaults to Deepgram", () => {
-      expect(config.oauth.issuer).toContain("deepgram");
+    it("oauth issuer defaults to ATProto (bsky.social)", () => {
+      expect(config.oauth.issuer).toContain("bsky.social");
     });
 
     it("redirect URI defaults to localhost:5173", () => {

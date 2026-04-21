@@ -38,7 +38,7 @@ describe("auth route helpers", () => {
     it("strips extra fields (simulating full DB row)", () => {
       const fullRow: any = {
         id: "acc-1", email: "a@b.com", displayName: "X", isOnboarded: false,
-        oauthSub: "sub-123", oauthIssuer: "deepgram", createdAt: new Date(),
+        oauthSub: "sub-123", oauthIssuer: "https://bsky.social", createdAt: new Date(),
       };
       const result = accountToJson(fullRow);
       expect(result).not.toHaveProperty("oauthSub");

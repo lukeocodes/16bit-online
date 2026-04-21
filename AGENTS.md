@@ -49,7 +49,7 @@ cd packages/server && bunx drizzle-kit migrate   # Run migrations
 ```
 
 ## Architecture
-- **Auth**: OAuth2 PKCE with id.dx.deepgram.com + dev login, game JWT for sessions
+- **Auth**: OAuth2 PKCE with ATProto (bsky.social) + dev login, game JWT for sessions
 - **Networking**: WebRTC DataChannels via werift (unreliable for positions, reliable for events), HTTP POST for signaling
 - **Database**: PostgreSQL via Drizzle ORM + Redis via ioredis
 - **Client**: PixiJS v8 2D top-down rendering, ECS architecture, Tiled editor maps

@@ -55,7 +55,7 @@
 - Configured per-environment via .env files (development: `.env`, example: `.env.example`)
 
 **Key configs required:**
-- `OAUTH_ISSUER` - OAuth2 provider endpoint (default: https://id.dx.deepgram.com)
+- `OAUTH_ISSUER` - OAuth2 provider endpoint (default: https://bsky.social)
 - `OAUTH_CLIENT_ID` - OAuth2 application ID
 - `OAUTH_REDIRECT_URI` - OAuth callback URL (default: http://localhost:5173/auth/callback)
 - `DATABASE_URL` or individual PostgreSQL credentials (POSTGRES_HOST, POSTGRES_PORT, POSTGRES_DB, POSTGRES_USER, POSTGRES_PASSWORD)

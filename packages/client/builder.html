@@ -232,7 +232,12 @@
       /* Bulk-edit panel — shows when 2+ tiles are selected. Slightly
          different visual (tinted header) so users know they're in bulk
          mode and not accidentally overwriting one tile with another's
-         settings. */
+         settings.
+         NOTE: `[hidden]` override is REQUIRED — a bare `display: flex`
+         beats the browser's `[hidden] { display: none }` UA rule, which
+         caused the "stuck 6 tiles selected" bug where the pane stayed
+         visible after plain-clicking a single tile. */
+      #picker-detail-bulk[hidden] { display: none; }
       #picker-detail-bulk {
         display: flex; flex-direction: column; gap: 10px;
         background: rgba(90, 170, 255, 0.04);

@@ -5,9 +5,9 @@
 ## APIs & External Services
 
 **Authentication (OAuth2 PKCE):**
-- Deepgram OAuth2 - User authentication and identity
+- ATProto OAuth2 - User authentication and identity (bsky.social and federated PDSes)
   - SDK/Client: Custom fetch-based implementation in `packages/server/src/auth/oauth.ts`
-  - Issuer URL: Configurable via `OAUTH_ISSUER` env var (default: https://id.dx.deepgram.com)
+  - Issuer URL: Configurable via `OAUTH_ISSUER` env var (default: https://bsky.social)
   - Flow: Authorization Code with PKCE
   - Endpoints:
     - Token exchange: `{issuer}/oauth2/token`
@@ -56,7 +56,7 @@ Redis 7:
 ## Authentication & Identity
 
 **Auth Provider:**
-- Deepgram OAuth2 (OIDC-compliant)
+- ATProto OAuth2
   - Implementation: `packages/server/src/auth/oauth.ts`
   - PKCE support: Yes (code_verifier parameter)
   - Dev login: Supported (see auth routes)

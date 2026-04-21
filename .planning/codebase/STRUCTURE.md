@@ -109,7 +109,7 @@ isometric-mmo/
 
 **packages/server/src/auth/:**
 - Purpose: OAuth2 and JWT authentication
-- Contains: oauth.ts (Deepgram OAuth flow), jwt.ts (token generation/verification), middleware.ts (route protection)
+- Contains: oauth.ts (ATProto OAuth flow), jwt.ts (token generation/verification), middleware.ts (route protection)
 - Key files: `middleware.ts` (requireAuth decorator)
 
 **packages/server/src/db/:**

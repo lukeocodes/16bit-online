@@ -80,7 +80,7 @@
 1. User visits application → main.ts boot()
 2. Router checks SessionState.isAuthenticated()
 3. If not authenticated, navigate to LoginScreen
-4. User clicks "Login with OAuth" → AuthManager.startLogin() initiates PKCE flow to id.dx.deepgram.com
+4. User clicks "Login with OAuth" → AuthManager.startLogin() initiates PKCE flow to ATProto (bsky.social)
 5. Auth callback with code → Router.handleAuthCallback() exchanges code for JWT token
 6. Token stored in SessionState → navigate to character-select
 
