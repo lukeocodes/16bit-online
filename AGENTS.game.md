@@ -243,6 +243,67 @@ In rough order:
 6. Port combat visuals (damage numbers, HP bars, attack swings)
 7. UI: HP bar, inventory, chat, dialog — all missing from new client
 
+## DB-migration plan: move all data out of code (2026-04-21)
+
+**Rule** (see AGENTS.md "Data in the Database"): only logic and image data live outside the DB. Everything else — categorizations, tile metadata, NPC stats, quests, items, zones — must be DB-backed so authors can edit live and two devs never race on a `tilesets.ts` diff.
+
+Survey complete (grep+glob; no file reads over 50 lines). **Nine high/medium-priority files + one JSON manifest + one localStorage key need to migrate.** Priority-ordered:
+
+### Phase 1 — Builder metadata (highest; authoring currently blocked)
+| # | Current code/storage | Target tables | Size |
+|---|---|---|---|
+| 1 | `packages/client/src/builder/registry/overrides.ts` (localStorage `builder.tile.overrides`) | `tile_overrides` (PK: `tileset_file, tile_id`; cols: category_id, layer_id, blocks, tags[], name, hide) | ~0 rows now; grows with authoring |
+| 2 | `packages/client/src/builder/registry/tilesets.ts` (15 grouping arrays → `TILESETS: TilesetDef[]`) | `tilesets` (structural ingested from TSX, metadata builder-authored) + `tileset_sub_regions` (FK; `predicate_kind`/`predicate_json`, category_id, layer_id, blocks, tags[], label, hide, notes) | ~120 tilesets, ~60 sub-regions |
+| 3 | `packages/client/src/builder/registry/categories.ts` (`CATEGORIES: CategoryDef[]`) | `tile_categories` (id, name, description, order, preview_tileset, preview_tile_id) | 20 rows |
+| 4 | `packages/client/src/builder/registry/layers.ts` (`LAYERS: LayerDef[]`) | `map_layers` (id, name, z, collides, above_character, order) | 4 rows |
+| 5 | `packages/client/src/builder/registry/empty-tiles.json` (the only current code-JSON import) | `tile_empty_flags` (PK: `tileset_file, tile_id`) — ingested from PNG alpha at TSX-import time | ~5,300 rows |
+
+### Phase 2 — Gameplay data (gameplay tuning + multi-zone correctness)
+| # | Current code | Target tables | Size |
+|---|---|---|---|
+| 6 | `packages/server/src/game/npc-templates.ts` (`NPC_TEMPLATES` record + `template()` composition) | `npc_template_groups` (id, category, base_stats jsonb) + `npc_templates` (id, group_id, name, hp/str/dex/int ranges, weapon, behaviour flags, colours) | 9 templates, 4 groups |
+| 7 | `packages/server/src/game/items.ts` (`ITEMS` + `LOOT_TABLES`) | `item_templates` (id, name, slot, stats, icon) + `loot_tables` (npc_template_id, item_id, chance, min_qty, max_qty) | ~25 items, ~15 loot entries |
+| 8 | `packages/server/src/game/quests.ts` (`QUESTS`) | `quests` + `quest_objectives` + `quest_rewards` | 5 quests |
+| 9 | `packages/server/src/game/zone-registry.ts` (`registerZone` calls + `TEST_ZONES`) | `zones` (id, numericId UNIQUE, mapFile, levelMin, levelMax, musicTag) + `zone_exits` (zone_id, exit_id, to_zone_id, spawn_x, spawn_y) | ~10 zones |
+| 10 | `packages/shared/world-config.json` (worldSeed, dimensions, speeds) | `worlds` (id, seed, width, height, player_speed, continent_cross_minutes) | 1 row per world |
+
+### Phase 3 — Design-later
+| # | Current code | Target tables |
+|---|---|---|
+| 11 | `packages/client/src/builder/registry/map-items.ts` (stub) | `map_item_types` — design alongside container/light/door/sign/npc-spawn runtime |
+| 12 | (Future) XP curve constants in `experience.ts` | `level_progression` (level, xp_required, hp_per_level, mana_per_level, stamina_per_level) — only if designers want live tuning |
+
+### Explicitly stays outside the DB
+- **PNG files + TSX files** in `public/maps/` — raw-asset manifests. TSX gets **ingested** at boot (tilewidth/tileheight/columns/animations → `tilesets` + `tile_animations` tables) but stays on disk as upstream source-of-truth for structural data.
+- `packages/shared/protocol.json`, `protocol.ts` REV arrays — wire-format opcodes, deployed with code.
+- `packages/shared/constants.json` (CHUNK_SIZE, TILE_SIZE, tick rates) — engine-wide invariants, protocol-adjacent.
+- `maps-src/*.json` — build-time scene specs, input to `tools/paint-map` compiler. Code-like.
+- `tools/paint-map/*`, `tools/generate-map.ts`, `tools/freeze-map.ts` — algorithms.
+- `packages/server/src/game/experience.ts` — XP formulas (algorithms).
+- `localStorage['builder.picker.size']` — per-device UI state (picker zoom).
+
+### Dead code to delete during migration (do not port)
+- `packages/client/src/sprites/catalog.ts` (511 lines, not imported)
+- `packages/client/src/sprites/tilesets.ts` (309 lines, not imported)
+- `packages/client-old/**` entire dir (legacy)
+
+### Ingestion pass (new tool)
+A `bun tools/ingest-tilesets.ts` script needs to:
+1. Walk every TSX in `packages/client/public/maps/**/*.tsx`.
+2. Parse `<tileset>` attrs + `<image>` attrs + `<tile id="N"><animation>...` → `tilesets` + `tile_animations`.
+3. Decode the referenced PNG with `sharp` / `canvas` → detect fully-transparent cells → `tile_empty_flags`.
+4. Idempotent upserts keyed on `tileset_file`.
+
+Re-run this whenever new TSX is added. Replaces `__builder.dumpEmptyTiles()` + manual JSON paste.
+
+### Implementation order
+1. **Schema first** — draft all Phase-1 Drizzle migrations in one PR, run against dev DB, verify.
+2. **Seed script** — `tools/migrate-registry-to-db.ts` reads the current `.ts` + `.json` files, writes rows into DB. One-shot, commit.
+3. **Server endpoints** — HTTP `GET /api/builder/registry` + WebRTC `BUILDER_OVERRIDE_SET` / `BUILDER_OVERRIDE_CLEAR` opcodes that broadcast to other builders.
+4. **Client refactor** — `TilesetIndex.load()` fetches from server; `overrides.ts` proxies to WebRTC. Keep type defs (`TilesetDef`, `CategoryDef`, `LayerDef`) in client code — those are type contracts, not data.
+5. **Delete the source arrays** — after client fetches cleanly, remove `TILESETS/CATEGORIES/LAYERS` array literals and `empty-tiles.json`.
+6. **Phase 2/3 follow** — NPC templates, items, quests, zones on the same pattern.
+
 ## Architecture rules
 
 - **Server-authoritative** — never put game logic (combat, HP, spawning) in the client
@@ -250,3 +311,4 @@ In rough order:
 - **Data-driven maps** — edit `maps-src/*.json`, run the painter. Never hand-edit TMX.
 - **ECS pattern** — new features = new components + systems. Don't bloat `GameScene.ts`.
 - **Clean up** — destroy PixiJS display objects, clear Maps/Sets on entity removal
+- **Data in DB, not code** — see AGENTS.md "Data in the Database" and the DB-migration plan above. Only logic + PNGs outside the DB. Everything queryable is a table.

@@ -1,5 +1,8 @@
 # Client Agent Guide
 
+## Data Goes in the Database, NOT in Client Code
+Client has **no persistent data**. No JSON manifests, no hand-written registry arrays, no seed-data `.ts` files, no `localStorage.setItem` for anything except purely-local UI state (camera position, picker zoom level, etc.). Tile categories, tileset definitions, sub-regions, per-tile overrides, empty-tile flags, map-item schemas, NPC definitions, spawn points, quests, zones — **all DB-backed, fetched on boot or via WebRTC**. See AGENTS.md "Data in the Database" for the full rule and rationale. If you're about to `import foo from './data.json'` or create a `const FOO: Def[] = [...]` registry, stop.
+
 ## Runtime
 - Bun + Vite for dev (`bunx --bun vite` on port 5173)
 - Vite proxies `/api` to http://localhost:8000

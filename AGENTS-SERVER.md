@@ -1,5 +1,8 @@
 # Server Agent Guide
 
+## Server Owns the Data
+Everything queryable lives in PostgreSQL (via Drizzle). Tile metadata, categorizations, overrides, sub-regions, empty-tile flags, NPC definitions, spawn points, loot tables, zones, quests — all DB-backed. The client fetches from the server; the server is source-of-truth. Adding a new data field means: Drizzle migration → typed server endpoint (HTTP or WebRTC opcode) → client consumes. See AGENTS.md "Data in the Database" for the full rule. If you catch yourself putting static data in `npc-templates.ts` or a similar `.ts` file, stop — that's a DB row.
+
 ## Runtime
 - Node.js + tsx (not Bun — werift needs Node's UDP stack)
 - `node --watch --import tsx src/index.ts`
