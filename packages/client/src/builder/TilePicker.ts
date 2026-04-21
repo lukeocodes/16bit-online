@@ -17,7 +17,13 @@
 import { TilesetIndex, type TileEntry, type TilesetMeta } from "./TilesetIndex.js";
 import { listCategoriesByOrder, type CategoryDef, type CategoryId } from "./registry/categories.js";
 import type { LayerId } from "./registry/layers.js";
-import { getOverride, setOverride, clearOverride, exportJson, type TileOverride } from "./registry/overrides.js";
+import {
+  getOverride,
+  setOverride,
+  clearOverride,
+  exportOverridesJson,
+  type TileOverride,
+} from "./registry/overrides.js";
 
 export type TilePickHandler = (entry: TileEntry) => void;
 
@@ -238,14 +244,19 @@ export class TilePicker {
     return { ov, isEmpty: Object.keys(ov).length === 0 };
   }
 
-  private saveSelected(): void {
+  private async saveSelected(): Promise<void> {
     if (!this.selectedEntry) return;
     const e = this.selectedEntry;
     const { ov, isEmpty } = this.collectFormOverride();
-    if (isEmpty) {
-      clearOverride(e.tileset, e.tileId);
-    } else {
-      setOverride(e.tileset, e.tileId, ov);
+    try {
+      if (isEmpty) {
+        await clearOverride(e.tileset, e.tileId);
+      } else {
+        await setOverride(e.tileset, e.tileId, ov);
+      }
+    } catch (err) {
+      this.flashStatus(`Save failed: ${(err as Error).message}`);
+      return;
     }
     this.index.refreshEntries(e.tileset);
     const updated = this.index.find(e.tileset, e.tileId);
@@ -255,13 +266,18 @@ export class TilePicker {
     }
     this.renderCategories();
     this.renderGrid();
-    this.flashStatus(isEmpty ? "Override cleared" : "Saved (browser only)");
+    this.flashStatus(isEmpty ? "Override cleared" : "Saved");
   }
 
-  private revertSelected(): void {
+  private async revertSelected(): Promise<void> {
     if (!this.selectedEntry) return;
     const e = this.selectedEntry;
-    clearOverride(e.tileset, e.tileId);
+    try {
+      await clearOverride(e.tileset, e.tileId);
+    } catch (err) {
+      this.flashStatus(`Revert failed: ${(err as Error).message}`);
+      return;
+    }
     this.index.refreshEntries(e.tileset);
     const updated = this.index.find(e.tileset, e.tileId);
     if (updated) {
@@ -274,12 +290,17 @@ export class TilePicker {
   }
 
   /** Delete = set `hide: true` via override, refresh, clear selection.
-   *  Persists in localStorage; use "Export overrides" to bake into source. */
-  private deleteSelected(): void {
+   *  Persists to the DB; visible to every other builder on next reload. */
+  private async deleteSelected(): Promise<void> {
     if (!this.selectedEntry) return;
     const e = this.selectedEntry;
     const existing = getOverride(e.tileset, e.tileId) ?? {};
-    setOverride(e.tileset, e.tileId, { ...existing, hide: true });
+    try {
+      await setOverride(e.tileset, e.tileId, { ...existing, hide: true });
+    } catch (err) {
+      this.flashStatus(`Delete failed: ${(err as Error).message}`);
+      return;
+    }
     this.index.refreshEntries(e.tileset);
     // Drop selection — the tile is gone from the grid now.
     this.selectedEntry = null;
@@ -287,7 +308,7 @@ export class TilePicker {
     this.renderCategories();
     this.renderGrid();
     this.showDetailEmpty();
-    this.flashStatus(`Deleted ${e.label} (override; Export to bake)`);
+    this.flashStatus(`Deleted ${e.label}`);
   }
 
   private placeSelected(): void {
@@ -297,7 +318,7 @@ export class TilePicker {
   }
 
   private exportOverrides(): void {
-    const json = exportJson();
+    const json = exportOverridesJson();
     navigator.clipboard?.writeText(json).then(
       () => this.flashStatus("Overrides copied to clipboard"),
       () => this.flashStatus("Clipboard write failed — see console"),

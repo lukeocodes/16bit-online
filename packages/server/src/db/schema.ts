@@ -166,3 +166,148 @@ export const characterInventory = pgTable("character_inventory", {
   slot: varchar("slot", { length: 20 }),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });
+
+// ---------------------------------------------------------------------------
+// Builder registry (Phase 1 DB migration — see AGENTS.md "Data in the DB")
+// ---------------------------------------------------------------------------
+// Tables below replace the client-side `registry/*.ts` + `empty-tiles.json`
+// + localStorage overrides. Client fetches on boot; two builders editing
+// metadata see each other's edits live over WebRTC.
+//
+// Natural PKs (slugs for categories/layers, filename for tilesets) mirror
+// the wire format already used in `user_map_tiles.tileset` / `.layer`, so
+// FKs between placed tiles and their definitions stay trivially joinable.
+// ---------------------------------------------------------------------------
+
+// Tile category taxonomy — replaces client/src/builder/registry/categories.ts
+export const tileCategories = pgTable("tile_categories", {
+  id: varchar("id", { length: 32 }).primaryKey(),           // slug — "terrain", "trees", …
+  name: varchar("name", { length: 64 }).notNull(),          // display name
+  description: text("description").notNull().default(""),
+  displayOrder: integer("display_order").notNull(),         // sidebar order
+  previewTileset: varchar("preview_tileset", { length: 256 }),
+  previewTileId: integer("preview_tile_id"),
+  related: jsonb("related").$type<string[]>().default([]).notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+// Render layers — replaces client/src/builder/registry/layers.ts.
+// IDs are wire-format (already stored in user_map_tiles.layer).
+export const mapLayers = pgTable("map_layers", {
+  id: varchar("id", { length: 32 }).primaryKey(),           // "ground" | "decor" | "walls" | "canopy"
+  name: varchar("name", { length: 64 }).notNull(),
+  description: text("description").notNull().default(""),
+  z: integer("z").notNull(),                                // render order (Excalibur Actor.z)
+  collides: boolean("collides").notNull(),
+  aboveCharacter: boolean("above_character").notNull(),
+  displayOrder: integer("display_order").notNull(),         // toolbar order
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+// Tileset registry — replaces client/src/builder/registry/tilesets.ts.
+// Structural columns (tilewidth, columns, image_url, etc.) are ingested
+// from TSX files at boot; metadata columns (category/tags/defaultLayer)
+// are builder-authored and live here.
+export const tilesets = pgTable("tilesets", {
+  file: varchar("file", { length: 256 }).primaryKey(),      // "summer forest.tsx" — matches user_map_tiles.tileset
+  slug: varchar("slug", { length: 64 }).notNull().unique(), // stable id like "summer-forest-wang"
+  name: varchar("name", { length: 128 }).notNull(),         // display name from <tileset name="">
+
+  // Structural (ingested from TSX; do not hand-edit):
+  tilewidth: integer("tilewidth").notNull(),
+  tileheight: integer("tileheight").notNull(),
+  columns: integer("columns").notNull(),
+  tilecount: integer("tilecount").notNull(),
+  imageUrl: varchar("image_url", { length: 512 }).notNull(),
+  imageWidth: integer("image_width").notNull(),
+  imageHeight: integer("image_height").notNull(),
+
+  // Builder-authored metadata (default for every tile in the sheet, unless
+  // overridden by a sub-region or per-tile override):
+  defaultCategoryId: varchar("default_category_id", { length: 32 })
+    .notNull()
+    .references(() => tileCategories.id),
+  defaultLayerId: varchar("default_layer_id", { length: 32 })
+    .references(() => mapLayers.id),
+  defaultBlocks: boolean("default_blocks").default(false).notNull(),
+  tags: jsonb("tags").$type<string[]>().default([]).notNull(),
+  seasonal: varchar("seasonal", { length: 16 }),            // "summer" | "autumn" | "spring" | "winter"
+  hidden: boolean("hidden").default(false).notNull(),        // loaded for rendering but hidden from picker
+  autoHideLabels: boolean("auto_hide_labels").default(false).notNull(),
+  notes: text("notes"),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+// Sub-regions — contiguous tile-id ranges inside a tileset that override
+// the tileset's defaults. NULL means "inherit from tileset default".
+// Later regions (higher display_order) win when ranges overlap.
+export const tilesetSubRegions = pgTable("tileset_sub_regions", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  tilesetFile: varchar("tileset_file", { length: 256 })
+    .notNull()
+    .references(() => tilesets.file, { onDelete: "cascade" }),
+  fromTileId: integer("from_tile_id").notNull(),            // inclusive
+  toTileId: integer("to_tile_id").notNull(),                // inclusive
+  categoryId: varchar("category_id", { length: 32 })
+    .references(() => tileCategories.id),
+  layerId: varchar("layer_id", { length: 32 })
+    .references(() => mapLayers.id),
+  blocks: boolean("blocks"),                                 // NULL = inherit
+  tags: jsonb("tags").$type<string[]>(),                    // NULL = inherit tileset tags
+  label: varchar("label", { length: 128 }),
+  hide: boolean("hide"),                                     // NULL = inherit (default false)
+  displayOrder: integer("display_order").default(0).notNull(),
+  notes: text("notes"),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+// Per-tile metadata overrides — replaces client-side localStorage overrides.
+// When present, fields with non-NULL values beat sub-region defaults beat
+// tileset defaults. Precedence: TilesetDef → SubRegion → Override (last wins).
+export const tileOverrides = pgTable("tile_overrides", {
+  tilesetFile: varchar("tileset_file", { length: 256 })
+    .notNull()
+    .references(() => tilesets.file, { onDelete: "cascade" }),
+  tileId: integer("tile_id").notNull(),
+  categoryId: varchar("category_id", { length: 32 })
+    .references(() => tileCategories.id),
+  layerId: varchar("layer_id", { length: 32 })
+    .references(() => mapLayers.id),
+  blocks: boolean("blocks"),
+  tags: jsonb("tags").$type<string[]>(),
+  name: varchar("name", { length: 128 }),
+  hide: boolean("hide"),
+  updatedBy: uuid("updated_by").references(() => accounts.id),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+}, (t) => [
+  primaryKey({ columns: [t.tilesetFile, t.tileId] }),
+]);
+
+// Fully-transparent tile cells — replaces registry/empty-tiles.json.
+// Auto-populated by the ingest pass (scans PNG alpha channel).
+// Tiles flagged here are deleted from the picker entirely (no TileEntry
+// allocation, can't be revealed via overrides).
+export const tileEmptyFlags = pgTable("tile_empty_flags", {
+  tilesetFile: varchar("tileset_file", { length: 256 })
+    .notNull()
+    .references(() => tilesets.file, { onDelete: "cascade" }),
+  tileId: integer("tile_id").notNull(),
+}, (t) => [
+  primaryKey({ columns: [t.tilesetFile, t.tileId] }),
+]);
+
+// Tile animations ingested from TSX <tile id="N"><animation><frame .../>.
+// One row per (tileset, head tile, frame). head_tile_id is the animation
+// "owner" in Tiled parlance; frame_tile_id points at each frame's source cell.
+export const tileAnimations = pgTable("tile_animations", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  tilesetFile: varchar("tileset_file", { length: 256 })
+    .notNull()
+    .references(() => tilesets.file, { onDelete: "cascade" }),
+  headTileId: integer("head_tile_id").notNull(),
+  frameIdx: integer("frame_idx").notNull(),                 // 0-based
+  frameTileId: integer("frame_tile_id").notNull(),
+  durationMs: integer("duration_ms").notNull(),
+}, (t) => [
+  uniqueIndex("tile_animations_uniq").on(t.tilesetFile, t.headTileId, t.frameIdx),
+]);

@@ -13,7 +13,7 @@ import {
 } from "excalibur";
 import { TILE } from "../tile.js";
 import { TilesetIndex, type TileEntry } from "./TilesetIndex.js";
-import { getLayer, LAYER_HIT_ORDER as REGISTRY_LAYER_HIT_ORDER, type LayerId } from "./registry/layers.js";
+import { getLayer, layerHitOrder, type LayerId } from "./registry/layers.js";
 
 export interface PlacedTile {
   layer:    string;
@@ -26,10 +26,11 @@ export interface PlacedTile {
   flipV:    boolean;
 }
 
-// Layer z-order + hit-testing order are sourced from the registry so we
-// have a single source of truth. Re-exported here so the rest of the
-// builder module keeps its existing import surface.
-export const LAYER_HIT_ORDER = REGISTRY_LAYER_HIT_ORDER;
+// Layer hit-testing order is derived from the DB-loaded layer registry.
+// Call `layerHitOrder()` to get a fresh array — cheap (~4 elements).
+// Re-exported as a function to preserve the previous const surface with a
+// data-live backing store.
+export const LAYER_HIT_ORDER = (): LayerId[] => layerHitOrder();
 
 /** Rotation in degrees -> radians. */
 function deg2rad(deg: number): number { return (deg * Math.PI) / 180; }
@@ -152,7 +153,7 @@ export class TileOverlay extends Actor {
 
   /** Topmost placed tile at a cell (checks canopy→walls→decor→ground). */
   topmostAt(x: number, y: number): PlacedTile | undefined {
-    for (const layer of LAYER_HIT_ORDER) {
+    for (const layer of LAYER_HIT_ORDER()) {
       const t = this.records.get(keyOf(layer, x, y));
       if (t) return t;
     }

@@ -249,14 +249,28 @@ In rough order:
 
 Survey complete (grep+glob; no file reads over 50 lines). **Nine high/medium-priority files + one JSON manifest + one localStorage key need to migrate.** Priority-ordered:
 
-### Phase 1 — Builder metadata (highest; authoring currently blocked)
-| # | Current code/storage | Target tables | Size |
-|---|---|---|---|
-| 1 | `packages/client/src/builder/registry/overrides.ts` (localStorage `builder.tile.overrides`) | `tile_overrides` (PK: `tileset_file, tile_id`; cols: category_id, layer_id, blocks, tags[], name, hide) | ~0 rows now; grows with authoring |
-| 2 | `packages/client/src/builder/registry/tilesets.ts` (15 grouping arrays → `TILESETS: TilesetDef[]`) | `tilesets` (structural ingested from TSX, metadata builder-authored) + `tileset_sub_regions` (FK; `predicate_kind`/`predicate_json`, category_id, layer_id, blocks, tags[], label, hide, notes) | ~120 tilesets, ~60 sub-regions |
-| 3 | `packages/client/src/builder/registry/categories.ts` (`CATEGORIES: CategoryDef[]`) | `tile_categories` (id, name, description, order, preview_tileset, preview_tile_id) | 20 rows |
-| 4 | `packages/client/src/builder/registry/layers.ts` (`LAYERS: LayerDef[]`) | `map_layers` (id, name, z, collides, above_character, order) | 4 rows |
-| 5 | `packages/client/src/builder/registry/empty-tiles.json` (the only current code-JSON import) | `tile_empty_flags` (PK: `tileset_file, tile_id`) — ingested from PNG alpha at TSX-import time | ~5,300 rows |
+### Phase 1 — Builder metadata ✅ COMPLETE (2026-04-21)
+| # | Old code/storage | DB table | Rows | Status |
+|---|---|---|---|---|
+| 1 | localStorage `builder.tile.overrides` | `tile_overrides` (PK: `tileset_file, tile_id`) | 0 (grows with authoring) | ✅ POST `/api/builder/overrides`, GET in registry bootstrap |
+| 2 | `registry/tilesets.ts` (777 lines) | `tilesets` + `tileset_sub_regions` | 118 + 159 sub-regions | ✅ structural ingested from TSX; metadata writable via `tile_overrides` |
+| 3 | `registry/categories.ts` | `tile_categories` | 20 | ✅ |
+| 4 | `registry/layers.ts` | `map_layers` | 4 | ✅ |
+| 5 | `registry/empty-tiles.json` | `tile_empty_flags` | 5,276 | ✅ JSON file deleted |
+| 6 | TSX `<animation>` parsed in client | `tile_animations` | 732 frames | ✅ ingested by seed |
+
+**Implementation notes:**
+- Schema in `packages/server/src/db/schema.ts` (lines below `character_inventory`).
+- Seed: `tools/seed-tile-registry.ts` reads `registry/*.ts` + `empty-tiles.json` + parses each TSX → upserts into DB. Idempotent. Run with `DATABASE_URL=… bun tools/seed-tile-registry.ts`.
+- Server endpoints in `packages/server/src/routes/builder-registry.ts`:
+  - `GET /api/builder/registry` — full bootstrap (categories + layers + tilesets + sub-regions + empty-flags + animations + overrides) in one fetch.
+  - `POST /api/builder/overrides` — upsert (or auto-clear if all fields null).
+  - `DELETE /api/builder/overrides/:file/:id` — clear.
+  - `GET /api/builder/overrides` — list (debug).
+- Client `registry/store.ts` is the single read API; `registry/{categories,layers,tilesets,overrides}.ts` are now types-only + re-exports from `store`.
+- `TilesetIndex.doLoad()` calls `loadRegistry()` first, then fetches PNGs via `def.imageUrl` directly (no more TSX parsing on the client). Empty tiles + animations come straight from the DB.
+- The legacy `__builder.dumpEmptyTiles()` is gone (replaced by the seed pass).
+- Two builders editing metadata still need a page reload to see each other's edits — Phase 1b adds WebRTC broadcast for live updates.
 
 ### Phase 2 — Gameplay data (gameplay tuning + multi-zone correctness)
 | # | Current code | Target tables | Size |

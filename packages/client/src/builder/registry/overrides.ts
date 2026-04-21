@@ -1,21 +1,24 @@
 /**
- * Per-tile metadata overrides — runtime edits made by the author in the
- * picker's right pane. Persists in localStorage keyed by `<tileset>:<tileId>`.
+ * Per-tile override type contract. Data lives in the database
+ * (`tile_overrides` table) and is mutated via `store.ts`'s async
+ * `setOverride` / `clearOverride`, which POST/DELETE
+ * `/api/builder/overrides`. See AGENTS.md "Data in the Database".
  *
- * Apply order:  base TilesetDef  →  matching SubRegion  →  Override
- * (overrides win, by design — they're explicit author intent).
+ * Apply order when resolving a tile entry:
+ *   base TilesetDef → matching SubRegion → Override (last wins)
  *
- * Use the picker's "Export overrides" button to dump the current set as
- * JSON; the dev can then bake those changes into `tilesets.ts` (typically as
- * SubRegion entries) so they ship with the build.
+ * Unlike the old localStorage implementation, overrides are shared across
+ * all builder sessions — two people editing metadata see each other's
+ * edits after the next registry refresh (or live via WebRTC broadcast,
+ * Phase 1b).
  */
 import type { CategoryId } from "./categories.js";
 import type { LayerId }    from "./layers.js";
 
 export interface TileOverride {
   category?:     CategoryId;
-  /** Override the displayed label. When set, the picker uses this in place
-   *  of the synthetic `<TilesetName> #<id>` string. */
+  /** Override the displayed label. When set, the picker uses this in
+   *  place of the synthetic `<TilesetName> #<id>` string. */
   name?:         string;
   /** Tags merged with the tileset's own tags. */
   tags?:         string[];
@@ -24,64 +27,13 @@ export interface TileOverride {
   hide?:         boolean;
 }
 
-const LS_KEY = "builder.tile.overrides";
-
-let cache: Record<string, TileOverride> | null = null;
-
-function load(): Record<string, TileOverride> {
-  if (cache) return cache;
-  try {
-    const raw = localStorage.getItem(LS_KEY);
-    cache = raw ? JSON.parse(raw) : {};
-  } catch {
-    cache = {};
-  }
-  return cache!;
-}
-
-function persist(): void {
-  if (!cache) return;
-  try {
-    localStorage.setItem(LS_KEY, JSON.stringify(cache));
-  } catch (e) {
-    console.warn("[overrides] localStorage write failed:", e);
-  }
-}
-
-export function key(tileset: string, tileId: number): string {
-  return `${tileset}:${tileId}`;
-}
-
-export function getOverride(tileset: string, tileId: number): TileOverride | undefined {
-  return load()[key(tileset, tileId)];
-}
-
-export function setOverride(tileset: string, tileId: number, ov: TileOverride): void {
-  const map = load();
-  // Drop empty overrides entirely so the export stays clean.
-  if (Object.keys(ov).length === 0) {
-    delete map[key(tileset, tileId)];
-  } else {
-    map[key(tileset, tileId)] = ov;
-  }
-  persist();
-}
-
-export function clearOverride(tileset: string, tileId: number): void {
-  const map = load();
-  delete map[key(tileset, tileId)];
-  persist();
-}
-
-export function allOverrides(): Record<string, TileOverride> {
-  return { ...load() };
-}
-
-export function exportJson(): string {
-  return JSON.stringify(load(), null, 2);
-}
-
-/** Returns true if any override exists. */
-export function hasAny(): boolean {
-  return Object.keys(load()).length > 0;
-}
+// Runtime accessors live in ./store.ts — re-export for import ergonomics.
+export {
+  key,
+  getOverride,
+  setOverride,
+  clearOverride,
+  allOverrides,
+  hasAnyOverride,
+  exportOverridesJson,
+} from "./store.js";
