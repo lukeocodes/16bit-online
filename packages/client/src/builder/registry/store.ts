@@ -46,12 +46,42 @@ export interface RemoteTilesetDef extends TilesetDef {
   animations: Record<number, Array<{ tileId: number; duration: number }>>;
 }
 
+/** Stamp tile definition (one cell inside a stamp). Shape is intentionally
+ *  close to `user_map_tiles` rows minus the map_id — stamp placement just
+ *  offsets (x, y) by the click origin and inserts. */
+export interface StampTileDef {
+  layer:    string;
+  x:        number;
+  y:        number;
+  tileset:  string;
+  tileId:   number;
+  rotation: number;
+  flipH:    boolean;
+  flipV:    boolean;
+}
+
+/** Full stamp definition as delivered from `/api/builder/registry`. */
+export interface StampDef {
+  id:             string;     // uuid
+  slug:           string;
+  name:           string;
+  description:    string | null;
+  width:          number;
+  height:         number;
+  previewTileset: string | null;
+  previewTileId:  number | null;
+  tags:           string[];
+  category:       string | null;
+  tiles:          StampTileDef[];
+}
+
 interface RegistryPayload {
   categories: CategoryDef[];
   layers:     LayerDef[];
   tilesets:   RemoteTilesetDef[];
   overrides:  Record<string, TileOverride>;
   mapItemTypes: MapItemTypeDef[];
+  stamps:     StampDef[];
 }
 
 // ---------------------------------------------------------------------------
@@ -63,10 +93,12 @@ let layersList:       LayerDef[]               = [];
 let tilesetsList:     RemoteTilesetDef[]       = [];
 let overridesMap:     Record<string, TileOverride> = {};
 let mapItemTypesList: MapItemTypeDef[]         = [];
+let stampsList:       StampDef[]               = [];
 let categoriesById:   Map<CategoryId, CategoryDef>   = new Map();
 let layersById:       Map<LayerId, LayerDef>         = new Map();
 let tilesetsByFile:   Map<string, RemoteTilesetDef>  = new Map();
 let mapItemsByKind:   Map<MapItemKind, MapItemTypeDef> = new Map();
+let stampsBySlug:     Map<string, StampDef>          = new Map();
 
 let loadPromise: Promise<void> | null = null;
 
@@ -90,6 +122,7 @@ async function doLoad(baseUrl: string): Promise<void> {
     `[Registry] Loaded ${categoriesList.length} categor(ies), ` +
     `${layersList.length} layer(s), ${tilesetsList.length} tileset(s), ` +
     `${mapItemTypesList.length} map-item type(s), ` +
+    `${stampsList.length} stamp(s), ` +
     `${Object.keys(overridesMap).length} override(s)`,
   );
 }
@@ -100,11 +133,13 @@ function apply(p: RegistryPayload): void {
   tilesetsList     = p.tilesets;
   overridesMap     = p.overrides;
   mapItemTypesList = p.mapItemTypes ?? [];
+  stampsList       = p.stamps ?? [];
 
   categoriesById = new Map(categoriesList.map((c) => [c.id, c]));
   layersById     = new Map(layersList.map((l) => [l.id, l]));
   tilesetsByFile = new Map(tilesetsList.map((t) => [t.file, t]));
   mapItemsByKind = new Map(mapItemTypesList.map((m) => [m.kind, m]));
+  stampsBySlug   = new Map(stampsList.map((s) => [s.slug, s]));
 }
 
 // ---------------------------------------------------------------------------
@@ -248,4 +283,27 @@ export function listMapItemTypes(): MapItemTypeDef[] {
 
 export function getMapItemType(kind: MapItemKind): MapItemTypeDef | undefined {
   return mapItemsByKind.get(kind);
+}
+
+// ---------------------------------------------------------------------------
+// Stamps — reusable multi-tile compositions (see docs/tile-library.md).
+// ---------------------------------------------------------------------------
+
+export function listStamps(): StampDef[] {
+  return stampsList;
+}
+
+export function getStamp(slug: string): StampDef | undefined {
+  return stampsBySlug.get(slug);
+}
+
+/** Refresh just the stamps section from `/api/builder/registry` without
+ *  nuking the whole registry state. Called after upload/delete so the
+ *  picker's Stamps tab reflects the change immediately. */
+export async function refreshStamps(baseUrl = ""): Promise<void> {
+  const res = await fetch(`${baseUrl}/api/builder/registry`);
+  if (!res.ok) throw new Error(`refreshStamps: ${res.status}`);
+  const body = (await res.json()) as RegistryPayload;
+  stampsList   = body.stamps ?? [];
+  stampsBySlug = new Map(stampsList.map((s) => [s.slug, s]));
 }

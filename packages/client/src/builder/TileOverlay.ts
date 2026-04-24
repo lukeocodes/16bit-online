@@ -49,6 +49,11 @@ export class TileOverlay extends Actor {
   private ghostHi: Actor;
   /** Cyan highlight for the currently-selected placed tile. */
   private selectionHi: Actor;
+  /** Yellow rectangle outlining the bounding box of the active stamp brush
+   *  while hovering. Resized per `setStampGhost()` call. Hidden when no
+   *  stamp is active. */
+  private stampGhost: Actor | null = null;
+  private stampGhostRect: Rectangle | null = null;
 
   constructor(tiles: TilesetIndex) {
     // Position at origin; children are world-positioned individually.
@@ -70,6 +75,19 @@ export class TileOverlay extends Actor {
     this.scene?.add(this.ghost);
     this.scene?.add(this.ghostHi);
     this.scene?.add(this.selectionHi);
+
+    // Stamp ghost is a rectangle-only actor (no sprite) — cheaper than
+    // compositing N tile ghosts for each hover tick.
+    this.stampGhost = new Actor({ x: 0, y: 0, z: 302 });
+    this.stampGhostRect = new Rectangle({
+      width: TILE, height: TILE,
+      color: Color.fromRGB(255, 215, 0, 0.08),
+      strokeColor: Color.fromRGB(255, 215, 0, 0.9),
+      lineWidth: 1,
+    });
+    this.stampGhost.graphics.use(this.stampGhostRect);
+    this.stampGhost.graphics.visible = false;
+    this.scene?.add(this.stampGhost);
   }
 
   // ---------------------------------------------------------------------------
@@ -216,6 +234,29 @@ export class TileOverlay extends Actor {
         this.ghost.graphics.visible = true;
       }
     }
+  }
+
+  /** Update the yellow stamp-bounds rectangle that follows the cursor when
+   *  a stamp brush is active. Pass `null` or negative coords to hide. */
+  setStampGhost(stamp: { width: number; height: number; name?: string } | null, x: number, y: number): void {
+    if (!this.stampGhost || !this.stampGhostRect) return;
+    if (!stamp || x < 0 || y < 0) {
+      this.stampGhost.graphics.visible = false;
+      return;
+    }
+    // Rebuild the rectangle at the stamp's exact tile size (16 px per cell).
+    const w = stamp.width  * TILE;
+    const h = stamp.height * TILE;
+    this.stampGhostRect = new Rectangle({
+      width: w, height: h,
+      color: Color.fromRGB(255, 215, 0, 0.08),
+      strokeColor: Color.fromRGB(255, 215, 0, 0.9),
+      lineWidth: 1,
+    });
+    this.stampGhost.graphics.use(this.stampGhostRect);
+    // Actor anchor defaults to (0.5, 0.5) → position is rectangle centre.
+    this.stampGhost.pos.setTo(x * TILE + w / 2, y * TILE + h / 2);
+    this.stampGhost.graphics.visible = true;
   }
 }
 

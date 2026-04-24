@@ -161,6 +161,60 @@ export const userMapTiles = pgTable("user_map_tiles", {
   mapLayerPos: uniqueIndex("user_map_tiles_layerpos_uniq").on(t.mapId, t.layer, t.x, t.y),
 }));
 
+// ---------------------------------------------------------------------------
+// Stamps — reusable multi-tile compositions imported from Tiled TMX files.
+// ---------------------------------------------------------------------------
+// A "stamp" is a named collection of tile placements (across all layers)
+// that can be dropped onto any user_map in one action. On placement the
+// stamp is EXPANDED into N rows in `user_map_tiles`, so each tile is
+// independently editable from that point on — there's no runtime grouping
+// concept.
+//
+// Creation flow: user exports a composition from Tiled as a .tmx file and
+// uploads it via the builder. Server parses the TMX, resolves each
+// `<tileset source="…"/>` reference to a canonical `tilesets.file` via
+// filename-stem matching, and stores the tile grid in `stamp_tiles`.
+// ---------------------------------------------------------------------------
+export const stamps = pgTable("stamps", {
+  id:          uuid("id").primaryKey().defaultRandom(),
+  slug:        varchar("slug", { length: 64 }).notNull().unique(),   // "thatch-cottage"
+  name:        varchar("name", { length: 128 }).notNull(),           // "Thatch Cottage"
+  description: text("description"),
+  /** Bounding box in tiles — used to render the ghost preview + constrain
+   *  placement to map edges. */
+  width:       integer("width").notNull(),
+  height:      integer("height").notNull(),
+  /** Tileset + tile id used to render the library thumbnail. Falls back to
+   *  the first non-empty tile if null. */
+  previewTileset: varchar("preview_tileset", { length: 256 }),
+  previewTileId:  integer("preview_tile_id"),
+  tags:        jsonb("tags").$type<string[]>().default([]).notNull(),
+  /** Optional `tile_categories.id` so the library sidebar groups stamps.
+   *  Null → appears under "Stamps / uncategorised". */
+  category:    varchar("category", { length: 32 }).references(() => tileCategories.id),
+  createdBy:   uuid("created_by").references(() => accounts.id),
+  createdAt:   timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt:   timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+// One row per (layer, rel-x, rel-y) cell inside a stamp. Mirrors the
+// user_map_tiles shape so placement is a straight COPY with the map-origin
+// offset added in + map_id rewritten.
+export const stampTiles = pgTable("stamp_tiles", {
+  id:       uuid("id").primaryKey().defaultRandom(),
+  stampId:  uuid("stamp_id").notNull().references(() => stamps.id, { onDelete: "cascade" }),
+  layer:    varchar("layer", { length: 32 }).notNull().references(() => mapLayers.id),
+  x:        integer("x").notNull(),   // 0..stamp.width-1
+  y:        integer("y").notNull(),   // 0..stamp.height-1
+  tileset:  varchar("tileset", { length: 256 }).notNull(),
+  tileId:   integer("tile_id").notNull(),
+  rotation: integer("rotation").default(0).notNull(),
+  flipH:    boolean("flip_h").default(false).notNull(),
+  flipV:    boolean("flip_v").default(false).notNull(),
+}, (t) => ({
+  stampLayerPos: uniqueIndex("stamp_tiles_layerpos_uniq").on(t.stampId, t.layer, t.x, t.y),
+}));
+
 // Character inventory — items owned by a character
 export const characterInventory = pgTable("character_inventory", {
   id: uuid("id").primaryKey().defaultRandom(),

@@ -21,6 +21,8 @@ import {
   tileCategories,
   mapLayers,
   tilesets,
+  stamps,
+  stampTiles,
   tilesetSubRegions,
   tileOverrides,
   tileEmptyFlags,
@@ -43,6 +45,8 @@ export async function builderRegistryRoutes(app: FastifyInstance) {
       animationsRows,
       overridesRows,
       mapItemTypesRows,
+      stampRows,
+      stampTileRows,
     ] = await Promise.all([
       db.select().from(tileCategories),
       db.select().from(mapLayers),
@@ -52,6 +56,8 @@ export async function builderRegistryRoutes(app: FastifyInstance) {
       db.select().from(tileAnimations),
       db.select().from(tileOverrides),
       db.select().from(mapItemTypes),
+      db.select().from(stamps).orderBy(stamps.name),
+      db.select().from(stampTiles),
     ]);
 
     // Reshape so the client consumes similar to the old registry structure.
@@ -186,12 +192,45 @@ export async function builderRegistryRoutes(app: FastifyInstance) {
                        : undefined,
       }));
 
+    // Group stamp tiles by stamp id, then emit the full stamp definitions
+    // so the client can render multi-tile ghost previews without a second
+    // round-trip.
+    const tilesByStamp = new Map<string, typeof stampTileRows>();
+    for (const t of stampTileRows) {
+      const arr = tilesByStamp.get(t.stampId) ?? [];
+      arr.push(t);
+      tilesByStamp.set(t.stampId, arr);
+    }
+    const stampsOut = stampRows.map(s => ({
+      id:             s.id,
+      slug:           s.slug,
+      name:           s.name,
+      description:    s.description,
+      width:          s.width,
+      height:         s.height,
+      previewTileset: s.previewTileset,
+      previewTileId:  s.previewTileId,
+      tags:           s.tags,
+      category:       s.category,
+      tiles: (tilesByStamp.get(s.id) ?? []).map(t => ({
+        layer:    t.layer,
+        x:        t.x,
+        y:        t.y,
+        tileset:  t.tileset,
+        tileId:   t.tileId,
+        rotation: t.rotation,
+        flipH:    t.flipH,
+        flipV:    t.flipV,
+      })),
+    }));
+
     return {
       categories,
       layers,
       tilesets: tilesetsOut,
       overrides,
       mapItemTypes: mapItemTypesOut,
+      stamps: stampsOut,
     };
   });
 

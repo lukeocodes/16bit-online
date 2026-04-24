@@ -29,8 +29,19 @@ import {
   exportOverridesJson,
   type TileOverride,
 } from "./registry/overrides.js";
+import { listStamps, refreshStamps, type StampDef } from "./registry/store.js";
 
 export type TilePickHandler = (entry: TileEntry) => void;
+export type StampPickHandler = (stamp: StampDef) => void;
+
+/** Sentinel `activeCategory` value that swaps the grid from tile cells to
+ *  stamp cards. Not a real category in the DB. */
+const STAMPS_CAT = "__stamps__";
+
+/** Layer z-order for stamp-preview compositing. Must match `map_layers.z`
+ *  from the registry but hard-coded here so previews work before network
+ *  data lands (and because the UI only has 4 layers). */
+const LAYER_Z: Record<string, number> = { ground: 10, decor: 20, walls: 60, canopy: 200 };
 
 interface TileTile {
   entry:    TileEntry;
@@ -111,8 +122,11 @@ export class TilePicker {
   private bulkClearBtn  = document.getElementById("bulk-clear")  as HTMLButtonElement;
   private bulkStatus    = document.getElementById("bulk-status")!;
 
-  private activeCategory: CategoryId | null = null;
+  /** `null` = All tiles, `STAMPS_CAT` = stamps library, otherwise a
+   *  real `tile_categories.id`. */
+  private activeCategory: CategoryId | null | typeof STAMPS_CAT = null;
   private onPick: TilePickHandler | null = null;
+  private onPickStamp: StampPickHandler | null = null;
   private tiles: TileTile[] = [];
   /** Flat list of every TileEntry currently rendered in the grid (after
    *  category filter + search filter + 800-tile cap), in DOM order. Used
@@ -135,7 +149,28 @@ export class TilePicker {
   private animRafId: number | null = null;
   private animRunning = false;
 
+  /** IntersectionObserver that lazy-paints tile canvases when cells scroll
+   *  into view. Watches every cell in `renderGrid()`; unobserves + paints
+   *  on first intersect (paint is one-shot). Falls back to immediate paint
+   *  in environments without IntersectionObserver. */
+  private cellObserver: IntersectionObserver | null = null;
+
   constructor(private index: TilesetIndex) {
+    // rootMargin pre-paints one screen above / below the viewport so fast
+    // scrolls don't reveal blank placeholders.
+    if (typeof IntersectionObserver !== "undefined") {
+      this.cellObserver = new IntersectionObserver(
+        (entries) => {
+          for (const ent of entries) {
+            if (!ent.isIntersecting) continue;
+            const cell = ent.target as HTMLDivElement;
+            this.paintCell(cell);
+            this.cellObserver!.unobserve(cell);
+          }
+        },
+        { root: this.grid, rootMargin: "800px 0px", threshold: 0 },
+      );
+    }
     this.closeBtn.addEventListener("click", () => this.close());
     this.search.addEventListener("input", () => this.renderGrid());
     document.addEventListener("keydown", (e) => {
@@ -166,6 +201,14 @@ export class TilePicker {
       if (!inEditable && (e.key === "Delete" || e.key === "Backspace") && this.selectedKeys.size > 0) {
         e.preventDefault();
         this.deleteSelected();
+        return;
+      }
+      // H = toggle `hide` on every selected tile. Fast way to cull Mana
+      // Seed's in-sheet text labels ("Flooring", "Doorway", …) and other
+      // junk cells that slipped past the alpha scan. Bulk-safe.
+      if (!inEditable && e.key.toLowerCase() === "h" && this.selectedKeys.size > 0) {
+        e.preventDefault();
+        this.toggleHideSelected();
         return;
       }
     });
@@ -472,6 +515,45 @@ export class TilePicker {
     this.close();
   }
 
+  /** Keyboard `H` handler — toggle `hide` on every selected tile.
+   *  If any are currently visible, hides them all; if all are already
+   *  hidden, reveals them all. Batched over the existing override endpoint.
+   *  Sequential to avoid hammering the server. */
+  private async toggleHideSelected(): Promise<void> {
+    if (this.selectedKeys.size === 0) return;
+    const entries = this.selectedEntries();
+    if (entries.length === 0) return;
+
+    // If ANY selected tile is currently not hidden, flip the whole set
+    // to hidden; otherwise unhide them all.
+    const anyVisible = entries.some((e) => !e.hidden);
+    const newHide = anyVisible;
+
+    let failed = 0;
+    for (const e of entries) {
+      const existing = getOverride(e.tileset, e.tileId) ?? {};
+      try {
+        await setOverride(e.tileset, e.tileId, { ...existing, hide: newHide });
+      } catch (err) {
+        failed++;
+        console.warn(`toggleHide ${e.tileset}:${e.tileId} failed:`, err);
+      }
+    }
+
+    // Refresh entries on every touched tileset.
+    const touched = new Set(entries.map((e) => e.tileset));
+    for (const file of touched) this.index.refreshEntries(file);
+
+    this.selectedKeys.clear();
+    this.lastSelectedKey = null;
+    this.renderCategories();
+    this.renderGrid();
+    this.showDetailEmpty();
+    const label = newHide ? "Hid" : "Unhid";
+    const suffix = failed > 0 ? ` (${failed} failed)` : "";
+    this.flashStatus(`${label} ${entries.length} tile${entries.length === 1 ? "" : "s"}${suffix}`);
+  }
+
   // ---------------------------------------------------------------------------
   // Bulk edit (2+ tiles selected)
   // ---------------------------------------------------------------------------
@@ -601,6 +683,7 @@ export class TilePicker {
   }
 
   setOnPick(h: TilePickHandler): void { this.onPick = h; }
+  setOnPickStamp(h: StampPickHandler): void { this.onPickStamp = h; }
 
   isOpen(): boolean { return this.root.classList.contains("open"); }
 
@@ -771,16 +854,45 @@ export class TilePicker {
       if (n === 0) el.style.opacity = "0.45";
       this.cats.appendChild(el);
     }
+
+    // "Stamps" pseudo-category — multi-tile compositions uploaded from
+    // TMX files. Pinned below the regular taxonomy with a divider style
+    // so authors see it as a distinct library, not "just another category".
+    const divider = document.createElement("div");
+    divider.style.cssText = "border-top: 1px solid #333; margin: 6px 4px; opacity: 0.4";
+    this.cats.appendChild(divider);
+    const stampsEl = document.createElement("div");
+    const stampCount = listStamps().length;
+    stampsEl.className = "cat" + (this.activeCategory === STAMPS_CAT ? " active" : "");
+    stampsEl.title = "Multi-tile compositions. Upload a Tiled TMX to add one.";
+    stampsEl.innerHTML = `Stamps<span class="count">${stampCount}</span>`;
+    stampsEl.addEventListener("click", () => {
+      this.activeCategory = STAMPS_CAT;
+      this.renderCategories();
+      this.renderGrid();
+    });
+    if (stampCount === 0) stampsEl.style.opacity = "0.55";
+    this.cats.appendChild(stampsEl);
   }
 
   private renderGrid(): void {
     this.stopAnimations();
     this.tiles.length = 0;
     this.gridEntries.length = 0;
+    // Disconnect observer on each re-render; cells are about to be GC'd.
+    this.cellObserver?.disconnect();
     this.grid.innerHTML = "";
 
+    if (this.activeCategory === STAMPS_CAT) {
+      this.renderStampsGrid();
+      return;
+    }
+
     const query = this.search.value;
-    const entries = this.index.filter(this.activeCategory, query).slice(0, 800);  // cap for perf
+    // No cap — every filtered tile is represented as a lightweight
+    // placeholder cell. `paintCell()` fills in the canvas lazily when the
+    // cell scrolls into view via `this.cellObserver` (IntersectionObserver).
+    const entries = this.index.filter(this.activeCategory as CategoryId | null, query);
     this.gridEntries = entries;
 
     if (entries.length === 0) {
@@ -792,14 +904,19 @@ export class TilePicker {
     }
 
     const scale = SCALE_BY_SIZE[this.size];
+    // Keep entries addressable by DOM-index so `paintCell()` doesn't need
+    // to re-query the tile index.
+    const entriesByIndex = entries;
 
-    for (const entry of entries) {
-      const meta = this.index.getTileset(entry.tileset);
+    for (let i = 0; i < entriesByIndex.length; i++) {
+      const entry = entriesByIndex[i];
+      const meta  = this.index.getTileset(entry.tileset);
       if (!meta || !meta.image) continue;
 
       const cell = document.createElement("div");
       cell.className = "tile";
       cell.title = entry.label;
+      cell.dataset.idx = String(i);
       if (this.selectedKeys.has(`${entry.tileset}:${entry.tileId}`)) {
         cell.classList.add("selected");
       }
@@ -818,25 +935,6 @@ export class TilePicker {
       cell.style.width  = `${dispW}px`;
       cell.style.height = `${dispH}px`;
 
-      // Canvas is the tile's native pixel size; CSS scales via
-      // image-rendering: pixelated for crisp upscaling.
-      const cnv = document.createElement("canvas");
-      cnv.width  = meta.tilewidth;
-      cnv.height = meta.tileheight;
-      const ctx = cnv.getContext("2d");
-      if (!ctx) continue;
-      ctx.imageSmoothingEnabled = false;
-      drawTile(ctx, meta, entry, 0);
-
-      cell.appendChild(cnv);
-
-      if (entry.animation && entry.animation.length > 1) {
-        const badge = document.createElement("div");
-        badge.className = "badge";
-        badge.textContent = "AN";
-        cell.appendChild(badge);
-      }
-
       // Click modifiers:
       //   plain        → replace selection, show single detail
       //   meta/ctrl    → toggle this tile in/out of multi-selection
@@ -853,19 +951,265 @@ export class TilePicker {
 
       this.grid.appendChild(cell);
 
-      if (entry.animation && entry.animation.length > 1) {
-        this.tiles.push({
-          entry,
-          canvas: cnv,
-          ctx,
-          meta,
-          frameIdx: 0,
-          nextAt:   performance.now() + entry.animation[0].duration,
-        });
+      if (this.cellObserver) {
+        this.cellObserver.observe(cell);
+      } else {
+        // No IntersectionObserver (fallback env) — paint synchronously.
+        this.paintCell(cell);
       }
     }
 
     this.startAnimations();
+  }
+
+  /** Render the stamp-library view. Each stamp becomes a card showing a
+   *  composite preview of all its tiles (composited in layer-z order), the
+   *  stamp name + dimensions, and a delete button. Click = select +
+   *  populate detail pane; double-click = pick stamp + close picker.
+   *
+   *  Also injects an "Upload TMX" card at the start that opens a file
+   *  picker + POSTs the selected file to `/api/stamps`.
+   */
+  private renderStampsGrid(): void {
+    const query = this.search.value.trim().toLowerCase();
+    const stamps = listStamps().filter(s =>
+      !query ||
+      s.name.toLowerCase().includes(query) ||
+      s.slug.toLowerCase().includes(query) ||
+      (s.category ?? "").toLowerCase().includes(query)
+    );
+
+    // Upload card (always first)
+    const upload = document.createElement("div");
+    upload.className = "tile stamp-card stamp-upload";
+    upload.style.cssText = `
+      width: 160px; height: 140px;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      gap: 8px; background: #1a1a1a; border: 2px dashed #666; cursor: pointer;
+      color: #ccc; font-size: 13px; text-align: center; padding: 8px;
+    `;
+    upload.innerHTML = `<div style="font-size:26px; line-height:1">＋</div><div>Upload TMX</div><div style="font-size:10px; opacity:0.6">Tiled export → stamp</div>`;
+    upload.addEventListener("click", () => this.promptUploadStamp());
+    this.grid.appendChild(upload);
+
+    if (stamps.length === 0) {
+      const empty = document.createElement("div");
+      empty.id = "picker-empty";
+      empty.textContent = query
+        ? `No stamps match "${query}"`
+        : "No stamps yet. Upload a TMX to add one.";
+      empty.style.marginLeft = "12px";
+      this.grid.appendChild(empty);
+      return;
+    }
+
+    for (const stamp of stamps) {
+      const card = document.createElement("div");
+      card.className = "tile stamp-card";
+      card.title = `${stamp.name} — ${stamp.width}×${stamp.height}, ${stamp.tiles.length} tile(s)`;
+      // Stamp card size: fixed display width so previews are consistent,
+      // regardless of underlying stamp dimensions.
+      card.style.cssText = `
+        width: 160px; height: 140px;
+        display: flex; flex-direction: column; align-items: stretch; padding: 0;
+        background: #1a1a1a;
+      `;
+
+      // Preview canvas renders the stamp to a 16-px-per-tile canvas, then
+      // CSS scales it to fit the card. image-rendering: pixelated keeps
+      // the scale-down crisp-ish.
+      const preview = document.createElement("canvas");
+      preview.width  = Math.max(1, stamp.width * 16);
+      preview.height = Math.max(1, stamp.height * 16);
+      preview.style.cssText = `
+        flex: 1; width: 100%; min-height: 0; object-fit: contain;
+        image-rendering: pixelated;
+        background: repeating-conic-gradient(#242424 0 25%, #1c1c1c 0 50%) 0 0/8px 8px;
+      `;
+      const ctx = preview.getContext("2d");
+      if (ctx) {
+        ctx.imageSmoothingEnabled = false;
+        drawStampComposite(ctx, stamp, this.index);
+      }
+
+      const label = document.createElement("div");
+      label.style.cssText = `
+        font-size: 11px; line-height: 1.2; padding: 4px 6px;
+        background: #111; color: #ccc; border-top: 1px solid #333;
+        white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+      `;
+      label.innerHTML = `<strong>${escapeHtml(stamp.name)}</strong><br><span style="opacity:0.6">${stamp.width}×${stamp.height} · ${stamp.tiles.length}t</span>`;
+
+      card.appendChild(preview);
+      card.appendChild(label);
+
+      card.addEventListener("click", () => {
+        this.renderStampDetail(stamp);
+      });
+      card.addEventListener("dblclick", () => {
+        this.onPickStamp?.(stamp);
+        this.close();
+      });
+
+      this.grid.appendChild(card);
+    }
+  }
+
+  /** Open a file chooser, send the selected TMX to `/api/stamps`, then
+   *  refresh the stamp list and re-render. */
+  private promptUploadStamp(): void {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = ".tmx,application/xml,text/xml";
+    input.onchange = async () => {
+      const f = input.files?.[0];
+      if (!f) return;
+      const name = prompt("Stamp name?", f.name.replace(/\.tmx$/i, ""));
+      if (!name) return;
+      const xml = await f.text();
+      try {
+        const res = await fetch("/api/stamps/", {
+          method:  "POST",
+          headers: {
+            "content-type":   "application/xml",
+            "x-stamp-name":   name,
+          },
+          body: xml,
+        });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({ detail: res.statusText }));
+          this.flashStatus(`Upload failed: ${err.detail}`);
+          return;
+        }
+        const out = await res.json() as { stamp: { slug: string; tileCount: number }; warnings?: string[] };
+        await refreshStamps();
+        this.renderCategories();
+        this.renderGrid();
+        const warns = (out.warnings ?? []).length;
+        this.flashStatus(`Uploaded '${out.stamp.slug}' (${out.stamp.tileCount} tile${out.stamp.tileCount === 1 ? "" : "s"}${warns ? `, ${warns} warning${warns === 1 ? "" : "s"}` : ""})`);
+      } catch (err) {
+        this.flashStatus(`Upload failed: ${(err as Error).message}`);
+      }
+    };
+    input.click();
+  }
+
+  /** Right-pane detail for a stamp (distinct from per-tile detail). Shows
+   *  a large composite preview, slug/dimensions/tile-count, a Place on map
+   *  button, and a Delete button. */
+  private renderStampDetail(stamp: StampDef): void {
+    this.dEmpty.style.display = "none";
+    this.dContent.hidden = true;
+    this.bulkPane.hidden = true;
+    this.stopDetailAnim();
+
+    // Overload the "empty" pane as a stamp info pane — simpler than adding
+    // dedicated DOM. Real refactor: add a third pane container.
+    this.dEmpty.style.display = "block";
+    this.dEmpty.innerHTML = "";
+    const wrap = document.createElement("div");
+    wrap.style.cssText = "display: flex; flex-direction: column; gap: 8px; padding: 4px;";
+
+    const h = document.createElement("div");
+    h.innerHTML = `<strong>${escapeHtml(stamp.name)}</strong>`;
+    h.style.cssText = "font-size: 14px;";
+    wrap.appendChild(h);
+
+    const meta = document.createElement("div");
+    meta.style.cssText = "font-size: 11px; color: #aaa; line-height: 1.5;";
+    meta.innerHTML =
+      `Slug: <code>${stamp.slug}</code><br>` +
+      `Dimensions: ${stamp.width} × ${stamp.height} tiles<br>` +
+      `Tile count: ${stamp.tiles.length}<br>` +
+      (stamp.category ? `Category: ${stamp.category}<br>` : "") +
+      (stamp.description ? `${escapeHtml(stamp.description)}<br>` : "");
+    wrap.appendChild(meta);
+
+    const preview = document.createElement("canvas");
+    preview.width  = Math.max(1, stamp.width * 16);
+    preview.height = Math.max(1, stamp.height * 16);
+    preview.style.cssText = `
+      width: 100%; max-width: 100%; image-rendering: pixelated;
+      background: repeating-conic-gradient(#242424 0 25%, #1c1c1c 0 50%) 0 0/8px 8px;
+      border: 1px solid #333; border-radius: 2px;
+    `;
+    const ctx = preview.getContext("2d");
+    if (ctx) {
+      ctx.imageSmoothingEnabled = false;
+      drawStampComposite(ctx, stamp, this.index);
+    }
+    wrap.appendChild(preview);
+
+    const placeBtn = document.createElement("button");
+    placeBtn.textContent = "Place on map";
+    placeBtn.className = "primary";
+    placeBtn.addEventListener("click", () => {
+      this.onPickStamp?.(stamp);
+      this.close();
+    });
+    wrap.appendChild(placeBtn);
+
+    const delBtn = document.createElement("button");
+    delBtn.textContent = "Delete stamp";
+    delBtn.style.background = "#5a2020";
+    delBtn.style.color = "#fee";
+    delBtn.addEventListener("click", async () => {
+      if (!confirm(`Delete stamp '${stamp.name}'? This cannot be undone.`)) return;
+      const res = await fetch(`/api/stamps/${encodeURIComponent(stamp.slug)}`, { method: "DELETE" });
+      if (!res.ok) {
+        this.flashStatus(`Delete failed: ${res.statusText}`);
+        return;
+      }
+      await refreshStamps();
+      this.renderCategories();
+      this.renderGrid();
+      this.showDetailEmpty();
+      this.flashStatus(`Deleted '${stamp.name}'`);
+    });
+    wrap.appendChild(delBtn);
+
+    this.dEmpty.appendChild(wrap);
+  }
+
+  /** Lazily paint a tile cell's canvas on first viewport intersection.
+   *  Idempotent: if `dataset.painted === "1"` we skip. Registers animated
+   *  tiles into `this.tiles` so the RAF loop animates them. */
+  private paintCell(cell: HTMLDivElement): void {
+    if (cell.dataset.painted === "1") return;
+    const idx = +(cell.dataset.idx ?? "-1");
+    const entry = this.gridEntries[idx];
+    if (!entry) return;
+    const meta = this.index.getTileset(entry.tileset);
+    if (!meta || !meta.image) return;
+
+    const cnv = document.createElement("canvas");
+    cnv.width  = meta.tilewidth;
+    cnv.height = meta.tileheight;
+    const ctx = cnv.getContext("2d");
+    if (!ctx) return;
+    ctx.imageSmoothingEnabled = false;
+    drawTile(ctx, meta, entry, 0);
+    cell.appendChild(cnv);
+
+    if (entry.animation && entry.animation.length > 1) {
+      const badge = document.createElement("div");
+      badge.className = "badge";
+      badge.textContent = "AN";
+      cell.appendChild(badge);
+      this.tiles.push({
+        entry,
+        canvas: cnv,
+        ctx,
+        meta,
+        frameIdx: 0,
+        nextAt:   performance.now() + entry.animation[0].duration,
+      });
+      // Ensure the animation RAF is running now that we have a new animated
+      // tile in the viewport.
+      this.startAnimations();
+    }
+
+    cell.dataset.painted = "1";
   }
 
   // ---------------------------------------------------------------------------
@@ -906,6 +1250,45 @@ export class TilePicker {
     if (this.animRafId != null) cancelAnimationFrame(this.animRafId);
     this.animRafId = null;
   }
+}
+
+// -----------------------------------------------------------------------------
+// Stamp composite rendering — paints all tiles of a stamp into one canvas.
+// -----------------------------------------------------------------------------
+
+/** Draw every tile in `stamp` onto `ctx`, preserving layer z-order so
+ *  canopy renders over walls over decor over ground. Uses the first frame
+ *  of any animated tiles (no runtime animation in previews). Missing
+ *  tilesets render as transparent. */
+export function drawStampComposite(
+  ctx: CanvasRenderingContext2D,
+  stamp: StampDef,
+  index: TilesetIndex,
+): void {
+  const sorted = [...stamp.tiles].sort((a, b) => (LAYER_Z[a.layer] ?? 0) - (LAYER_Z[b.layer] ?? 0));
+  ctx.imageSmoothingEnabled = false;
+  for (const t of sorted) {
+    const meta = index.getTileset(t.tileset);
+    if (!meta || !meta.image) continue;
+    const col = t.tileId % meta.columns;
+    const row = Math.floor(t.tileId / meta.columns);
+    const sx = col * meta.tilewidth;
+    const sy = row * meta.tileheight;
+    // Destination in composite pixels: one stamp grid cell = 16×16. For
+    // tiles that span more than 1×1 (e.g. 32×32 wall), paint at the
+    // stamp-grid origin, letting the larger tile visually occupy the
+    // expected area. We don't scale — sprite pixels land 1:1.
+    ctx.drawImage(
+      meta.image,
+      sx, sy, meta.tilewidth, meta.tileheight,
+      t.x * 16, t.y * 16, meta.tilewidth, meta.tileheight,
+    );
+  }
+}
+
+function escapeHtml(s: string): string {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
 }
 
 // -----------------------------------------------------------------------------

@@ -11,6 +11,7 @@ import { rtcRoutes } from "./routes/rtc.js";
 import { worldBuilderRoutes } from "./routes/world-builder.js";
 import { builderRegistryRoutes } from "./routes/builder-registry.js";
 import { mapsRoutes } from "./routes/maps.js";
+import { stampsRoutes } from "./routes/stamps.js";
 import { config } from "./config.js";
 
 export async function buildApp() {
@@ -29,6 +30,15 @@ export async function buildApp() {
     credentials: true,
   });
 
+  // XML body parser — used by stamp upload (`POST /api/stamps` receives raw
+  // TMX as `text/xml` / `application/xml`). Fastify's built-in JSON parser
+  // would 415 these, so register a permissive string-passthrough.
+  app.addContentTypeParser(
+    ["application/xml", "text/xml"],
+    { parseAs: "string", bodyLimit: 4 * 1024 * 1024 },
+    (_req, body, done) => done(null, body),
+  );
+
   await app.register(authRoutes, { prefix: "/api/auth" });
   await app.register(characterRoutes, { prefix: "/api/characters" });
   await app.register(worldRoutes, { prefix: "/api/world" });
@@ -36,6 +46,7 @@ export async function buildApp() {
   await app.register(worldBuilderRoutes, { prefix: "/api/world-builder" });
   await app.register(builderRegistryRoutes, { prefix: "/api/builder" });
   await app.register(mapsRoutes, { prefix: "/api/maps" });
+  await app.register(stampsRoutes, { prefix: "/api/stamps" });
 
   // Serve built client if available (for ngrok / production)
   const __dirname = dirname(fileURLToPath(import.meta.url));

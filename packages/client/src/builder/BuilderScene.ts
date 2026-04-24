@@ -24,6 +24,7 @@ import { TilesetIndex } from "./TilesetIndex.js";
 import { TileOverlay, type PlacedTile } from "./TileOverlay.js";
 import { BlockOverlay } from "./BlockOverlay.js";
 import { TilePicker } from "./TilePicker.js";
+import type { StampDef } from "./registry/store.js";
 import { BuilderHud } from "./BuilderHud.js";
 import { PLAYER_Z, getLayer, listLayersByOrder, type LayerId } from "./registry/layers.js";
 import { getTilesetDef } from "./registry/tilesets.js";
@@ -54,6 +55,11 @@ export class BuilderScene extends Scene {
     numericId: 0, zoneId: "", name: "", width: 32, height: 32,
   };
   private brush: { tileset: string; tileId: number; rotation: number } | null = null;
+  /** Stamp brush — mutually exclusive with `brush`. When set, a click in
+   *  place mode fires N BUILDER_PLACE_TILE events (one per stamp cell),
+   *  offset by the click origin. Cleared on picker close / Esc / picking a
+   *  regular tile. */
+  private stampBrush: StampDef | null = null;
   /** Tool mode. "place"/"erase" operate on tiles; "block" toggles collision
    *  blocks at the clicked cell (decoupled from tile placements). */
   private mode: "place" | "erase" | "block" = "place";
@@ -91,9 +97,10 @@ export class BuilderScene extends Scene {
     await this.playerSpriteImg.load();
 
     // Load the current zone's TMX. `net.zone.mapFile` is the filename picked
-    // by the server (e.g. `heaven.tmx`, `starter.tmx`); the API route serves
-    // a frozen disk file if one exists, otherwise synthesizes from DB.
-    const initialMap = this.net.zone.mapFile || "heaven.tmx";
+    // by the server (e.g. `500-heaven.tmx`, `1000-human-starter.tmx`); the
+    // API route serves a frozen disk file if one exists, otherwise
+    // synthesizes from DB.
+    const initialMap = this.net.zone.mapFile || "500-heaven.tmx";
     await this.loadBase(engine, initialMap);
 
     // Overlay is created once and lives for the scene's lifetime.
@@ -119,6 +126,7 @@ export class BuilderScene extends Scene {
     this.picker = new TilePicker(this.tiles);
     this.picker.setOnPick((entry) => {
       this.brush = { tileset: entry.tileset, tileId: entry.tileId, rotation: 0 };
+      this.stampBrush = null;
       this.mode = "place";
       // Auto-switch to the tile's preferred layer (e.g. trees go to walls,
       // canopies go to canopy) so "walls should be walls" works without the
@@ -129,6 +137,18 @@ export class BuilderScene extends Scene {
       }
       this.hud.setMode(this.mode);
       this.hud.setBrush(this.tiles, this.brush);
+    });
+    this.picker.setOnPickStamp((stamp) => {
+      // Stamp brush replaces the tile brush. Click on the map expands the
+      // stamp to N individual tile placements via BUILDER_PLACE_TILE events,
+      // same wire path as manual placement — just looped. Each lands as a
+      // normal `user_map_tiles` row, independently editable after.
+      this.stampBrush = stamp;
+      this.brush = null;
+      this.mode = "place";
+      this.hud.setMode(this.mode);
+      this.hud.setBrush(this.tiles, null);
+      this.hud.showToast(`Stamp '${stamp.name}' — click to place, Esc to cancel`);
     });
     this.hud = new BuilderHud();
     this.hud.setMode(this.mode);
@@ -328,6 +348,16 @@ export class BuilderScene extends Scene {
         return;
       }
 
+      // Place mode — stamp brush path. Fires N BUILDER_PLACE_TILE events
+      // at (tx + cell.x, ty + cell.y) using each stamp cell's own layer.
+      // Each lands as a normal user_map_tiles row and is independently
+      // editable afterwards.
+      if (this.stampBrush) {
+        this.clearSelection();
+        this.placeStampAt(tx, ty);
+        return;
+      }
+
       // Place mode — brush path.
       if (this.brush) {
         // Brush overrides selection. Clicking a placed tile with a brush
@@ -408,6 +438,7 @@ export class BuilderScene extends Scene {
           if (this.mode === "block") { this.toggleBlockMode(); return; }
           if (this.mode === "erase") { this.toggleErase(); return; }
           if (this.selected) { this.clearSelection(); return; }
+          if (this.stampBrush) { this.stampBrush = null; this.updateHoverGhost(); this.hud.showToast("Stamp cleared"); return; }
           if (this.brush)    { this.brush = null; this.hud.setBrush(this.tiles, null); return; }
           return;
       }
@@ -455,7 +486,14 @@ export class BuilderScene extends Scene {
       this.blocks.setGhost(sub, x, y);
     } else {
       this.blocks.setGhost("off", -1, -1);
-      this.overlay.setGhost(this.mode, this.brush, x, y, this.currentLayer);
+      if (this.stampBrush) {
+        // Hide tile ghost — stamp ghost uses a bounding-box outline.
+        this.overlay.setGhost("place", null, -1, -1, this.currentLayer);
+        this.overlay.setStampGhost(this.stampBrush, x, y);
+      } else {
+        this.overlay.setStampGhost(null, -1, -1);
+        this.overlay.setGhost(this.mode, this.brush, x, y, this.currentLayer);
+      }
     }
   }
 
@@ -725,6 +763,44 @@ export class BuilderScene extends Scene {
       tileset: this.brush.tileset, tileId: this.brush.tileId,
       rotation: this.brush.rotation, flipH: false, flipV: false,
     });
+  }
+
+  /** Expand the active stamp at click origin (ox, oy) into N individual
+   *  tile placements. Each cell is sent as a BUILDER_PLACE_TILE event and
+   *  applied optimistically — identical to the single-tile path, just
+   *  looped. Out-of-bounds cells are silently skipped. */
+  private placeStampAt(ox: number, oy: number): void {
+    const s = this.stampBrush;
+    if (!s) return;
+    let skipped = 0;
+    for (const t of s.tiles) {
+      const x = ox + t.x;
+      const y = oy + t.y;
+      if (x < 0 || y < 0 || x >= this.currentMap.width || y >= this.currentMap.height) {
+        skipped++;
+        continue;
+      }
+      this.net.sendEvent(Opcode.BUILDER_PLACE_TILE, {
+        layer:    t.layer,
+        x, y,
+        tileset:  t.tileset,
+        tileId:   t.tileId,
+        rotation: t.rotation,
+        flipH:    t.flipH,
+        flipV:    t.flipV,
+      });
+      this.overlay.place({
+        layer: t.layer, x, y,
+        tileset: t.tileset, tileId: t.tileId,
+        rotation: t.rotation, flipH: t.flipH, flipV: t.flipV,
+      });
+    }
+    const placed = s.tiles.length - skipped;
+    this.hud.showToast(
+      skipped === 0
+        ? `Placed '${s.name}' (${placed} tile${placed === 1 ? "" : "s"})`
+        : `Placed '${s.name}' (${placed} tile${placed === 1 ? "" : "s"}, ${skipped} off-map)`,
+    );
   }
 
   private sendRemove(layer: string, x: number, y: number): void {
